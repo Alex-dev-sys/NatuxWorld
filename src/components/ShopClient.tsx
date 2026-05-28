@@ -339,7 +339,7 @@ export default function ShopClient({ products }: { products: Product[] }) {
 
       const data = await res.json()
       if (!res.ok) { setOrderError(data.error ?? 'Ошибка создания заказа'); return }
-      router.push(`/order/${data.publicId}`)
+      router.push(`/pay/${data.publicId}`)
     } catch {
       setOrderError('Ошибка соединения с сервером')
     } finally {
