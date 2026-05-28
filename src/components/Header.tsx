@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 
@@ -19,8 +20,18 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-50 bg-site-block border-b border-site-border border-top-accent">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-        <Link href="/" className="font-pixel text-site-accent text-xs md:text-sm hover:text-white transition-colors shrink-0">
-          NATUX WORLD
+        <Link href="/" className="flex items-center gap-3 shrink-0 group">
+          <Image
+            src="/logo.png"
+            alt="NATUX WORLD"
+            width={40}
+            height={40}
+            className="rounded-md group-hover:scale-105 transition-transform"
+            priority
+          />
+          <span className="font-pixel text-site-accent text-xs md:text-sm group-hover:text-white transition-colors">
+            NATUX WORLD
+          </span>
         </Link>
 
         {/* Desktop nav */}

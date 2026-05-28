@@ -12,10 +12,15 @@ export const metadata: Metadata = {
   },
   description: 'Minecraft сервер NATUX WORLD. Анархия, PvP, донат-магазин. IP: mc.natuxworld.ru',
   keywords: 'minecraft, server, natux, pvp, anarchy, donate',
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  },
   openGraph: {
     title: 'NATUX WORLD — Minecraft Server',
     description: 'Анархичный Minecraft-сервер без правил. IP: mc.natuxworld.ru',
     siteName: 'NATUX WORLD',
+    images: [{ url: '/logo.png', width: 1080, height: 1080, alt: 'NATUX WORLD' }],
   },
 }
 
