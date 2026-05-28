@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Product, Duration, ProductVariant, Coupon } from '@/lib/types'
 
@@ -66,9 +66,9 @@ function RecentPurchasesTicker() {
   )
 }
 
-// ─── rank card ────────────────────────────────────────────────────────────────
+// ─── rank scroll card ─────────────────────────────────────────────────────────
 
-function RankCard({ product, active, onClick }: {
+function RankScrollCard({ product, active, onClick }: {
   product: Product
   active: boolean
   onClick: () => void
@@ -78,39 +78,103 @@ function RankCard({ product, active, onClick }: {
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-3 py-3 rounded-lg border transition-all relative ${
-        active
-          ? 'border-site-accent bg-site-secondary glow-red'
-          : 'border-site-border bg-site-block hover:border-site-accent/50'
-      }`}
+      className="relative flex-shrink-0 flex flex-col items-center gap-2 px-4 py-3 rounded-xl border transition-all duration-200 w-[100px]"
+      style={{
+        borderColor: active ? product.color : 'rgba(58,16,23,0.8)',
+        backgroundColor: active ? `${product.color}18` : '#111111',
+        boxShadow: active ? `0 0 18px ${product.color}55` : 'none',
+      }}
     >
       {product.badge && (
         <span
-          className="absolute -top-2 right-2 px-1.5 py-0.5 text-[9px] font-bold rounded"
+          className="absolute -top-2 left-1/2 -translate-x-1/2 px-1.5 py-0.5 text-[8px] font-bold rounded whitespace-nowrap"
           style={{ backgroundColor: product.color, color: '#000' }}
         >
           {product.badge}
         </span>
       )}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div
-            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-            style={{
-              backgroundColor: product.color,
-              boxShadow: active ? `0 0 8px ${product.color}` : 'none',
-            }}
-          />
-          <span
-            className="font-semibold text-sm"
-            style={{ color: active ? product.color : '#F2F2F2' }}
-          >
-            {product.name}
-          </span>
-        </div>
-        <span className="text-site-muted text-xs">от {minPrice}₽</span>
-      </div>
+      {/* Color orb */}
+      <div
+        className="w-8 h-8 rounded-full flex-shrink-0 transition-all duration-200"
+        style={{
+          backgroundColor: product.color,
+          boxShadow: active ? `0 0 16px ${product.color}, 0 0 32px ${product.color}66` : `0 0 6px ${product.color}44`,
+        }}
+      />
+      <span
+        className="font-bold text-xs leading-tight text-center"
+        style={{ color: active ? product.color : '#9CA3AF' }}
+      >
+        {product.name}
+      </span>
+      <span className="text-[10px] text-site-muted">от {minPrice}₽</span>
     </button>
+  )
+}
+
+// ─── rank scroll carousel ─────────────────────────────────────────────────────
+
+function RankScrollCarousel({ products, selectedId, onSelect }: {
+  products: Product[]
+  selectedId: string
+  onSelect: (id: string) => void
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const scroll = (dir: 'left' | 'right') => {
+    scrollRef.current?.scrollBy({ left: dir === 'left' ? -240 : 240, behavior: 'smooth' })
+  }
+
+  // Scroll selected card into view
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container) return
+    const idx = products.findIndex(p => p.id === selectedId)
+    const card = container.children[idx] as HTMLElement
+    if (card) {
+      const offset = card.offsetLeft - container.offsetWidth / 2 + card.offsetWidth / 2
+      container.scrollTo({ left: offset, behavior: 'smooth' })
+    }
+  }, [selectedId, products])
+
+  return (
+    <div className="relative mb-8">
+      {/* Left arrow */}
+      <button
+        onClick={() => scroll('left')}
+        className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 flex items-center justify-center bg-site-block border border-site-border rounded-full text-site-muted hover:text-site-accent hover:border-site-accent transition-colors shadow-lg"
+      >
+        ‹
+      </button>
+
+      {/* Scroll area */}
+      <div
+        ref={scrollRef}
+        className="flex gap-3 overflow-x-auto px-10 py-4 scrollbar-hide"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
+        {products.map(p => (
+          <RankScrollCard
+            key={p.id}
+            product={p}
+            active={p.id === selectedId}
+            onClick={() => onSelect(p.id)}
+          />
+        ))}
+      </div>
+
+      {/* Right arrow */}
+      <button
+        onClick={() => scroll('right')}
+        className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 flex items-center justify-center bg-site-block border border-site-border rounded-full text-site-muted hover:text-site-accent hover:border-site-accent transition-colors shadow-lg"
+      >
+        ›
+      </button>
+
+      {/* Fade edges */}
+      <div className="pointer-events-none absolute left-8 top-0 bottom-0 w-12 bg-gradient-to-r from-site-bg to-transparent" />
+      <div className="pointer-events-none absolute right-8 top-0 bottom-0 w-12 bg-gradient-to-l from-site-bg to-transparent" />
+    </div>
   )
 }
 
@@ -282,36 +346,26 @@ export default function ShopClient({ products }: { products: Product[] }) {
   if (!product || !variant) return null
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
+    <div className="max-w-5xl mx-auto px-4 py-8">
 
       {/* Header + ticker */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h1 className="font-pixel text-xs md:text-sm text-site-accent">МАГАЗИН ПРИВИЛЕГИЙ</h1>
         <RecentPurchasesTicker />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* ── Rank scroll carousel ── */}
+      <div className="bg-site-block border border-site-border rounded-xl mb-6">
+        <p className="text-site-muted text-[10px] uppercase tracking-widest px-6 pt-4 pb-1">Выберите ранг</p>
+        <RankScrollCarousel
+          products={products}
+          selectedId={selectedId}
+          onSelect={(id) => { setSelectedId(id); setSelectedDuration('30d'); setCoupon(null) }}
+        />
+      </div>
 
-        {/* ── Left: rank list ── */}
-        <div className="lg:col-span-1">
-          <div className="bg-site-block border border-site-border rounded-lg p-4 sticky top-20">
-            <p className="text-site-muted text-xs uppercase tracking-wider mb-4">Выберите ранг</p>
-            <div className="flex flex-col gap-2">
-              {products.map(p => (
-                <RankCard
-                  key={p.id}
-                  product={p}
-                  active={p.id === selectedId}
-                  onClick={() => { setSelectedId(p.id); setSelectedDuration('30d'); setCoupon(null) }}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* ── Right: rank details ── */}
-        <div className="lg:col-span-2">
-          <div className="bg-site-block border border-site-border rounded-lg p-6 relative overflow-hidden">
+      {/* ── Rank details ── */}
+      <div className="bg-site-block border border-site-border rounded-lg p-6 relative overflow-hidden">
 
             {/* Popular glow strip */}
             {product.popular && (
@@ -457,9 +511,8 @@ export default function ShopClient({ products }: { products: Product[] }) {
                 {orderError}
               </div>
             )}
-          </div>
-        </div>
       </div>
     </div>
   )
 }
+
