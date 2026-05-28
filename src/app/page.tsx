@@ -84,7 +84,7 @@ export default function HomePage() {
               href="/shop"
               className="px-8 py-3 bg-site-accent hover:bg-red-600 text-white font-bold rounded transition-colors glow-red text-base"
             >
-              Купить привилегию
+              Получить привилегию →
             </Link>
             <Link
               href="/join"
@@ -149,7 +149,7 @@ export default function HomePage() {
             href="/shop"
             className="inline-block px-10 py-4 bg-site-accent hover:bg-red-600 text-white font-bold rounded transition-colors glow-red-lg"
           >
-            Открыть магазин →
+            Присоединиться к NATUX WORLD →
           </Link>
         </div>
       </section>
