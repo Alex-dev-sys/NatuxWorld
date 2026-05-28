@@ -51,7 +51,7 @@ function CardVisual({ number, name, expiry, cvv, flipped }: {
   const masked = filled.slice(0, 4).padEnd(4, '•') + ' •••• •••• ' + (filled.slice(12) || '••••')
 
   return (
-    <div style={{ perspective: 800, height: 200, marginBottom: 28 }}>
+    <div className="card-visual" style={{ perspective: 800, marginBottom: 20 }}>
       <div style={{
         position: 'relative', width: '100%', height: '100%',
         transformStyle: 'preserve-3d',
@@ -81,7 +81,7 @@ function CardVisual({ number, name, expiry, cvv, flipped }: {
           </div>
 
           {/* Number */}
-          <div style={{ fontFamily: 'monospace', fontSize: 20, letterSpacing: 3, color: '#fff', textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
+          <div className="card-num" style={{ fontFamily: 'monospace', fontSize: 20, letterSpacing: 3, color: '#fff', textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>
             {masked}
           </div>
 
@@ -281,10 +281,17 @@ export default function PaymentClient({ order }: { order: Order }) {
         @keyframes pop { 0%{transform:scale(0)} 70%{transform:scale(1.15)} 100%{transform:scale(1)} }
         input::placeholder { color: #4B5563; }
         input:focus { border-color: #FF2B4F !important; }
+        .pay-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+        .card-visual { height: 200px; }
+        @media (max-width: 480px) {
+          .pay-outer { padding: 16px 12px !important; }
+          .card-visual { height: 160px; }
+          .card-num { font-size: 16px !important; letter-spacing: 2px !important; }
+        }
       `}</style>
 
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px' }}>
-        <div style={{ width: '100%', maxWidth: 880, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
+      <div className="pay-outer" style={{ minHeight: '100vh', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '32px 16px' }}>
+        <div className="pay-grid" style={{ width: '100%', maxWidth: 880 }}>
 
           {/* ── Left: order summary ── */}
           <div>

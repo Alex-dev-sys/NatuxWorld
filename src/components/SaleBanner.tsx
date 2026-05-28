@@ -38,15 +38,15 @@ export default function SaleBanner() {
 
   return (
     <div className="relative bg-gradient-to-r from-site-dark-red via-site-accent to-site-dark-red text-white text-sm">
-      <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-center gap-3 text-center">
-        <span className="font-semibold">🔥 АКЦИЯ — скидка 20% по промокоду</span>
-        <span className="font-pixel text-xs bg-black/30 px-2 py-1 rounded tracking-widest">SUMMER25</span>
-        <span className="text-white/80 text-xs">Заканчивается через</span>
-        <span className="font-mono font-bold text-base tabular-nums">
+      <div className="max-w-7xl mx-auto px-8 py-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-xs">
+        <span className="font-semibold text-sm">🔥 Скидка 25% по промокоду</span>
+        <span className="font-pixel text-[10px] bg-black/30 px-2 py-0.5 rounded tracking-widest">SUMMER25</span>
+        <span className="text-white/70 hidden sm:inline">·</span>
+        <span className="font-mono font-bold tabular-nums">
           {pad(timeLeft.h)}:{pad(timeLeft.m)}:{pad(timeLeft.s)}
         </span>
-        <Link href="/shop" className="underline underline-offset-2 font-semibold hover:no-underline text-xs">
-          Перейти в магазин →
+        <Link href="/shop" className="underline underline-offset-2 font-semibold hover:no-underline whitespace-nowrap">
+          В магазин →
         </Link>
       </div>
       <button

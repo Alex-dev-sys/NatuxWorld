@@ -114,7 +114,7 @@ export default function OrderClient({ initialOrder }: { initialOrder: Order }) {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12">
+    <div className="max-w-2xl mx-auto px-4 py-6 sm:py-12">
       {/* Status header */}
       <div className="text-center mb-8">
         {order.status === 'delivered' ? (

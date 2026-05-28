@@ -86,13 +86,13 @@ function RankCarousel({ products, selectedId, onSelect }: {
 
   return (
     <div style={{ backgroundColor: '#111111', borderRadius: '0 0 12px 12px' }}>
-      {/* arrows + scroll row */}
       <div className="flex items-center gap-2 px-3 pb-4">
-        {/* left */}
+
+        {/* arrows — desktop only */}
         <button
           onClick={() => scroll('left')}
           style={{ backgroundColor: '#1a0b0b', border: '1px solid #3A1017', borderRadius: 8, minWidth: 32, height: 32, color: '#B8B8B8', fontSize: 18, lineHeight: 1, cursor: 'pointer', flexShrink: 0 }}
-          className="hover:border-site-accent hover:text-site-accent transition-colors flex items-center justify-center"
+          className="hidden md:flex hover:border-site-accent hover:text-site-accent transition-colors items-center justify-center"
         >
           ‹
         </button>
@@ -100,7 +100,20 @@ function RankCarousel({ products, selectedId, onSelect }: {
         {/* scroll track */}
         <div
           ref={scrollRef}
-          style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingTop: 12, paddingBottom: 4, scrollbarWidth: 'none', flex: 1, backgroundColor: '#111111' }}
+          style={{
+            display: 'flex',
+            gap: 10,
+            overflowX: 'auto',
+            paddingTop: 12,
+            paddingBottom: 8,
+            paddingLeft: 4,
+            paddingRight: 4,
+            scrollbarWidth: 'none',
+            flex: 1,
+            backgroundColor: '#111111',
+            scrollSnapType: 'x mandatory',
+            WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'],
+          }}
         >
           {products.map(p => {
             const active = p.id === selectedId
@@ -113,6 +126,7 @@ function RankCarousel({ products, selectedId, onSelect }: {
                 style={{
                   flexShrink: 0,
                   width: 96,
+                  scrollSnapAlign: 'center',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
@@ -129,38 +143,18 @@ function RankCarousel({ products, selectedId, onSelect }: {
               >
                 {p.badge && (
                   <span style={{
-                    position: 'absolute',
-                    top: -8,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    backgroundColor: p.color,
-                    color: '#000',
-                    fontSize: 8,
-                    fontWeight: 700,
-                    padding: '2px 5px',
-                    borderRadius: 4,
-                    whiteSpace: 'nowrap',
+                    position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)',
+                    backgroundColor: p.color, color: '#000', fontSize: 8, fontWeight: 700,
+                    padding: '2px 5px', borderRadius: 4, whiteSpace: 'nowrap',
                   }}>
                     {p.badge}
                   </span>
                 )}
                 <div style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: '50%',
-                  backgroundColor: p.color,
-                  boxShadow: active
-                    ? `0 0 12px ${p.color}, 0 0 24px ${p.color}80`
-                    : `0 0 6px ${p.color}50`,
-                  flexShrink: 0,
+                  width: 32, height: 32, borderRadius: '50%', backgroundColor: p.color, flexShrink: 0,
+                  boxShadow: active ? `0 0 12px ${p.color}, 0 0 24px ${p.color}80` : `0 0 6px ${p.color}50`,
                 }} />
-                <span style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: active ? p.color : '#9CA3AF',
-                  textAlign: 'center',
-                  lineHeight: 1.2,
-                }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: active ? p.color : '#9CA3AF', textAlign: 'center', lineHeight: 1.2 }}>
                   {p.name}
                 </span>
                 <span style={{ fontSize: 10, color: '#6B7280' }}>от {minPrice}₽</span>
@@ -169,14 +163,34 @@ function RankCarousel({ products, selectedId, onSelect }: {
           })}
         </div>
 
-        {/* right */}
+        {/* arrows — desktop only */}
         <button
           onClick={() => scroll('right')}
           style={{ backgroundColor: '#1a0b0b', border: '1px solid #3A1017', borderRadius: 8, minWidth: 32, height: 32, color: '#B8B8B8', fontSize: 18, lineHeight: 1, cursor: 'pointer', flexShrink: 0 }}
-          className="hover:border-site-accent hover:text-site-accent transition-colors flex items-center justify-center"
+          className="hidden md:flex hover:border-site-accent hover:text-site-accent transition-colors items-center justify-center"
         >
           ›
         </button>
+      </div>
+
+      {/* dots indicator — mobile only */}
+      <div className="flex md:hidden justify-center gap-1.5 pb-3">
+        {products.map(p => (
+          <button
+            key={p.id}
+            onClick={() => onSelect(p.id)}
+            style={{
+              width: p.id === selectedId ? 16 : 5,
+              height: 5,
+              borderRadius: 3,
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              backgroundColor: p.id === selectedId ? p.color : '#3A1017',
+              padding: 0,
+            }}
+          />
+        ))}
       </div>
     </div>
   )
@@ -378,7 +392,7 @@ export default function ShopClient({ products }: { products: Product[] }) {
       </div>
 
       {/* ── Rank details ── */}
-      <div className="bg-site-block border border-site-border rounded-lg p-6 relative overflow-hidden">
+      <div className="bg-site-block border border-site-border rounded-lg p-4 sm:p-6 relative overflow-hidden">
 
             {/* Popular glow strip */}
             {product.popular && (
@@ -482,7 +496,7 @@ export default function ShopClient({ products }: { products: Product[] }) {
             </div>
 
             {/* Price + buy */}
-            <div className="flex items-center justify-between pt-4 border-t border-site-border">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4 border-t border-site-border">
               <div>
                 <p className="text-site-muted text-xs mb-1">К оплате</p>
                 {coupon ? (
@@ -501,21 +515,21 @@ export default function ShopClient({ products }: { products: Product[] }) {
               <button
                 onClick={handleBuy}
                 disabled={loading || !username}
-                className={`px-8 py-3 rounded font-bold text-sm transition-all ${
+                className={`w-full sm:w-auto px-8 py-3 rounded font-bold text-sm transition-all flex items-center justify-center gap-2 ${
                   !username || loading
                     ? 'bg-site-border text-site-muted cursor-not-allowed'
                     : 'bg-site-accent hover:bg-red-600 text-white glow-red'
                 }`}
               >
                 {loading ? (
-                  <span className="flex items-center gap-2">
+                  <>
                     <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
                     Создаём заказ...
-                  </span>
-                ) : 'Купить'}
+                  </>
+                ) : 'Перейти к оплате →'}
               </button>
             </div>
 
