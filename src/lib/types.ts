@@ -27,6 +27,15 @@ export interface Product {
   color: string
   order: number
   active: boolean
+  badge?: string
+  popular?: boolean
+}
+
+export interface Coupon {
+  code: string
+  type: 'percent' | 'fixed'
+  value: number
+  description: string
 }
 
 export interface Order {
@@ -45,6 +54,8 @@ export interface Order {
   deliveredAt?: string
   deliveryError?: string
   rconCommands?: string[]
+  couponCode?: string
+  originalPrice?: number
 }
 
 export interface ServerStatus {
