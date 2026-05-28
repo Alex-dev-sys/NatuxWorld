@@ -66,55 +66,9 @@ function RecentPurchasesTicker() {
   )
 }
 
-// ─── rank scroll card ─────────────────────────────────────────────────────────
+// ─── rank carousel ────────────────────────────────────────────────────────────
 
-function RankScrollCard({ product, active, onClick }: {
-  product: Product
-  active: boolean
-  onClick: () => void
-}) {
-  const minPrice = Math.min(...product.variants.map(v => v.price))
-
-  return (
-    <button
-      onClick={onClick}
-      className="relative flex-shrink-0 flex flex-col items-center gap-2 px-4 py-3 rounded-xl border transition-all duration-200 w-[100px]"
-      style={{
-        borderColor: active ? product.color : 'rgba(58,16,23,0.8)',
-        backgroundColor: active ? `${product.color}18` : '#111111',
-        boxShadow: active ? `0 0 18px ${product.color}55` : 'none',
-      }}
-    >
-      {product.badge && (
-        <span
-          className="absolute -top-2 left-1/2 -translate-x-1/2 px-1.5 py-0.5 text-[8px] font-bold rounded whitespace-nowrap"
-          style={{ backgroundColor: product.color, color: '#000' }}
-        >
-          {product.badge}
-        </span>
-      )}
-      {/* Color orb */}
-      <div
-        className="w-8 h-8 rounded-full flex-shrink-0 transition-all duration-200"
-        style={{
-          backgroundColor: product.color,
-          boxShadow: active ? `0 0 16px ${product.color}, 0 0 32px ${product.color}66` : `0 0 6px ${product.color}44`,
-        }}
-      />
-      <span
-        className="font-bold text-xs leading-tight text-center"
-        style={{ color: active ? product.color : '#9CA3AF' }}
-      >
-        {product.name}
-      </span>
-      <span className="text-[10px] text-site-muted">от {minPrice}₽</span>
-    </button>
-  )
-}
-
-// ─── rank scroll carousel ─────────────────────────────────────────────────────
-
-function RankScrollCarousel({ products, selectedId, onSelect }: {
+function RankCarousel({ products, selectedId, onSelect }: {
   products: Product[]
   selectedId: string
   onSelect: (id: string) => void
@@ -122,58 +76,108 @@ function RankScrollCarousel({ products, selectedId, onSelect }: {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const scroll = (dir: 'left' | 'right') => {
-    scrollRef.current?.scrollBy({ left: dir === 'left' ? -240 : 240, behavior: 'smooth' })
+    scrollRef.current?.scrollBy({ left: dir === 'left' ? -250 : 250, behavior: 'smooth' })
   }
 
-  // Scroll selected card into view
   useEffect(() => {
-    const container = scrollRef.current
-    if (!container) return
-    const idx = products.findIndex(p => p.id === selectedId)
-    const card = container.children[idx] as HTMLElement
-    if (card) {
-      const offset = card.offsetLeft - container.offsetWidth / 2 + card.offsetWidth / 2
-      container.scrollTo({ left: offset, behavior: 'smooth' })
-    }
-  }, [selectedId, products])
+    const el = scrollRef.current?.querySelector('[data-active="true"]') as HTMLElement
+    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+  }, [selectedId])
 
   return (
-    <div className="relative">
-      {/* Left arrow */}
-      <button
-        onClick={() => scroll('left')}
-        className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 flex items-center justify-center bg-site-block border border-site-border rounded-full text-site-muted hover:text-site-accent hover:border-site-accent transition-colors shadow-lg"
-      >
-        ‹
-      </button>
+    <div style={{ backgroundColor: '#111111', borderRadius: '0 0 12px 12px' }}>
+      {/* arrows + scroll row */}
+      <div className="flex items-center gap-2 px-3 pb-4">
+        {/* left */}
+        <button
+          onClick={() => scroll('left')}
+          style={{ backgroundColor: '#1a0b0b', border: '1px solid #3A1017', borderRadius: 8, minWidth: 32, height: 32, color: '#B8B8B8', fontSize: 18, lineHeight: 1, cursor: 'pointer', flexShrink: 0 }}
+          className="hover:border-site-accent hover:text-site-accent transition-colors flex items-center justify-center"
+        >
+          ‹
+        </button>
 
-      {/* Scroll area */}
-      <div
-        ref={scrollRef}
-        className="flex gap-3 overflow-x-auto px-10 py-4"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', backgroundColor: '#111111' }}
-      >
-        {products.map(p => (
-          <RankScrollCard
-            key={p.id}
-            product={p}
-            active={p.id === selectedId}
-            onClick={() => onSelect(p.id)}
-          />
-        ))}
+        {/* scroll track */}
+        <div
+          ref={scrollRef}
+          style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingTop: 12, paddingBottom: 4, scrollbarWidth: 'none', flex: 1, backgroundColor: '#111111' }}
+        >
+          {products.map(p => {
+            const active = p.id === selectedId
+            const minPrice = Math.min(...p.variants.map(v => v.price))
+            return (
+              <button
+                key={p.id}
+                data-active={active}
+                onClick={() => onSelect(p.id)}
+                style={{
+                  flexShrink: 0,
+                  width: 96,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 8px',
+                  borderRadius: 12,
+                  border: `1px solid ${active ? p.color : '#3A1017'}`,
+                  backgroundColor: active ? `${p.color}20` : '#1a0b0b',
+                  boxShadow: active ? `0 0 16px ${p.color}50` : 'none',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {p.badge && (
+                  <span style={{
+                    position: 'absolute',
+                    top: -8,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    backgroundColor: p.color,
+                    color: '#000',
+                    fontSize: 8,
+                    fontWeight: 700,
+                    padding: '2px 5px',
+                    borderRadius: 4,
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {p.badge}
+                  </span>
+                )}
+                <div style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  backgroundColor: p.color,
+                  boxShadow: active
+                    ? `0 0 12px ${p.color}, 0 0 24px ${p.color}80`
+                    : `0 0 6px ${p.color}50`,
+                  flexShrink: 0,
+                }} />
+                <span style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: active ? p.color : '#9CA3AF',
+                  textAlign: 'center',
+                  lineHeight: 1.2,
+                }}>
+                  {p.name}
+                </span>
+                <span style={{ fontSize: 10, color: '#6B7280' }}>от {minPrice}₽</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* right */}
+        <button
+          onClick={() => scroll('right')}
+          style={{ backgroundColor: '#1a0b0b', border: '1px solid #3A1017', borderRadius: 8, minWidth: 32, height: 32, color: '#B8B8B8', fontSize: 18, lineHeight: 1, cursor: 'pointer', flexShrink: 0 }}
+          className="hover:border-site-accent hover:text-site-accent transition-colors flex items-center justify-center"
+        >
+          ›
+        </button>
       </div>
-
-      {/* Right arrow */}
-      <button
-        onClick={() => scroll('right')}
-        className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 flex items-center justify-center bg-site-block border border-site-border rounded-full text-site-muted hover:text-site-accent hover:border-site-accent transition-colors shadow-lg"
-      >
-        ›
-      </button>
-
-      {/* Fade edges */}
-      <div className="pointer-events-none absolute left-8 top-0 bottom-0 w-10" style={{ background: 'linear-gradient(to right, #111111, transparent)' }} />
-      <div className="pointer-events-none absolute right-8 top-0 bottom-0 w-10" style={{ background: 'linear-gradient(to left, #111111, transparent)' }} />
     </div>
   )
 }
@@ -354,10 +358,10 @@ export default function ShopClient({ products }: { products: Product[] }) {
         <RecentPurchasesTicker />
       </div>
 
-      {/* ── Rank scroll carousel ── */}
-      <div className="bg-site-block border border-site-border rounded-xl mb-6">
-        <p className="text-site-muted text-[10px] uppercase tracking-widest px-6 pt-4 pb-1">Выберите ранг</p>
-        <RankScrollCarousel
+      {/* ── Rank carousel ── */}
+      <div className="border border-site-border rounded-xl mb-6 overflow-hidden" style={{ backgroundColor: '#111111' }}>
+        <p className="text-site-muted text-[10px] uppercase tracking-widest px-6 pt-4 pb-0">Выберите ранг</p>
+        <RankCarousel
           products={products}
           selectedId={selectedId}
           onSelect={(id) => { setSelectedId(id); setSelectedDuration('30d'); setCoupon(null) }}
