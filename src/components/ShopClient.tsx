@@ -200,7 +200,16 @@ function DurationButton({ variant, active, saving, onClick }: {
       }`}
     >
       {saving && saving > 0 ? (
-        <div className="absolute -top-2 left-1/2 -translate-x-1/2 bg-site-success text-black text-[9px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap">
+        <div className="absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap" style={{
+          background: 'linear-gradient(135deg, #28a745, #20c055)',
+          color: '#fff',
+          fontSize: 9,
+          fontWeight: 700,
+          padding: '1px 5px',
+          borderRadius: 20,
+          letterSpacing: 0.3,
+          boxShadow: '0 2px 6px rgba(53,199,89,0.35)',
+        }}>
           −{saving}₽
         </div>
       ) : null}
