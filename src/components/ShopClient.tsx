@@ -150,8 +150,8 @@ function RankScrollCarousel({ products, selectedId, onSelect }: {
       {/* Scroll area */}
       <div
         ref={scrollRef}
-        className="flex gap-3 overflow-x-auto px-10 py-4 scrollbar-hide"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        className="flex gap-3 overflow-x-auto px-10 py-4"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', backgroundColor: '#111111' }}
       >
         {products.map(p => (
           <RankScrollCard
@@ -172,8 +172,8 @@ function RankScrollCarousel({ products, selectedId, onSelect }: {
       </button>
 
       {/* Fade edges */}
-      <div className="pointer-events-none absolute left-8 top-0 bottom-0 w-10 bg-gradient-to-r from-site-block to-transparent" />
-      <div className="pointer-events-none absolute right-8 top-0 bottom-0 w-10 bg-gradient-to-l from-site-block to-transparent" />
+      <div className="pointer-events-none absolute left-8 top-0 bottom-0 w-10" style={{ background: 'linear-gradient(to right, #111111, transparent)' }} />
+      <div className="pointer-events-none absolute right-8 top-0 bottom-0 w-10" style={{ background: 'linear-gradient(to left, #111111, transparent)' }} />
     </div>
   )
 }
