@@ -138,7 +138,7 @@ function RankScrollCarousel({ products, selectedId, onSelect }: {
   }, [selectedId, products])
 
   return (
-    <div className="relative mb-8">
+    <div className="relative">
       {/* Left arrow */}
       <button
         onClick={() => scroll('left')}
@@ -172,8 +172,8 @@ function RankScrollCarousel({ products, selectedId, onSelect }: {
       </button>
 
       {/* Fade edges */}
-      <div className="pointer-events-none absolute left-8 top-0 bottom-0 w-12 bg-gradient-to-r from-site-bg to-transparent" />
-      <div className="pointer-events-none absolute right-8 top-0 bottom-0 w-12 bg-gradient-to-l from-site-bg to-transparent" />
+      <div className="pointer-events-none absolute left-8 top-0 bottom-0 w-10 bg-gradient-to-r from-site-block to-transparent" />
+      <div className="pointer-events-none absolute right-8 top-0 bottom-0 w-10 bg-gradient-to-l from-site-block to-transparent" />
     </div>
   )
 }
