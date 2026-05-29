@@ -18,40 +18,56 @@ export default function Header() {
   const [open, setOpen] = useState(false)
 
   return (
-    <header className="sticky top-0 z-50 bg-site-block border-b border-site-border border-top-accent">
+    <header className="sticky top-0 z-50 bg-site-block/95 backdrop-blur-sm border-b border-site-border border-top-accent">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+
+        {/* Logo */}
         <Link href="/" className="flex items-center gap-3 shrink-0 group">
-          <Image
-            src="/logo.png"
-            alt="NATUX WORLD"
-            width={40}
-            height={40}
-            className="rounded-md group-hover:scale-105 transition-transform"
-            priority
-          />
-          <span className="font-pixel text-site-accent text-xs md:text-sm group-hover:text-white transition-colors">
-            NATUX WORLD
-          </span>
+          <div className="relative">
+            <Image
+              src="/logo.png"
+              alt="NATUX WORLD"
+              width={36}
+              height={36}
+              className="group-hover:scale-110 transition-transform duration-200"
+              style={{ imageRendering: 'pixelated' }}
+              priority
+            />
+          </div>
+          <div className="flex flex-col leading-none">
+            <span className="font-display text-2xl text-site-accent tracking-wider group-hover:text-glow-red transition-all duration-200"
+              style={{ fontFamily: '"Bebas Neue", sans-serif', letterSpacing: '0.12em' }}>
+              NATUX
+            </span>
+            <span className="font-pixel text-[6px] text-site-muted tracking-[0.3em] group-hover:text-site-accent transition-colors duration-200">
+              WORLD
+            </span>
+          </div>
         </Link>
 
         {/* Desktop nav */}
-        <nav className="hidden md:flex items-center gap-5">
+        <nav className="hidden md:flex items-center gap-6">
           {navItems.map(({ href, label }) => (
             <Link
               key={href}
               href={href}
-              className={`text-sm font-medium transition-colors hover:text-site-accent ${
-                pathname === href ? 'text-site-accent' : 'text-site-muted'
+              className={`nav-underline text-xs tracking-widest uppercase font-semibold transition-colors duration-200 pb-0.5 ${
+                pathname === href
+                  ? 'text-site-accent active'
+                  : 'text-site-muted hover:text-site-text'
               }`}
+              style={{ fontFamily: '"JetBrains Mono", monospace' }}
             >
               {label}
             </Link>
           ))}
+
           <Link
             href="/shop"
-            className="ml-2 px-4 py-2 bg-site-accent hover:bg-red-600 text-white text-sm font-semibold rounded transition-colors glow-red"
+            className="ml-2 px-5 py-2 bg-site-accent hover:bg-red-600 text-white text-xs font-bold tracking-widest uppercase clip-angle-sm transition-all duration-200 glow-red hover:glow-red-lg"
+            style={{ fontFamily: '"JetBrains Mono", monospace' }}
           >
-            Купить ранг
+            ▶ КУПИТЬ РАНГ
           </Link>
         </nav>
 
@@ -75,25 +91,28 @@ export default function Header() {
 
       {/* Mobile menu */}
       {open && (
-        <div className="md:hidden bg-site-block border-t border-site-border px-4 pb-4">
+        <div className="md:hidden bg-[#0a0a0a] border-t border-site-border px-4 pb-4">
           {navItems.map(({ href, label }) => (
             <Link
               key={href}
               href={href}
-              className={`block py-3 text-sm font-medium border-b border-site-border/50 transition-colors hover:text-site-accent ${
+              className={`flex items-center gap-2 py-3 text-xs font-semibold uppercase tracking-widest border-b border-site-border/40 transition-colors hover:text-site-accent ${
                 pathname === href ? 'text-site-accent' : 'text-site-muted'
               }`}
+              style={{ fontFamily: '"JetBrains Mono", monospace' }}
               onClick={() => setOpen(false)}
             >
+              <span className="text-site-border">/</span>
               {label}
             </Link>
           ))}
           <Link
             href="/shop"
-            className="block mt-3 px-4 py-2 bg-site-accent text-white text-sm font-semibold rounded text-center hover:bg-red-600 transition-colors"
+            className="block mt-4 px-4 py-3 bg-site-accent text-white text-xs font-bold uppercase tracking-widest text-center clip-angle-sm hover:bg-red-600 transition-colors glow-red"
+            style={{ fontFamily: '"JetBrains Mono", monospace' }}
             onClick={() => setOpen(false)}
           >
-            Купить ранг
+            ▶ КУПИТЬ РАНГ
           </Link>
         </div>
       )}
