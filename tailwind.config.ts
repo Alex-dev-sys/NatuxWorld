@@ -22,6 +22,8 @@ const config: Config = {
       },
       fontFamily: {
         pixel: ['"Press Start 2P"', 'monospace'],
+        display: ['"Bebas Neue"', '"Arial Black"', 'sans-serif'],
+        'mono-code': ['"JetBrains Mono"', '"Courier New"', 'monospace'],
       },
     },
   },
