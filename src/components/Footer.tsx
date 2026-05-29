@@ -2,49 +2,66 @@ import Link from 'next/link'
 
 export default function Footer() {
   return (
-    <footer className="bg-[#0a0a0a] border-t border-site-border mt-auto">
+    <footer className="bg-[#070707] border-t border-[#3A1017] mt-auto relative overflow-hidden">
       {/* Top accent line */}
-      <div className="h-px bg-gradient-to-r from-transparent via-site-accent to-transparent" />
+      <div className="h-px bg-site-accent" />
 
-      <div className="max-w-7xl mx-auto px-4 py-10">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+      {/* Subtle grid bg */}
+      <div className="absolute inset-0 grid-bg-dense opacity-20 pointer-events-none" />
+
+      <div className="relative max-w-7xl mx-auto px-4 pt-12 pb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-10">
 
           {/* Brand */}
           <div>
-            <p
-              className="text-5xl text-white mb-1 tracking-wider"
-              style={{ fontFamily: '"Bebas Neue", sans-serif' }}
-            >
-              NATUX
-            </p>
-            <p
-              className="text-xs text-site-accent tracking-[0.5em] uppercase mb-4"
+            <div className="mb-1">
+              <span
+                className="text-[56px] leading-none text-white tracking-wider"
+                style={{ fontFamily: '"Bebas Neue", sans-serif', letterSpacing: '0.08em' }}
+              >
+                NATUX
+              </span>
+            </div>
+            <div
+              className="text-[11px] text-site-accent tracking-[0.6em] uppercase mb-5"
               style={{ fontFamily: '"JetBrains Mono", monospace' }}
             >
               WORLD
-            </p>
-            <p className="text-site-muted text-xs leading-relaxed mb-3 border-l-2 border-site-border pl-3"
-              style={{ fontFamily: '"JetBrains Mono", monospace' }}>
-              Анархичный Minecraft-сервер.<br />
-              <span className="text-site-accent">No rules. No mercy.</span>
-            </p>
-            <p
-              className="text-site-accent text-xs mt-3 cursor-blink"
-              style={{ fontFamily: '"JetBrains Mono", monospace' }}
-            >
-              mc.natuxworld.ru
-            </p>
+            </div>
+
+            <div className="border-l-2 border-site-accent pl-4 mb-5">
+              <p
+                className="text-[#888] text-[11px] leading-relaxed"
+                style={{ fontFamily: '"JetBrains Mono", monospace', lineHeight: '1.8' }}
+              >
+                Анархичный Minecraft-сервер.<br />
+                <span className="text-site-accent">No rules. No mercy.</span>
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 bg-site-accent rounded-full animate-pulse-dot" />
+              <span
+                className="text-site-accent text-[11px] tracking-wider cursor-blink"
+                style={{ fontFamily: '"JetBrains Mono", monospace' }}
+              >
+                mc.natuxworld.ru
+              </span>
+            </div>
           </div>
 
           {/* Navigation */}
           <div>
-            <p
-              className="text-site-muted text-[10px] uppercase tracking-[0.3em] mb-4"
-              style={{ fontFamily: '"JetBrains Mono", monospace' }}
-            >
-              // навигация
-            </p>
-            <ul className="space-y-2">
+            <div className="flex items-center gap-2 mb-5">
+              <div className="w-px h-3 bg-site-accent" />
+              <p
+                className="text-[9px] uppercase tracking-[0.4em] text-site-accent"
+                style={{ fontFamily: '"JetBrains Mono", monospace' }}
+              >
+                НАВИГАЦИЯ
+              </p>
+            </div>
+            <ul className="space-y-3">
               {[
                 { href: '/shop', label: 'Магазин' },
                 { href: '/compare', label: 'Сравнение рангов' },
@@ -55,10 +72,10 @@ export default function Footer() {
                 <li key={href}>
                   <Link
                     href={href}
-                    className="text-xs text-site-muted hover:text-site-accent transition-colors duration-200 flex items-center gap-2 group"
+                    className="text-[11px] text-[#888] hover:text-site-accent transition-colors duration-200 flex items-center gap-3 group"
                     style={{ fontFamily: '"JetBrains Mono", monospace' }}
                   >
-                    <span className="text-site-border group-hover:text-site-accent transition-colors">›</span>
+                    <span className="text-[#3A1017] group-hover:text-site-accent transition-colors font-bold">//</span>
                     {label}
                   </Link>
                 </li>
@@ -68,17 +85,20 @@ export default function Footer() {
 
           {/* Legal */}
           <div>
-            <p
-              className="text-site-muted text-[10px] uppercase tracking-[0.3em] mb-4"
-              style={{ fontFamily: '"JetBrains Mono", monospace' }}
-            >
-              // документы
-            </p>
-            <ul className="space-y-2">
+            <div className="flex items-center gap-2 mb-5">
+              <div className="w-px h-3 bg-site-accent" />
+              <p
+                className="text-[9px] uppercase tracking-[0.4em] text-site-accent"
+                style={{ fontFamily: '"JetBrains Mono", monospace' }}
+              >
+                ДОКУМЕНТЫ
+              </p>
+            </div>
+            <ul className="space-y-3">
               {[
-                { href: '/offer', label: 'Публичная оферта' },
-                { href: '/privacy', label: 'Политика конфиденциальности' },
-                { href: '/refund', label: 'Правила возврата' },
+                { href: '/offer', label: 'Публичная оферта', external: false },
+                { href: '/privacy', label: 'Политика конфиденциальности', external: false },
+                { href: '/refund', label: 'Правила возврата', external: false },
                 { href: 'https://vk.com/natuxworld', label: 'Поддержка в VK', external: true },
               ].map(({ href, label, external }) => (
                 <li key={href}>
@@ -87,19 +107,19 @@ export default function Footer() {
                       href={href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-site-muted hover:text-site-accent transition-colors duration-200 flex items-center gap-2 group"
+                      className="text-[11px] text-[#888] hover:text-site-accent transition-colors duration-200 flex items-center gap-3 group"
                       style={{ fontFamily: '"JetBrains Mono", monospace' }}
                     >
-                      <span className="text-site-border group-hover:text-site-accent transition-colors">›</span>
+                      <span className="text-[#3A1017] group-hover:text-site-accent transition-colors font-bold">//</span>
                       {label}
                     </a>
                   ) : (
                     <Link
                       href={href}
-                      className="text-xs text-site-muted hover:text-site-accent transition-colors duration-200 flex items-center gap-2 group"
+                      className="text-[11px] text-[#888] hover:text-site-accent transition-colors duration-200 flex items-center gap-3 group"
                       style={{ fontFamily: '"JetBrains Mono", monospace' }}
                     >
-                      <span className="text-site-border group-hover:text-site-accent transition-colors">›</span>
+                      <span className="text-[#3A1017] group-hover:text-site-accent transition-colors font-bold">//</span>
                       {label}
                     </Link>
                   )}
@@ -109,15 +129,19 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-site-border/40 pt-6 flex flex-col md:flex-row items-center justify-between gap-3">
+        {/* Bottom bar */}
+        <div className="border-t border-[#3A1017]/60 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-1 h-3 bg-[#3A1017]" />
+            <p
+              className="text-[#3A1017] text-[10px] tracking-[0.3em] uppercase"
+              style={{ fontFamily: '"JetBrains Mono", monospace' }}
+            >
+              © 2025 natuxworld.ru — <span className="text-site-accent/40">CLASSIFIED</span>
+            </p>
+          </div>
           <p
-            className="text-site-muted text-[10px] tracking-wider"
-            style={{ fontFamily: '"JetBrains Mono", monospace' }}
-          >
-            © 2025 natuxworld.ru — <span className="text-site-border">CLASSIFIED</span>
-          </p>
-          <p
-            className="text-site-border text-[10px] tracking-wider"
+            className="text-[#3A1017] text-[10px] tracking-wider"
             style={{ fontFamily: '"JetBrains Mono", monospace' }}
           >
             Не является официальным сервером Mojang / Microsoft
