@@ -197,14 +197,12 @@ export default function RulesPage() {
               {section.rules.map((rule, i) => (
                 <li
                   key={i}
+                  className="hover:bg-[#1a0808] transition-colors duration-150"
                   style={{
                     display: 'flex', alignItems: 'flex-start', gap: 12,
                     padding: '10px 20px',
                     borderBottom: i < section.rules.length - 1 ? '1px solid #0f0608' : 'none',
-                    transition: 'background 0.15s',
                   }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = '#1a0808'}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'}
                 >
                   <span style={{
                     color: TYPE_COLOR[rule.type], fontSize: 13, fontWeight: 700,
