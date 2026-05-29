@@ -8,8 +8,9 @@ import { useState } from 'react'
 const navItems = [
   { href: '/', label: 'Главная' },
   { href: '/shop', label: 'Магазин' },
+  { href: '/news', label: 'Новости' },
+  { href: '/leaderboard', label: 'Лидерборд' },
   { href: '/rules', label: 'Правила' },
-  { href: '/map', label: 'Карта' },
   { href: '/join', label: 'Подключиться' },
 ]
 
