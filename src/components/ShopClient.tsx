@@ -74,9 +74,10 @@ function RankCarousel({ products, selectedId, onSelect }: {
   onSelect: (id: string) => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [hovered, setHovered] = useState<string | null>(null)
 
   const scroll = (dir: 'left' | 'right') => {
-    scrollRef.current?.scrollBy({ left: dir === 'left' ? -250 : 250, behavior: 'smooth' })
+    scrollRef.current?.scrollBy({ left: dir === 'left' ? -280 : 280, behavior: 'smooth' })
   }
 
   useEffect(() => {
@@ -85,108 +86,216 @@ function RankCarousel({ products, selectedId, onSelect }: {
   }, [selectedId])
 
   return (
-    <div style={{ backgroundColor: '#111111', borderRadius: '0 0 12px 12px' }}>
-      <div className="flex items-center gap-2 px-3 pb-4">
+    <div style={{ backgroundColor: '#0e0e0e', borderRadius: '0 0 12px 12px' }}>
+      <style>{`
+        @keyframes orb-pulse {
+          0%, 100% { box-shadow: 0 0 10px var(--c), 0 0 20px var(--c-50); transform: scale(1); }
+          50%       { box-shadow: 0 0 18px var(--c), 0 0 40px var(--c-50), 0 0 60px var(--c-30); transform: scale(1.08); }
+        }
+        @keyframes card-float {
+          0%, 100% { transform: translateY(0px); }
+          50%       { transform: translateY(-4px); }
+        }
+        @keyframes ring-spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        @keyframes badge-pulse {
+          0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
+          50%       { opacity: 0.8; transform: translateX(-50%) scale(1.05); }
+        }
+        @keyframes shimmer-sweep {
+          0%   { left: -60%; }
+          100% { left: 140%; }
+        }
+        .rank-card-active { animation: card-float 3s ease-in-out infinite; }
+        .rank-orb-active  { animation: orb-pulse 2s ease-in-out infinite; }
+        .rank-badge       { animation: badge-pulse 2s ease-in-out infinite; }
+        .rank-shimmer     { animation: shimmer-sweep 0.6s ease forwards; }
+        .rank-track::-webkit-scrollbar { display: none; }
+      `}</style>
 
-        {/* arrows — desktop only */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px 16px' }}>
+
+        {/* left arrow */}
         <button
           onClick={() => scroll('left')}
-          style={{ backgroundColor: '#1a0b0b', border: '1px solid #3A1017', borderRadius: 8, minWidth: 32, height: 32, color: '#B8B8B8', fontSize: 18, lineHeight: 1, cursor: 'pointer', flexShrink: 0 }}
-          className="hidden md:flex hover:border-site-accent hover:text-site-accent transition-colors items-center justify-center"
-        >
-          ‹
-        </button>
+          className="hidden md:flex items-center justify-center"
+          style={{
+            flexShrink: 0, width: 36, height: 56,
+            background: 'linear-gradient(135deg, #1a0b0b, #120808)',
+            border: '1px solid #3A1017', borderRadius: 10,
+            color: '#666', fontSize: 20, cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#FF2B4F'; (e.currentTarget as HTMLElement).style.color = '#FF2B4F' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#3A1017'; (e.currentTarget as HTMLElement).style.color = '#666' }}
+        >‹</button>
 
         {/* scroll track */}
         <div
           ref={scrollRef}
+          className="rank-track"
           style={{
-            display: 'flex',
-            gap: 10,
-            overflowX: 'auto',
-            paddingTop: 12,
-            paddingBottom: 8,
-            paddingLeft: 4,
-            paddingRight: 4,
-            scrollbarWidth: 'none',
-            flex: 1,
-            backgroundColor: '#111111',
+            display: 'flex', gap: 10, overflowX: 'auto',
+            paddingTop: 16, paddingBottom: 8, paddingLeft: 4, paddingRight: 4,
+            scrollbarWidth: 'none', flex: 1,
             scrollSnapType: 'x mandatory',
             WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'],
           }}
         >
           {products.map(p => {
             const active = p.id === selectedId
+            const isHov = hovered === p.id && !active
             const minPrice = Math.min(...p.variants.map(v => v.price))
+
             return (
-              <button
-                key={p.id}
-                data-active={active}
-                onClick={() => onSelect(p.id)}
-                style={{
-                  flexShrink: 0,
-                  width: 96,
-                  scrollSnapAlign: 'center',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '10px 8px',
-                  borderRadius: 12,
-                  border: `1px solid ${active ? p.color : '#3A1017'}`,
-                  backgroundColor: active ? `${p.color}20` : '#1a0b0b',
-                  boxShadow: active ? `0 0 16px ${p.color}50` : 'none',
-                  cursor: 'pointer',
-                  position: 'relative',
-                  transition: 'all 0.15s ease',
-                }}
-              >
+              <div key={p.id} style={{ position: 'relative', flexShrink: 0, scrollSnapAlign: 'center' }}>
+                {/* badge */}
                 {p.badge && (
-                  <span style={{
-                    position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)',
-                    backgroundColor: p.color, color: '#000', fontSize: 8, fontWeight: 700,
-                    padding: '2px 5px', borderRadius: 4, whiteSpace: 'nowrap',
-                  }}>
+                  <span
+                    className={active ? 'rank-badge' : ''}
+                    style={{
+                      position: 'absolute', top: -10, left: '50%', transform: 'translateX(-50%)',
+                      zIndex: 10, backgroundColor: p.color, color: '#000',
+                      fontSize: 8, fontWeight: 800, padding: '2px 7px',
+                      borderRadius: 20, whiteSpace: 'nowrap', letterSpacing: '0.05em',
+                      boxShadow: `0 2px 8px ${p.color}80`,
+                    }}
+                  >
                     {p.badge}
                   </span>
                 )}
-                <div style={{
-                  width: 32, height: 32, borderRadius: '50%', backgroundColor: p.color, flexShrink: 0,
-                  boxShadow: active ? `0 0 12px ${p.color}, 0 0 24px ${p.color}80` : `0 0 6px ${p.color}50`,
-                }} />
-                <span style={{ fontSize: 11, fontWeight: 700, color: active ? p.color : '#9CA3AF', textAlign: 'center', lineHeight: 1.2 }}>
-                  {p.name}
-                </span>
-                <span style={{ fontSize: 10, color: '#6B7280' }}>от {minPrice}₽</span>
-              </button>
+
+                {/* spinning ring behind active card */}
+                {active && (
+                  <div style={{
+                    position: 'absolute', inset: -3, borderRadius: 16, zIndex: 0,
+                    background: `conic-gradient(${p.color}60 0deg, transparent 120deg, ${p.color}30 240deg, transparent 360deg)`,
+                    animation: 'ring-spin 4s linear infinite',
+                  }} />
+                )}
+
+                <button
+                  data-active={active}
+                  onClick={() => onSelect(p.id)}
+                  onMouseEnter={() => setHovered(p.id)}
+                  onMouseLeave={() => setHovered(null)}
+                  className={active ? 'rank-card-active' : ''}
+                  style={{
+                    position: 'relative', zIndex: 1,
+                    width: 100, minHeight: 120,
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    gap: 10, padding: '14px 8px 10px',
+                    borderRadius: 14,
+                    border: active
+                      ? `1.5px solid ${p.color}`
+                      : isHov ? `1px solid ${p.color}60` : '1px solid #2a1010',
+                    background: active
+                      ? `linear-gradient(160deg, ${p.color}22 0%, #0e0e0e 100%)`
+                      : isHov ? `linear-gradient(160deg, ${p.color}0f 0%, #0e0e0e 100%)` : '#141414',
+                    boxShadow: active
+                      ? `0 0 24px ${p.color}40, inset 0 1px 0 ${p.color}30`
+                      : isHov ? `0 0 12px ${p.color}20` : 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    transform: isHov ? 'translateY(-2px) scale(1.02)' : undefined,
+                    overflow: 'hidden',
+                  }}
+                >
+                  {/* shimmer on hover */}
+                  {isHov && (
+                    <div
+                      className="rank-shimmer"
+                      style={{
+                        position: 'absolute', top: 0, bottom: 0, width: '50%',
+                        background: `linear-gradient(90deg, transparent, ${p.color}15, transparent)`,
+                        pointerEvents: 'none',
+                      }}
+                    />
+                  )}
+
+                  {/* orb */}
+                  <div
+                    className={active ? 'rank-orb-active' : ''}
+                    style={{
+                      ['--c' as string]: p.color,
+                      ['--c-50' as string]: `${p.color}50`,
+                      ['--c-30' as string]: `${p.color}30`,
+                      width: 40, height: 40, borderRadius: '50%',
+                      background: `radial-gradient(circle at 35% 35%, ${p.color}ee, ${p.color}88)`,
+                      boxShadow: active
+                        ? `0 0 14px ${p.color}, 0 0 28px ${p.color}60`
+                        : isHov ? `0 0 10px ${p.color}80` : `0 0 6px ${p.color}40`,
+                      flexShrink: 0,
+                      transition: 'box-shadow 0.2s ease',
+                      position: 'relative',
+                    }}
+                  >
+                    {/* inner highlight */}
+                    <div style={{
+                      position: 'absolute', top: '18%', left: '22%',
+                      width: '35%', height: '25%', borderRadius: '50%',
+                      background: 'rgba(255,255,255,0.45)',
+                      filter: 'blur(2px)',
+                    }} />
+                  </div>
+
+                  {/* name */}
+                  <span style={{
+                    fontSize: 11, fontWeight: 800,
+                    color: active ? p.color : isHov ? `${p.color}cc` : '#888',
+                    textAlign: 'center', lineHeight: 1.2,
+                    letterSpacing: '0.05em',
+                    transition: 'color 0.2s ease',
+                    fontFamily: '"JetBrains Mono", monospace',
+                  }}>
+                    {p.name}
+                  </span>
+
+                  {/* price */}
+                  <span style={{
+                    fontSize: 10, color: active ? '#ccc' : '#555',
+                    fontFamily: '"JetBrains Mono", monospace',
+                    transition: 'color 0.2s ease',
+                  }}>
+                    от {minPrice}₽
+                  </span>
+                </button>
+              </div>
             )
           })}
         </div>
 
-        {/* arrows — desktop only */}
+        {/* right arrow */}
         <button
           onClick={() => scroll('right')}
-          style={{ backgroundColor: '#1a0b0b', border: '1px solid #3A1017', borderRadius: 8, minWidth: 32, height: 32, color: '#B8B8B8', fontSize: 18, lineHeight: 1, cursor: 'pointer', flexShrink: 0 }}
-          className="hidden md:flex hover:border-site-accent hover:text-site-accent transition-colors items-center justify-center"
-        >
-          ›
-        </button>
+          className="hidden md:flex items-center justify-center"
+          style={{
+            flexShrink: 0, width: 36, height: 56,
+            background: 'linear-gradient(135deg, #1a0b0b, #120808)',
+            border: '1px solid #3A1017', borderRadius: 10,
+            color: '#666', fontSize: 20, cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#FF2B4F'; (e.currentTarget as HTMLElement).style.color = '#FF2B4F' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#3A1017'; (e.currentTarget as HTMLElement).style.color = '#666' }}
+        >›</button>
       </div>
 
-      {/* dots indicator — mobile only */}
-      <div className="flex md:hidden justify-center gap-1.5 pb-3">
+      {/* dots — mobile only */}
+      <div className="flex md:hidden justify-center gap-1.5 pb-4">
         {products.map(p => (
           <button
             key={p.id}
             onClick={() => onSelect(p.id)}
             style={{
-              width: p.id === selectedId ? 16 : 5,
-              height: 5,
-              borderRadius: 3,
-              border: 'none',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              backgroundColor: p.id === selectedId ? p.color : '#3A1017',
+              width: p.id === selectedId ? 18 : 6,
+              height: 6, borderRadius: 3, border: 'none',
+              cursor: 'pointer', transition: 'all 0.25s ease',
+              backgroundColor: p.id === selectedId ? p.color : '#2a1010',
+              boxShadow: p.id === selectedId ? `0 0 6px ${p.color}80` : 'none',
               padding: 0,
             }}
           />
@@ -382,8 +491,17 @@ export default function ShopClient({ products }: { products: Product[] }) {
       </div>
 
       {/* ── Rank carousel ── */}
-      <div className="border border-site-border rounded-xl mb-6 overflow-hidden" style={{ backgroundColor: '#111111' }}>
-        <p className="text-site-muted text-[10px] uppercase tracking-widest px-6 pt-4 pb-0">Выберите ранг</p>
+      <div className="border border-site-border rounded-xl mb-6 overflow-hidden" style={{ backgroundColor: '#0e0e0e' }}>
+        <div className="flex items-center gap-3 px-6 pt-4 pb-0">
+          <div style={{ width: 3, height: 14, backgroundColor: '#FF2B4F', borderRadius: 2, flexShrink: 0 }} />
+          <p
+            className="text-[10px] uppercase tracking-[0.4em]"
+            style={{ color: '#666', fontFamily: '"JetBrains Mono", monospace' }}
+          >
+            Выберите ранг
+          </p>
+          <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, #3A1017, transparent)' }} />
+        </div>
         <RankCarousel
           products={products}
           selectedId={selectedId}
