@@ -16,6 +16,14 @@ function pad(n: number) {
 export default function SaleBanner() {
   const [timeLeft, setTimeLeft] = useState({ h: 0, m: 0, s: 0 })
   const [visible, setVisible] = useState(true)
+  const [copied, setCopied] = useState(false)
+
+  function copyPromo() {
+    navigator.clipboard.writeText('SUMMER25').then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
 
   useEffect(() => {
     const target = getEndOfDay()
@@ -66,12 +74,18 @@ export default function SaleBanner() {
           >
             ПРОМОКОД:
           </span>
-          <span
-            className="text-[11px] text-white bg-site-accent/15 border border-site-accent/40 px-2.5 py-0.5 tracking-[0.25em] font-bold"
+          <button
+            onClick={copyPromo}
+            className={`text-[11px] px-2.5 py-0.5 tracking-[0.25em] font-bold transition-all duration-200 cursor-pointer ${
+              copied
+                ? 'text-green-400 bg-green-500/15 border border-green-500/50'
+                : 'text-white bg-site-accent/15 border border-site-accent/40 hover:bg-site-accent/25 hover:border-site-accent/70'
+            }`}
             style={{ fontFamily: '"JetBrains Mono", monospace', clipPath: 'polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px))' }}
+            title="Нажми чтобы скопировать"
           >
-            SUMMER25
-          </span>
+            {copied ? '✓ СКОПИРОВАНО' : 'SUMMER25'}
+          </button>
           <span
             className="text-[10px] text-site-accent tracking-wider"
             style={{ fontFamily: '"JetBrains Mono", monospace' }}
