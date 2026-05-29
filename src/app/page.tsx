@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import ServerStatus from '@/components/ServerStatus'
 import TopDonors from '@/components/TopDonors'
+import HeroParticles from '@/components/HeroParticles'
 
 function CopyIPButton() {
   const [copied, setCopied] = useState(false)
@@ -73,6 +74,219 @@ const stats = [
   { value: '100+', label: 'ОПЕРАТИВНИКОВ', sub: 'ACTIVE' },
 ]
 
+const GALLERY = [
+  { title: 'ОПЕРАЦИЯ РАССВЕТ', coord: 'X:1247 Z:-883', bg: 'linear-gradient(135deg, #FF2B4F33, #8B0000, #1a0000)' },
+  { title: 'КРЕПОСТЬ АЛЬФА', coord: 'X:-3341 Z:220', bg: 'linear-gradient(135deg, #1a2a4a, #0a1a3a, #001133)' },
+  { title: 'ЛЕСНОЙ ФОРПОСТ', coord: 'X:567 Z:4129', bg: 'linear-gradient(135deg, #0d2b1a, #1a4a2a, #0a1f10)' },
+  { title: 'ПОДЗЕМНЫЙ БУНКЕР', coord: 'X:-892 Z:-1541', bg: 'linear-gradient(135deg, #2a1a4a, #1a0a3a, #0d0020)' },
+  { title: 'ОГНЕННЫЙ РУБЕЖ', coord: 'X:4401 Z:88', bg: 'linear-gradient(135deg, #4a1a00, #8B3000, #2a1000)' },
+  { title: 'АРЕНА СМЕРТИ', coord: 'X:0 Z:0', bg: 'linear-gradient(135deg, #1a0808, #3A1017, #0a0000)' },
+]
+
+function GallerySection() {
+  return (
+    <section className="max-w-7xl mx-auto px-4 py-20">
+      <div className="flex items-center gap-4 mb-12">
+        <div className="flex flex-col gap-1">
+          <div
+            className="font-display text-4xl md:text-5xl text-white"
+            style={{ fontFamily: '"Bebas Neue", sans-serif', letterSpacing: '0.05em' }}
+          >
+            АРХИВ ОПЕРАЦИЙ
+          </div>
+          <div
+            className="text-[10px] text-site-muted tracking-[0.5em] uppercase"
+            style={{ fontFamily: '"JetBrains Mono", monospace' }}
+          >
+            ЗАДОКУМЕНТИРОВАННЫЕ МИССИИ
+          </div>
+        </div>
+        <div className="flex-1 h-px bg-gradient-to-r from-[#3A1017] to-transparent hidden md:block" />
+        <span
+          className="text-[9px] text-site-accent border border-site-accent/30 px-3 py-1 tracking-[0.3em] uppercase"
+          style={{ fontFamily: '"JetBrains Mono", monospace' }}
+        >
+          ЗАСЕКРЕЧЕНО
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        {GALLERY.map((item, i) => (
+          <GalleryCard key={i} {...item} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function GalleryCard({ title, coord, bg }: { title: string; coord: string; bg: string }) {
+  const [hov, setHov] = useState(false)
+  return (
+    <div
+      style={{
+        position: 'relative', aspectRatio: '4/3', borderRadius: 10, overflow: 'hidden',
+        border: '1px solid #3A1017', cursor: 'pointer',
+        background: bg,
+        transition: 'border-color 0.2s, transform 0.2s',
+        transform: hov ? 'scale(1.02)' : 'scale(1)',
+      }}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+    >
+      {/* Noise texture effect */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px)',
+        pointerEvents: 'none',
+      }} />
+      {/* Corner bracket TL */}
+      <div style={{ position: 'absolute', top: 8, left: 8, width: 12, height: 12, borderLeft: '1.5px solid #FF2B4F60', borderTop: '1.5px solid #FF2B4F60' }} />
+      {/* Corner bracket BR */}
+      <div style={{ position: 'absolute', bottom: 8, right: 8, width: 12, height: 12, borderRight: '1.5px solid #FF2B4F60', borderBottom: '1.5px solid #FF2B4F60' }} />
+
+      {/* Normal state info */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        padding: '16px 14px 12px',
+        background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)',
+        opacity: hov ? 0 : 1, transition: 'opacity 0.2s',
+      }}>
+        <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 9, color: '#FF2B4F', letterSpacing: '0.3em', marginBottom: 3 }}>{coord}</div>
+        <div style={{ fontFamily: '"Bebas Neue", sans-serif', fontSize: 16, color: '#fff', letterSpacing: '0.08em' }}>{title}</div>
+      </div>
+
+      {/* Hover overlay */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.75)',
+        opacity: hov ? 1 : 0, transition: 'opacity 0.2s',
+      }}>
+        <div style={{
+          border: '2px solid #FF2B4F80', padding: '8px 18px',
+          transform: 'rotate(-6deg)',
+        }}>
+          <span style={{ fontFamily: '"Bebas Neue", sans-serif', fontSize: 22, color: '#FF2B4F', letterSpacing: '0.15em' }}>ЗАСЕКРЕЧЕНО</span>
+        </div>
+        <div style={{
+          marginTop: 10, fontFamily: '"JetBrains Mono", monospace', fontSize: 9,
+          color: '#666', letterSpacing: '0.3em', textTransform: 'uppercase',
+        }}>ДОСТУП ОГРАНИЧЕН</div>
+      </div>
+    </div>
+  )
+}
+
+const FAQ_ITEMS = [
+  {
+    q: 'Как подключиться к серверу?',
+    a: 'Открой Minecraft Java Edition → Мультиплеер → Добавить сервер → введи mc.natuxworld.ru. Работает с версий 1.20.1 и выше. Лицензия не обязательна.',
+  },
+  {
+    q: 'Как применить купленный ранг?',
+    a: 'Ранг выдаётся автоматически в течение 1-2 минут после оплаты через систему LuckPerms. Зайди на сервер под тем ником, который указал при покупке.',
+  },
+  {
+    q: 'Как активировать промокод?',
+    a: 'На странице магазина нажми "Применить промокод" под выбором ранга, введи код и нажми "Проверить". Скидка применится автоматически. Текущий промокод SUMMER25 даёт −25%.',
+  },
+  {
+    q: 'Какие версии Minecraft поддерживаются?',
+    a: 'Сервер работает на Java Edition 1.20.4 и совместим с клиентами от 1.20.1 до 1.21.x. Bedrock Edition (PE/мобилки) не поддерживается.',
+  },
+  {
+    q: 'Можно ли использовать TLauncher?',
+    a: 'Да, TLauncher и другие лицензионные и нелицензионные лаунчеры поддерживаются. Единственное ограничение — ник должен быть уникальным и не совпадать с другим игроком.',
+  },
+  {
+    q: 'Возможен ли возврат средств?',
+    a: 'Возврат возможен только при технической ошибке выдачи привилегии (не получил ранг после оплаты). Обратись в поддержку с номером заказа. "Не понравилось" — не основание для возврата.',
+  },
+]
+
+function FAQSection() {
+  const [open, setOpen] = useState<number | null>(null)
+  return (
+    <section className="max-w-3xl mx-auto px-4 py-16 border-t border-[#3A1017]">
+      <div className="flex items-center gap-4 mb-10">
+        <div className="flex flex-col gap-1">
+          <div
+            className="font-display text-4xl md:text-5xl text-white"
+            style={{ fontFamily: '"Bebas Neue", sans-serif', letterSpacing: '0.05em' }}
+          >
+            БРИФИНГ
+          </div>
+          <div
+            className="text-[10px] text-site-muted tracking-[0.5em] uppercase"
+            style={{ fontFamily: '"JetBrains Mono", monospace' }}
+          >
+            ЧАСТО ЗАДАВАЕМЫЕ ВОПРОСЫ
+          </div>
+        </div>
+        <div className="flex-1 h-px bg-gradient-to-r from-[#3A1017] to-transparent hidden md:block" />
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {FAQ_ITEMS.map((item, i) => (
+          <div
+            key={i}
+            style={{
+              backgroundColor: '#0e0e0e',
+              border: `1px solid ${open === i ? '#FF2B4F40' : '#3A1017'}`,
+              borderRadius: 10, overflow: 'hidden',
+              transition: 'border-color 0.2s',
+            }}
+          >
+            <button
+              onClick={() => setOpen(open === i ? null : i)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '16px 20px', cursor: 'pointer', background: 'transparent', border: 'none',
+                textAlign: 'left', gap: 12,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{
+                  fontFamily: '"Bebas Neue", sans-serif', fontSize: 16,
+                  color: open === i ? '#FF2B4F' : '#3A1017', flexShrink: 0,
+                  transition: 'color 0.2s', minWidth: 24,
+                }}>
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <span style={{
+                  fontFamily: '"JetBrains Mono", monospace', fontSize: 12,
+                  color: open === i ? '#fff' : '#ccc', fontWeight: open === i ? 700 : 400,
+                  transition: 'color 0.2s',
+                }}>
+                  {item.q}
+                </span>
+              </div>
+              <span style={{
+                color: open === i ? '#FF2B4F' : '#3A1017',
+                fontSize: 18, transition: 'transform 0.2s, color 0.2s', flexShrink: 0,
+                transform: open === i ? 'rotate(45deg)' : 'rotate(0deg)',
+                display: 'inline-block',
+              }}>+</span>
+            </button>
+            <div style={{
+              maxHeight: open === i ? 200 : 0,
+              overflow: 'hidden', transition: 'max-height 0.3s ease',
+            }}>
+              <div style={{
+                padding: '0 20px 16px 56px',
+                fontFamily: '"JetBrains Mono", monospace', fontSize: 12,
+                color: '#888', lineHeight: 1.7,
+              }}>
+                {item.a}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export default function HomePage() {
   return (
     <div>
@@ -82,6 +296,8 @@ export default function HomePage() {
       <section className="relative overflow-hidden min-h-[92vh] flex flex-col justify-center scanline">
         {/* Grid background */}
         <div className="absolute inset-0 grid-bg opacity-60" />
+        {/* Pixel particles */}
+        <HeroParticles />
 
         {/* Radial red vignette */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_40%,rgba(139,0,24,0.18)_0%,transparent_70%)]" />
@@ -302,6 +518,16 @@ export default function HomePage() {
       <div className="border-t border-[#3A1017]">
         <TopDonors />
       </div>
+
+      {/* ═══════════════════════════════
+          GALLERY — АРХИВ ОПЕРАЦИЙ
+          ═══════════════════════════════ */}
+      <GallerySection />
+
+      {/* ═══════════════════════════════
+          FAQ — БРИФИНГ
+          ═══════════════════════════════ */}
+      <FAQSection />
 
       {/* ═══════════════════════════════
           FINAL CTA — MISSION BRIEFING

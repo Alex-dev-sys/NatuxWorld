@@ -3,6 +3,7 @@ import './globals.css'
 import Header from '@/components/Header'
 import Footer from '@/components/Footer'
 import SaleBanner from '@/components/SaleBanner'
+import PageTransition from '@/components/PageTransition'
 import { ToastProvider } from '@/components/Toast'
 
 export const metadata: Metadata = {
@@ -39,7 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ToastProvider>
           <SaleBanner />
           <Header />
-          <main className="flex-1">{children}</main>
+          <main className="flex-1"><PageTransition>{children}</PageTransition></main>
           <Footer />
         </ToastProvider>
       </body>
