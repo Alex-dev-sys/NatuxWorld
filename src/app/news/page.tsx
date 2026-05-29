@@ -104,16 +104,14 @@ export default function NewsPage() {
 
               {/* Card */}
               <div
+                className="hover:border-white/10 transition-colors duration-200"
                 style={{
                   backgroundColor: '#0e0e0e',
                   border: '1px solid #3A1017',
                   borderRadius: 12,
                   padding: '20px 24px',
-                  transition: 'border-color 0.2s ease',
                   clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px))',
                 }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = TAG_COLOR[item.tag] + '60'}
-                onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = '#3A1017'}
               >
                 {/* Meta row */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -177,15 +175,13 @@ export default function NewsPage() {
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
           <Link
             href="/shop"
+            className="bg-[#FF2B4F] hover:bg-[#cc1a35] transition-colors duration-200"
             style={{
               fontFamily: '"Bebas Neue", sans-serif', fontSize: 15,
-              letterSpacing: '0.2em', color: '#fff',
-              backgroundColor: '#FF2B4F', padding: '10px 28px',
+              letterSpacing: '0.2em', color: '#fff', padding: '10px 28px',
               clipPath: 'polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px))',
-              textDecoration: 'none', transition: 'background 0.2s',
+              textDecoration: 'none',
             }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = '#cc1a35'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = '#FF2B4F'}
           >
             В МАГАЗИН
           </Link>
@@ -193,15 +189,13 @@ export default function NewsPage() {
             href="https://vk.com/natuxworld"
             target="_blank"
             rel="noopener noreferrer"
+            className="border border-[#3A1017] text-[#888] hover:border-site-accent hover:text-site-accent transition-colors duration-200"
             style={{
               fontFamily: '"JetBrains Mono", monospace', fontSize: 11,
-              letterSpacing: '0.2em', color: '#888', textTransform: 'uppercase',
-              border: '1px solid #3A1017', padding: '10px 24px',
+              letterSpacing: '0.2em', textTransform: 'uppercase', padding: '10px 24px',
               clipPath: 'polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px))',
-              textDecoration: 'none', transition: 'border-color 0.2s, color 0.2s',
+              textDecoration: 'none',
             }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#FF2B4F'; (e.currentTarget as HTMLElement).style.color = '#FF2B4F' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#3A1017'; (e.currentTarget as HTMLElement).style.color = '#888' }}
           >
             VK ГРУППА →
           </a>
