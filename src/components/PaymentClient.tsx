@@ -165,6 +165,85 @@ function PayButton({ loading, onClick, label }: { loading: boolean; onClick: () 
   )
 }
 
+// ─── ymoney panel ────────────────────────────────────────────────────────────
+
+function YMoneyPanel({ order, loading, setLoading, setError }: {
+  order: Order
+  loading: boolean
+  setLoading: (v: boolean) => void
+  setError: (v: string | null) => void
+}) {
+  const wallet = process.env.NEXT_PUBLIC_YOOMONEY_WALLET
+
+  const handleRedirect = () => {
+    if (!wallet) {
+      setError('ЮMoney кошелёк не настроен. Обратитесь к администратору.')
+      return
+    }
+    setLoading(true)
+    const successUrl = `${window.location.origin}/order/${order.publicId}`
+    const params = new URLSearchParams({
+      receiver: wallet,
+      'quickpay-form': 'shop',
+      targets: `Ранг ${order.productName} для ${order.username}`,
+      paymentType: 'AC',
+      sum: String(order.price),
+      successURL: successUrl,
+      label: order.publicId,
+    })
+    window.location.href = `https://yoomoney.ru/quickpay/confirm.xml?${params.toString()}`
+  }
+
+  return (
+    <div style={{ textAlign: 'center', padding: '16px 0' }}>
+      {/* Logo */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 10,
+          backgroundColor: '#1a1a0a', border: '1px solid #3a3a10',
+          borderRadius: 12, padding: '14px 24px',
+        }}>
+          <span style={{ fontSize: 28 }}>🟡</span>
+          <div style={{ textAlign: 'left' }}>
+            <div style={{ fontFamily: '"Bebas Neue", sans-serif', fontSize: 22, color: '#FFD700', letterSpacing: '0.1em', lineHeight: 1 }}>ЮMONEY</div>
+            <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 9, color: '#666', letterSpacing: '0.2em', marginTop: 2 }}>БЕЗОПАСНАЯ ОПЛАТА</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Steps */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 22, textAlign: 'left' }}>
+        {[
+          { n: '01', text: 'Нажми кнопку ниже — откроется сайт ЮMoney' },
+          { n: '02', text: 'Оплати картой или кошельком ЮMoney' },
+          { n: '03', text: 'Ранг выдастся автоматически через 1-2 мин' },
+        ].map(s => (
+          <div key={s.n} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '8px 12px', backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 8 }}>
+            <span style={{ fontFamily: '"Bebas Neue", sans-serif', fontSize: 16, color: '#3A1017', flexShrink: 0, lineHeight: 1.2 }}>{s.n}</span>
+            <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 11, color: '#888', lineHeight: 1.5 }}>{s.text}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Amount */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        backgroundColor: 'rgba(255,43,79,0.07)', border: '1px solid rgba(255,43,79,0.2)',
+        borderRadius: 10, padding: '12px 18px', marginBottom: 18,
+      }}>
+        <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 9, color: '#666', letterSpacing: '0.35em', textTransform: 'uppercase' }}>К ОПЛАТЕ</span>
+        <span style={{ fontFamily: '"Bebas Neue", sans-serif', fontSize: 28, color: '#FF2B4F', letterSpacing: '0.05em' }}>{order.price} ₽</span>
+      </div>
+
+      <PayButton loading={loading} onClick={handleRedirect} label={`ПЕРЕЙТИ К ОПЛАТЕ · ${order.price} ₽`} />
+
+      <div style={{ marginTop: 10, fontFamily: '"JetBrains Mono", monospace', fontSize: 9, color: '#333', letterSpacing: '0.2em' }}>
+        ПЕРЕНАПРАВЛЕНИЕ НА YOOMONEY.RU
+      </div>
+    </div>
+  )
+}
+
 // ─── sbp panel ────────────────────────────────────────────────────────────────
 
 function SbpPanel({ onPay, loading }: { onPay: () => void; loading: boolean }) {
@@ -558,16 +637,12 @@ export default function PaymentClient({ order }: { order: Order }) {
 
                 {/* ── YMoney ── */}
                 {method === 'ymoney' && (
-                  <div style={{ textAlign: 'center', padding: '24px 0' }}>
-                    <div style={{ fontSize: 56, marginBottom: 16 }}>🟡</div>
-                    <div style={{ fontFamily: '"Bebas Neue", sans-serif', fontSize: 20, color: '#fff', letterSpacing: '0.1em', marginBottom: 8 }}>
-                      ЮMONEY
-                    </div>
-                    <p style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 11, color: '#666', marginBottom: 28, lineHeight: 1.7, letterSpacing: '0.05em' }}>
-                      Вы будете перенаправлены на сайт ЮMoney для подтверждения платежа
-                    </p>
-                    <PayButton loading={loading} onClick={handlePay} label={`ПЕРЕЙТИ · ${order.price} ₽`} />
-                  </div>
+                  <YMoneyPanel
+                    order={order}
+                    loading={loading}
+                    setLoading={setLoading}
+                    setError={setError}
+                  />
                 )}
 
                 {/* Card logos */}
