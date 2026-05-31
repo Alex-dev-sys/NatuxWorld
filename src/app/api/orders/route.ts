@@ -1,3 +1,4 @@
+// src/app/api/orders/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { products } from '@/lib/products'
 import { saveOrder } from '@/lib/store'
@@ -7,11 +8,33 @@ import type { Order, Duration } from '@/lib/types'
 
 const NICK_RE = /^[a-zA-Z0-9_]{3,16}$/
 
+function buildYooMoneyUrl(order: Order): string {
+  const wallet = process.env.YOOMONEY_WALLET ?? ''
+  const domain = process.env.NEXT_PUBLIC_SITE_DOMAIN ?? 'localhost:3000'
+  const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http'
+  const params = new URLSearchParams({
+    receiver: wallet,
+    'quickpay-form': 'shop',
+    targets: `Ранг ${order.productName} (${order.variantDurationLabel}) на NATUX WORLD`,
+    sum: String(order.price),
+    label: order.publicId,
+    successURL: `${protocol}://${domain}/order/${order.publicId}`,
+    failURL: `${protocol}://${domain}/order/${order.publicId}`,
+  })
+  return `https://yoomoney.ru/quickpay/confirm.xml?${params.toString()}`
+}
+
+function buildMockPaymentUrl(order: Order): string {
+  const domain = process.env.NEXT_PUBLIC_SITE_DOMAIN ?? 'localhost:3000'
+  const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http'
+  return `${protocol}://${domain}/pay/${order.publicId}`
+}
+
 export async function POST(req: NextRequest) {
-  // Rate limit: 10 orders per minute per IP
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim()
-    ?? req.headers.get('x-real-ip')
-    ?? 'unknown'
+  const ip =
+    req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
+    req.headers.get('x-real-ip') ??
+    'unknown'
 
   if (!rateLimit(`orders:${ip}`, 10, 60_000)) {
     return NextResponse.json(
@@ -40,7 +63,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (!NICK_RE.test(username)) {
-    return NextResponse.json({ error: 'Некорректный Minecraft ник (3–16 символов, латиница, цифры, _)' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'Некорректный Minecraft ник (3–16 символов, латиница, цифры, _)' },
+      { status: 400 }
+    )
   }
 
   const product = products.find(p => p.id === productId && p.active)
@@ -62,7 +88,6 @@ export async function POST(req: NextRequest) {
       finalPrice = applyDiscount(variant.price, coupon)
       appliedCoupon = coupon.code
     }
-    // silently ignore unknown coupons (already validated on frontend)
   }
 
   const order: Order = {
@@ -80,8 +105,13 @@ export async function POST(req: NextRequest) {
     createdAt: new Date().toISOString(),
   }
 
-  saveOrder(order)
+  await saveOrder(order)
 
-  // TODO: create real payment in payment provider, return paymentUrl
-  return NextResponse.json({ publicId: order.publicId }, { status: 201 })
+  const provider = process.env.PAYMENT_PROVIDER ?? 'mock'
+  const paymentUrl =
+    provider === 'yoomoney'
+      ? buildYooMoneyUrl(order)
+      : buildMockPaymentUrl(order)
+
+  return NextResponse.json({ publicId: order.publicId, paymentUrl }, { status: 201 })
 }

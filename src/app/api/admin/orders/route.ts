@@ -1,8 +1,8 @@
+// src/app/api/admin/orders/route.ts
 import { NextResponse } from 'next/server'
 import { getAllOrders } from '@/lib/store'
 
-// In production: protect with session/JWT auth middleware
 export async function GET() {
-  const orders = getAllOrders()
+  const orders = await getAllOrders()
   return NextResponse.json(orders)
 }

@@ -1,20 +1,14 @@
+// src/app/api/admin/orders/[id]/retry-delivery/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { getAllOrders, updateOrder } from '@/lib/store'
+import { getOrderById, updateOrder } from '@/lib/store'
 import { products } from '@/lib/products'
-import { buildCommands, executeRcon } from '@/lib/rcon'
-import type { Duration } from '@/lib/types'
-
-const DURATION_DAYS: Record<Duration, string> = {
-  '30d': '30',
-  '90d': '90',
-  'forever': '∞',
-}
+import { buildCommands, executeRcon, DURATION_DAYS } from '@/lib/rcon'
 
 export async function POST(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const order = getAllOrders().find(o => o.id === params.id)
+  const order = await getOrderById(params.id)
   if (!order) {
     return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 })
   }
@@ -23,7 +17,7 @@ export async function POST(
     return NextResponse.json({ error: 'Нельзя повторить выдачу для этого статуса' }, { status: 400 })
   }
 
-  updateOrder(order.publicId, { status: 'delivery_pending', deliveryError: undefined })
+  await updateOrder(order.publicId, { status: 'delivery_pending', deliveryError: undefined })
 
   const product = products.find(p => p.id === order.productId)
   const variant = product?.variants.find(v => v.duration === order.variantDuration)
@@ -41,18 +35,21 @@ export async function POST(
 
   const result = await executeRcon(commands)
 
-  const updated = result.success
-    ? updateOrder(order.publicId, {
-        status: 'delivered',
-        deliveredAt: new Date().toISOString(),
-        rconCommands: result.commands,
-        deliveryError: undefined,
-      })
-    : updateOrder(order.publicId, {
-        status: 'delivery_failed',
-        deliveryError: result.error,
-        rconCommands: result.commands,
-      })
+  const updated = await updateOrder(
+    order.publicId,
+    result.success
+      ? {
+          status: 'delivered',
+          deliveredAt: new Date().toISOString(),
+          rconCommands: result.commands,
+          deliveryError: undefined,
+        }
+      : {
+          status: 'delivery_failed',
+          deliveryError: result.error,
+          rconCommands: result.commands,
+        }
+  )
 
   return NextResponse.json({ order: updated })
 }

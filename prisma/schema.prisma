@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Order {
+  id                   String    @id @default(uuid())
+  publicId             String    @unique @default(uuid())
+  productId            String
+  productName          String
+  variantDuration      String
+  variantDurationLabel String
+  price                Int
+  originalPrice        Int?
+  couponCode           String?
+  username             String
+  status               String    @default("waiting_payment")
+  paymentId            String?   @unique
+  createdAt            DateTime  @default(now())
+  paidAt               DateTime?
+  deliveredAt          DateTime?
+  deliveryError        String?
+  rconCommands         String[]
+  retryCount           Int       @default(0)
+}
