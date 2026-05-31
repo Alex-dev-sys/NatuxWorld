@@ -8,7 +8,7 @@ import HeroParticles from '@/components/HeroParticles'
 
 function CopyIPButton() {
   const [copied, setCopied] = useState(false)
-  const ip = 'mc.natuxworld.ru'
+  const ip = 'mc.vibestudy.ru'
 
   const copy = () => {
     navigator.clipboard.writeText(ip).then(() => {
@@ -180,7 +180,7 @@ function GalleryCard({ title, coord, bg }: { title: string; coord: string; bg: s
 const FAQ_ITEMS = [
   {
     q: 'Как подключиться к серверу?',
-    a: 'Открой Minecraft Java Edition → Мультиплеер → Добавить сервер → введи mc.natuxworld.ru. Работает с версий 1.20.1 и выше. Лицензия не обязательна.',
+    a: 'Открой Minecraft Java Edition → Мультиплеер → Добавить сервер → введи mc.vibestudy.ru. Работает с версий 1.20.1 и выше. Лицензия не обязательна.',
   },
   {
     q: 'Как применить купленный ранг?',
@@ -399,7 +399,7 @@ export default function HomePage() {
         {/* Bottom indicator */}
         <div className="relative z-10 border-t border-[#3A1017] bg-[#0a0000]/80 px-4 py-2 flex items-center justify-center gap-8">
           <span className="text-[9px] text-[#3A1017] tracking-[0.4em] uppercase" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
-            MINECRAFT 1.20+ · JAVA EDITION · mc.natuxworld.ru
+            MINECRAFT 1.20+ · JAVA EDITION · mc.vibestudy.ru
           </span>
         </div>
       </section>
@@ -581,7 +581,7 @@ export default function HomePage() {
               className="text-[9px] text-[#3A1017] tracking-[0.4em] uppercase cursor-blink"
               style={{ fontFamily: '"JetBrains Mono", monospace' }}
             >
-              mc.natuxworld.ru
+              mc.vibestudy.ru
             </span>
           </div>
         </div>

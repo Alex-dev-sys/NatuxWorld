@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     default: 'NATUX WORLD — Minecraft Server',
     template: '%s — NATUX WORLD',
   },
-  description: 'Minecraft сервер NATUX WORLD. Анархия, PvP, донат-магазин. IP: mc.natuxworld.ru',
+  description: 'Minecraft сервер NATUX WORLD. Анархия, PvP, донат-магазин. IP: mc.vibestudy.ru',
   keywords: 'minecraft, server, natux, pvp, anarchy, donate',
   icons: {
     icon: '/logo.png',
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: 'NATUX WORLD — Minecraft Server',
-    description: 'Анархичный Minecraft-сервер без правил. IP: mc.natuxworld.ru',
+    description: 'Анархичный Minecraft-сервер без правил. IP: mc.vibestudy.ru',
     siteName: 'NATUX WORLD',
     images: [{ url: '/logo.png', width: 1080, height: 1080, alt: 'NATUX WORLD' }],
   },
