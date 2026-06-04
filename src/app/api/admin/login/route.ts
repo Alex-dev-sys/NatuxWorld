@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { timingSafeEqual, createHmac } from 'crypto'
-
-export function makeSessionToken(secret: string): string {
-  return createHmac('sha256', secret).update('admin-session-v1').digest('hex')
-}
+import { timingSafeEqual } from 'crypto'
+import { makeSessionToken } from '@/lib/adminAuth'
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
