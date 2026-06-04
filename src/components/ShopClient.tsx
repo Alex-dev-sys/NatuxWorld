@@ -426,6 +426,26 @@ export default function ShopClient({ products }: { products: Product[] }) {
   const [coupon, setCoupon] = useState<Coupon | null>(null)
   const [loading, setLoading] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
+  const [paymentMethod, setPaymentMethod] = useState<'card' | 'TON' | 'USDT'>('card')
+  const [rates, setRates] = useState<{ ton: number; usdt: number } | null>(null)
+
+  // Fetch live crypto rates on mount and refresh every 5 minutes.
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const res = await fetch('/api/rates')
+        if (!res.ok) return
+        const data = (await res.json()) as { ton: number; usdt: number }
+        if (!cancelled) setRates({ ton: data.ton, usdt: data.usdt })
+      } catch {
+        // ignore — conversion is informational only
+      }
+    }
+    load()
+    const interval = setInterval(load, 5 * 60 * 1000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [])
 
   const product = products.find(p => p.id === selectedId) ?? products[0]
   const variant = product?.variants.find(v => v.duration === selectedDuration) ?? product?.variants[0]
@@ -436,6 +456,15 @@ export default function ShopClient({ products }: { products: Product[] }) {
       ? Math.max(1, Math.round(basePrice * (1 - coupon.value / 100)))
       : Math.max(1, basePrice - coupon.value)
     : basePrice
+
+  // Live crypto conversion (informational), 2 decimals, 0.01 minimum.
+  const cryptoAmount =
+    paymentMethod !== 'card' && rates
+      ? Math.max(
+          0.01,
+          discountedPrice / (paymentMethod === 'USDT' ? rates.usdt : rates.ton)
+        ).toFixed(2)
+      : null
 
   // Savings vs buying 3× or 12× the 30d variant
   function getSaving(v: ProductVariant): number {
@@ -466,12 +495,20 @@ export default function ShopClient({ products }: { products: Product[] }) {
           duration: selectedDuration,
           username: username.trim(),
           couponCode: coupon?.code,
+          paymentMethod,
+          // asset only relevant for crypto; omitted for card so backend uses YooKassa
+          ...(paymentMethod === 'card' ? {} : { asset: paymentMethod }),
         }),
       })
 
       const data = await res.json()
       if (!res.ok) { setOrderError(data.error ?? 'Ошибка создания заказа'); return }
-      router.push(`/pay/${data.publicId}`)
+      // если сервер вернул внешний URL (криптоплатёж) — редирект туда
+      if (data.paymentUrl && !data.paymentUrl.includes('/pay/')) {
+        window.location.href = data.paymentUrl
+      } else {
+        router.push(`/pay/${data.publicId}`)
+      }
     } catch {
       setOrderError('Ошибка соединения с сервером')
     } finally {
@@ -614,7 +651,31 @@ export default function ShopClient({ products }: { products: Product[] }) {
             </div>
 
             {/* Price + buy */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4 border-t border-site-border">
+            <div className="flex flex-col gap-4 pt-4 border-t border-site-border">
+
+              {/* Payment method selector */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-site-muted text-xs">Оплата:</span>
+                {([
+                  { id: 'card', label: '💳 Карта / СБП' },
+                  { id: 'TON', label: '💎 TON' },
+                  { id: 'USDT', label: '💵 USDT' },
+                ] as const).map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => setPaymentMethod(m.id)}
+                    className={`px-3 py-1 rounded text-xs font-bold border transition-all ${
+                      paymentMethod === m.id
+                        ? 'bg-site-accent border-site-accent text-white'
+                        : 'border-site-border text-site-muted hover:border-site-accent'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <p className="text-site-muted text-xs mb-1">К оплате</p>
                 {coupon ? (
@@ -627,6 +688,15 @@ export default function ShopClient({ products }: { products: Product[] }) {
                   </div>
                 ) : (
                   <span className="text-2xl font-bold text-site-text">{basePrice} ₽</span>
+                )}
+                {/* Crypto conversion hint */}
+                {paymentMethod !== 'card' && cryptoAmount && (
+                  <p className="text-site-muted text-xs mt-1">
+                    ≈ {cryptoAmount} {paymentMethod}
+                  </p>
+                )}
+                {paymentMethod === 'card' && (
+                  <p className="text-site-muted text-xs mt-1">💳 Карта · СБП</p>
                 )}
               </div>
 
@@ -649,6 +719,7 @@ export default function ShopClient({ products }: { products: Product[] }) {
                   </>
                 ) : 'Перейти к оплате →'}
               </button>
+              </div>
             </div>
 
             {orderError && (

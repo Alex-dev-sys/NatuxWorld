@@ -33,9 +33,10 @@ export interface Product {
 
 export interface Coupon {
   code: string
-  type: 'percent' | 'fixed'
+  type: 'percent' | 'fixed' | 'free'
   value: number
   description: string
+  maxUses?: number
 }
 
 export interface Order {
