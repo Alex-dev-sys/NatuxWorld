@@ -3,11 +3,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getOrderById, updateOrder } from '@/lib/store'
 import { products } from '@/lib/products'
 import { buildCommands, executeRcon, DURATION_DAYS } from '@/lib/rcon'
+import { requireAdmin } from '@/lib/adminAuth'
 
 export async function POST(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  if (!requireAdmin(_req)) {
+    return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
+  }
   const order = await getOrderById(params.id)
   if (!order) {
     return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 })

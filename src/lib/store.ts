@@ -102,7 +102,8 @@ export async function updateOrder(
   try {
     const row = await prisma.order.update({ where: { publicId }, data })
     return mapOrder(row)
-  } catch {
+  } catch (err) {
+    console.error('[store] updateOrder failed:', publicId, err)
     return null
   }
 }

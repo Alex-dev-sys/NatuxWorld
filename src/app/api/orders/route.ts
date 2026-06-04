@@ -125,6 +125,10 @@ export async function POST(req: NextRequest) {
   if (couponCode) {
     const coupon = validateCoupon(couponCode)
     if (coupon && isFree(coupon)) {
+      // Строгий лимит: 2 бесплатных ранга в час с одного IP
+      if (!rateLimit(`free:${ip}`, 2, 60 * 60_000)) {
+        return NextResponse.json({ error: 'Лимит бесплатных активаций превышен' }, { status: 429 })
+      }
       const commands = buildCommands(variant.commands, {
         username: order.username,
         rank: product.name,

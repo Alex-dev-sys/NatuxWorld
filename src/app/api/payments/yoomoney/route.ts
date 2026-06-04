@@ -25,9 +25,11 @@ export async function POST(req: NextRequest) {
   const text = await req.text()
   const params = Object.fromEntries(new URLSearchParams(text))
 
-  const secret = process.env.YOOMONEY_SECRET ?? ''
-
-  if (secret && !verifySha1(params, secret)) {
+  const secret = process.env.YOOMONEY_SECRET
+  if (!secret) {
+    return NextResponse.json({ error: 'Webhook not configured' }, { status: 403 })
+  }
+  if (!verifySha1(params, secret)) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
   }
 
@@ -38,8 +40,7 @@ export async function POST(req: NextRequest) {
 
   // Idempotency by paymentId
   const existingByPaymentId = await getOrderByPaymentId(`ymoney_${operationId}`)
-  if (existingByPaymentId &&
-      ['delivered', 'delivery_failed', 'delivery_pending'].includes(existingByPaymentId.status)) {
+  if (existingByPaymentId && existingByPaymentId.status === 'delivered') {
     return NextResponse.json({ message: 'Already processed' })
   }
 
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
 
-  if (['paid', 'delivery_pending', 'delivered', 'delivery_failed'].includes(order.status)) {
+  if (order.status === 'delivered') {
     return NextResponse.json({ message: 'Already processed' })
   }
 

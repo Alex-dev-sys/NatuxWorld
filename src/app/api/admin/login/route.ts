@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { timingSafeEqual, createHmac } from 'crypto'
+
+export function makeSessionToken(secret: string): string {
+  return createHmac('sha256', secret).update('admin-session-v1').digest('hex')
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
@@ -13,18 +18,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Сервер не настроен' }, { status: 500 })
   }
 
-  if (body.password !== adminPassword) {
-    // Constant-time comparison to prevent timing attacks
+  const a = Buffer.from(body.password)
+  const b = Buffer.from(adminPassword)
+  const match = a.length === b.length && timingSafeEqual(a, b)
+  if (!match) {
     await new Promise(r => setTimeout(r, 500))
     return NextResponse.json({ error: 'Неверный пароль' }, { status: 401 })
   }
 
+  // Session token = HMAC(ADMIN_SECRET, constant) — не раскрывает сам секрет
+  const sessionToken = makeSessionToken(adminSecret)
+
   const res = NextResponse.json({ ok: true })
-  res.cookies.set('admin_session', adminSecret, {
+  res.cookies.set('admin_session', sessionToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 7,
     path: '/',
   })
   return res

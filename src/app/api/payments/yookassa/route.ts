@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getOrder, getAllOrders, updateOrder, getOrderByPaymentId } from '@/lib/store'
 import { products } from '@/lib/products'
 import { buildCommands, executeRcon, DURATION_DAYS } from '@/lib/rcon'
-import { verifyWebhook } from '@/lib/yookassa'
+import { verifyPayment } from '@/lib/yookassa'
 
 interface YooKassaNotification {
   event?: string
@@ -37,18 +37,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No payment object' }, { status: 400 })
   }
 
-  // Verify the recipient shop matches our configured shop id.
-  if (!verifyWebhook(payment.recipient?.account_id)) {
-    return NextResponse.json({ error: 'Invalid recipient' }, { status: 403 })
+  // Verify by re-fetching the payment from YooKassa API
+  const verified = await verifyPayment(payment.id)
+  if (!verified) {
+    return NextResponse.json({ error: 'Payment not confirmed by YooKassa' }, { status: 403 })
   }
 
   // Idempotency by paymentId
   const paymentId = `yookassa_${payment.id}`
   const existingByPaymentId = await getOrderByPaymentId(paymentId)
-  if (
-    existingByPaymentId &&
-    ['delivered', 'delivery_failed', 'delivery_pending'].includes(existingByPaymentId.status)
-  ) {
+  if (existingByPaymentId && existingByPaymentId.status === 'delivered') {
     return NextResponse.json({ message: 'Already processed' })
   }
 
@@ -70,7 +68,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
 
-  if (['paid', 'delivery_pending', 'delivered', 'delivery_failed'].includes(order.status)) {
+  if (order.status === 'delivered') {
     return NextResponse.json({ message: 'Already processed' })
   }
 

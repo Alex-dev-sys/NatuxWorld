@@ -13,6 +13,9 @@ const DURATION_DAYS: Record<Duration, string> = {
   forever: '∞',
 }
 
+const SAFE_USERNAME = /^[a-zA-Z0-9_]{3,16}$/
+const SAFE_ALPHANUMERIC = /^[a-zA-Z0-9_\-. ]+$/
+
 export function buildCommands(
   templates: string[],
   vars: {
@@ -24,6 +27,8 @@ export function buildCommands(
     price: number
   }
 ): string[] {
+  if (!SAFE_USERNAME.test(vars.username)) throw new Error(`Unsafe username: ${vars.username}`)
+  if (!SAFE_ALPHANUMERIC.test(vars.rank)) throw new Error(`Unsafe rank: ${vars.rank}`)
   return templates.map(cmd =>
     cmd
       .replace(/{username}/g, vars.username)

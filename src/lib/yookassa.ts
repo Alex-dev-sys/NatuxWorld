@@ -88,12 +88,20 @@ export async function createPayment(
 }
 
 /**
- * Verify a YooKassa webhook.
- * YooKassa does not sign notifications, so the recommended approach is to
- * confirm the payment's recipient shop_id matches our own (and ideally
- * re-fetch the payment). Here we trust the supplied shop_id against env.
+ * Verify a YooKassa payment by re-fetching its status from the API.
+ * YooKassa does not sign notifications — the only safe verification is
+ * calling their API directly with our credentials.
  */
-export function verifyWebhook(shopIdFromBody: string | undefined): boolean {
-  if (!shopIdFromBody) return false
-  return shopIdFromBody === (process.env.YOOKASSA_SHOP_ID ?? '')
+export async function verifyPayment(paymentId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_URL}/${paymentId}`, {
+      headers: { Authorization: authHeader() },
+      cache: 'no-store',
+    })
+    if (!res.ok) return false
+    const data = (await res.json()) as { status?: string; paid?: boolean }
+    return data.status === 'succeeded' || data.paid === true
+  } catch {
+    return false
+  }
 }

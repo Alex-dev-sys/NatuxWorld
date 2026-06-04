@@ -49,10 +49,7 @@ export async function POST(req: NextRequest) {
   // Idempotency by paymentId
   const paymentId = `cryptobot_${invoiceId}`
   const existingByPaymentId = await getOrderByPaymentId(paymentId)
-  if (
-    existingByPaymentId &&
-    ['delivered', 'delivery_failed', 'delivery_pending'].includes(existingByPaymentId.status)
-  ) {
+  if (existingByPaymentId && existingByPaymentId.status === 'delivered') {
     return NextResponse.json({ message: 'Already processed' })
   }
 
@@ -69,7 +66,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
 
-  if (['paid', 'delivery_pending', 'delivered', 'delivery_failed'].includes(order.status)) {
+  if (order.status === 'delivered') {
     return NextResponse.json({ message: 'Already processed' })
   }
 
