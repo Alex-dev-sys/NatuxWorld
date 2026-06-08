@@ -28,12 +28,14 @@
     "react-router-dom": "^7.0.0",
     "recharts": "^2.13.3",
     "tailwind-merge": "^2.5.4",
+    "yauzl": "^3.4.0",
     "zustand": "^5.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/yauzl": "^3.3.0",
     "@vitejs/plugin-react": "^4.3.3",
     "autoprefixer": "^10.4.20",
     "electron": "^33.2.0",

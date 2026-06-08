@@ -23,7 +23,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.AUTH.GET_USER, () => auth.getUser());
 
   ipcMain.handle(IPC.JAVA.DETECT, () => java.detect());
-  ipcMain.handle(IPC.JAVA.INSTALL, (_e, version) => java.install(version));
+  ipcMain.handle(IPC.JAVA.INSTALL, () => java.install());
 
   ipcMain.handle(IPC.NEWS.GET_ALL, () => news.getAll());
 
