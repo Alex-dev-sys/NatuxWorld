@@ -48,12 +48,14 @@ export function Sidebar() {
         transition={{ delay: 0.05 }}
         className="relative flex items-center gap-3 rounded-2xl glass p-3 text-left hover:border-white/15 transition"
       >
-        <div className="relative grid h-14 w-14 place-items-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary-glow to-[#8a0020] shadow-[0_0_24px_rgba(255,0,55,0.5)] ring-1 ring-white/10">
-          <span className="absolute inset-0 bg-[radial-gradient(120%_100%_at_50%_0%,rgba(255,255,255,0.45)_0%,transparent_55%)]" />
-          <span className="absolute inset-0 bg-[linear-gradient(135deg,transparent_55%,rgba(0,0,0,0.4)_100%)]" />
-          <span className="relative font-display text-2xl tracking-wider text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]">
-            N
-          </span>
+        <div className="relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl shadow-[0_0_24px_rgba(255,0,55,0.45)] ring-1 ring-white/10">
+          <img
+            src="./icon.png"
+            alt="NATUX WORLD"
+            draggable={false}
+            className="h-full w-full object-cover select-none"
+          />
+          <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,transparent_55%,rgba(0,0,0,0.35)_100%)]" />
         </div>
         <div className="flex-1 leading-tight">
           <div className="font-display text-xl tracking-[0.18em] text-white">NATUX</div>
