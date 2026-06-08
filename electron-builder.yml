@@ -1,0 +1,16 @@
+appId: world.natux.launcher
+productName: NATUX WORLD
+directories:
+  output: release
+files:
+  - dist/**/*
+  - dist-electron/**/*
+win:
+  target: nsis
+  icon: public/icon.ico
+mac:
+  target: dmg
+  icon: public/icon.icns
+linux:
+  target: AppImage
+  icon: public/icon.png
