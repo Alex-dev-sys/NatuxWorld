@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { LoaderKind, MinecraftVersion } from '../types';
+import type { LaunchProgress } from '../../electron/services/LauncherService';
 import { bridge } from '../services/electron-bridge';
 
 export const VERSIONS: MinecraftVersion[] = [
@@ -9,14 +10,31 @@ export const VERSIONS: MinecraftVersion[] = [
   { id: 'forge-1.20.1', label: 'Forge 1.20.1', loader: 'forge' },
 ];
 
+const STAGE_LABEL: Record<string, string> = {
+  idle: 'Готов к запуску',
+  resolving: 'Получение манифеста...',
+  'java-check': 'Проверка Java...',
+  libraries: 'Загрузка библиотек...',
+  assets: 'Загрузка ресурсов...',
+  'natives-extract': 'Распаковка библиотек...',
+  'forge-install': 'Установка Forge...',
+  spawn: 'Запуск Minecraft...',
+  running: 'Игра запущена',
+  error: 'Ошибка',
+};
+
 interface LauncherState {
   selectedVersion: MinecraftVersion;
   isLaunching: boolean;
   progress: number;
   progressMessage: string;
+  stage: string;
   appVersion: string;
+  errorMessage: string | null;
+  unsubProgress: (() => void) | null;
   setVersion: (v: MinecraftVersion) => void;
   play: () => Promise<void>;
+  cancel: () => Promise<void>;
   setAppVersion: (v: string) => void;
 }
 
@@ -25,44 +43,65 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
   isLaunching: false,
   progress: 0,
   progressMessage: 'Готов к запуску',
-  appVersion: '1.2.3',
+  stage: 'idle',
+  appVersion: '1.4.0',
+  errorMessage: null,
+  unsubProgress: null,
 
   setVersion: (v) => set({ selectedVersion: v }),
   setAppVersion: (v) => set({ appVersion: v }),
 
   play: async () => {
-    const { selectedVersion, isLaunching } = get();
+    const { selectedVersion, isLaunching, unsubProgress } = get();
     if (isLaunching) return;
-    set({ isLaunching: true, progress: 5, progressMessage: 'Подготовка окружения...' });
+    if (unsubProgress) unsubProgress();
 
-    try {
-      await bridge.launcher.play({
-        version: selectedVersion.id,
-        loader: selectedVersion.loader as LoaderKind,
-        username: 'Player',
-        memory: 4096,
+    const unsub = bridge.launcher.onProgress((p: LaunchProgress) => {
+      const message = p.message || STAGE_LABEL[p.stage] || p.stage;
+      set({
+        stage: p.stage,
+        progress: p.progress,
+        progressMessage: message,
+        errorMessage: p.stage === 'error' ? message : null,
+        isLaunching: p.stage !== 'idle' && p.stage !== 'error' && p.stage !== 'running',
       });
-    } catch {
-      set({ isLaunching: false, progress: 0, progressMessage: 'Ошибка запуска' });
-      return;
-    }
+    });
+    set({
+      unsubProgress: unsub,
+      isLaunching: true,
+      progress: 0,
+      stage: 'resolving',
+      progressMessage: STAGE_LABEL.resolving,
+      errorMessage: null,
+    });
 
-    let p = 5;
-    const interval = setInterval(() => {
-      p += Math.random() * 10;
-      if (p >= 100) {
-        clearInterval(interval);
-        set({ progress: 100, progressMessage: 'Запуск Minecraft...' });
-        setTimeout(
-          () => set({ isLaunching: false, progress: 0, progressMessage: 'Готов к запуску' }),
-          800,
-        );
-      } else {
-        set({
-          progress: Math.round(p),
-          progressMessage: p < 50 ? 'Загрузка ассетов...' : 'Проверка библиотек...',
-        });
-      }
-    }, 220);
+    const result = await bridge.launcher.play({
+      version: selectedVersion.id,
+      loader: selectedVersion.loader as LoaderKind,
+      username: 'Player',
+      memory: 4096,
+    });
+
+    if (!result.ok) {
+      set({
+        isLaunching: false,
+        stage: 'error',
+        progressMessage: result.error ?? 'Ошибка запуска',
+        errorMessage: result.error ?? 'Ошибка запуска',
+      });
+    }
+  },
+
+  cancel: async () => {
+    const { unsubProgress } = get();
+    await bridge.launcher.cancel();
+    if (unsubProgress) unsubProgress();
+    set({
+      isLaunching: false,
+      progress: 0,
+      stage: 'idle',
+      progressMessage: STAGE_LABEL.idle,
+      unsubProgress: null,
+    });
   },
 }));
