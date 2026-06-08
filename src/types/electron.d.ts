@@ -3,7 +3,7 @@ import type { NewsItem } from '../../electron/services/NewsService';
 import type { User, Credentials } from '../../electron/services/AuthService';
 import type { JavaInstallation } from '../../electron/services/JavaService';
 import type { LauncherSettings } from '../../electron/services/SettingsService';
-import type { UpdateInfo } from '../../electron/services/UpdateService';
+import type { UpdateInfo, UpdateEvent } from '../../electron/services/UpdateService';
 
 export interface NatuxAPI {
   window: {
@@ -40,7 +40,8 @@ export interface NatuxAPI {
   };
   updater: {
     check: () => Promise<UpdateInfo>;
-    onUpdate: (cb: (info: UpdateInfo) => void) => () => void;
+    install: () => Promise<void>;
+    onUpdate: (cb: (event: UpdateEvent) => void) => () => void;
   };
   shell: {
     openExternal: (url: string) => Promise<void>;

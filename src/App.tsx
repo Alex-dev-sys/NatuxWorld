@@ -5,6 +5,7 @@ import { TitleBar } from './components/TitleBar';
 import { Sidebar } from './components/Sidebar';
 import { Footer } from './components/Footer';
 import { SettingsModal } from './components/SettingsModal';
+import { UpdateToast } from './components/UpdateToast';
 import { HomePage } from './pages/HomePage';
 import { NewsPage } from './pages/NewsPage';
 import { StorePage } from './pages/StorePage';
@@ -56,6 +57,7 @@ export default function App() {
 
       <Footer />
       <SettingsModal />
+      <UpdateToast />
     </div>
   );
 }
