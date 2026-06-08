@@ -4,9 +4,10 @@ import type { ReactNode } from 'react';
 
 type Variant = 'ghost' | 'glass' | 'primary' | 'discord';
 
-type Props = HTMLMotionProps<'button'> & {
+type Props = Omit<HTMLMotionProps<'button'>, 'children'> & {
   variant?: Variant;
   icon?: ReactNode;
+  children?: ReactNode;
 };
 
 const styles: Record<Variant, string> = {
