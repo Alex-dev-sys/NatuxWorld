@@ -34,20 +34,34 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
     const { selectedVersion, isLaunching } = get();
     if (isLaunching) return;
     set({ isLaunching: true, progress: 5, progressMessage: 'Подготовка окружения...' });
-    await bridge.launcher.play({
-      version: selectedVersion.id,
-      loader: selectedVersion.loader as LoaderKind,
-      username: 'Player',
-      memory: 4096,
-    });
+
+    try {
+      await bridge.launcher.play({
+        version: selectedVersion.id,
+        loader: selectedVersion.loader as LoaderKind,
+        username: 'Player',
+        memory: 4096,
+      });
+    } catch {
+      set({ isLaunching: false, progress: 0, progressMessage: 'Ошибка запуска' });
+      return;
+    }
+
     let p = 5;
     const interval = setInterval(() => {
       p += Math.random() * 10;
       if (p >= 100) {
         clearInterval(interval);
-        set({ progress: 100, progressMessage: 'Запуск Minecraft...', isLaunching: false });
+        set({ progress: 100, progressMessage: 'Запуск Minecraft...' });
+        setTimeout(
+          () => set({ isLaunching: false, progress: 0, progressMessage: 'Готов к запуску' }),
+          800,
+        );
       } else {
-        set({ progress: Math.round(p), progressMessage: p < 50 ? 'Загрузка ассетов...' : 'Проверка библиотек...' });
+        set({
+          progress: Math.round(p),
+          progressMessage: p < 50 ? 'Загрузка ассетов...' : 'Проверка библиотек...',
+        });
       }
     }, 220);
   },
