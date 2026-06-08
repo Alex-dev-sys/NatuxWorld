@@ -1,4 +1,5 @@
-import { Minus, Square, X, Settings as SettingsIcon, Copy } from 'lucide-react';
+import { Minus, Square, X, Settings as SettingsIcon, Copy, Check } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { bridge } from '../services/electron-bridge';
 import { useIsMaximized } from '../hooks/useElectron';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -8,6 +9,13 @@ import { ProfileMenu } from './ProfileMenu';
 export function TitleBar() {
   const isMax = useIsMaximized();
   const openSettings = useSettingsStore((s) => s.open);
+  const [ipCopied, setIpCopied] = useState(false);
+
+  useEffect(() => {
+    if (!ipCopied) return;
+    const t = setTimeout(() => setIpCopied(false), 1600);
+    return () => clearTimeout(t);
+  }, [ipCopied]);
 
   return (
     <div className="titlebar-drag relative flex h-12 w-full items-center justify-between px-3">
@@ -18,11 +26,18 @@ export function TitleBar() {
           <span className="text-[10px] text-muted">·</span>
           <span className="text-[10px] text-muted">mc.xbestu.ru</span>
           <button
-            onClick={() => navigator.clipboard.writeText('mc.xbestu.ru')}
+            onClick={async () => {
+              await navigator.clipboard.writeText('mc.xbestu.ru');
+              setIpCopied(true);
+            }}
             className="ml-1 text-muted hover:text-white"
             title="Скопировать IP"
           >
-            <Copy className="h-3 w-3" />
+            {ipCopied ? (
+              <Check className="h-3 w-3 text-success" />
+            ) : (
+              <Copy className="h-3 w-3" />
+            )}
           </button>
         </div>
       </div>
