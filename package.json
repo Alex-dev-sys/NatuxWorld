@@ -1,6 +1,6 @@
 {
   "name": "natux-world-launcher",
-  "version": "1.2.8",
+  "version": "1.2.9",
   "description": "NATUX WORLD - Premium Minecraft Launcher",
   "main": "dist-electron/main.js",
   "type": "module",
