@@ -10,7 +10,6 @@ import {
   Send,
   Users,
   Activity,
-  UserPlus,
   Gauge,
 } from 'lucide-react';
 import { PlayButton } from './PlayButton';
@@ -77,14 +76,7 @@ export function Sidebar() {
             <span className="relative h-2 w-2 rounded-full bg-success shadow-[0_0_8px_rgba(0,255,127,0.9)]" />
           </span>}
           value={`${status?.players ?? 142} онлайн`}
-          sub={`Пик игроков сегодня в 12:45`}
-        />
-        <SidebarStat
-          icon={<div className="grid h-7 w-7 place-items-center rounded-lg bg-warning/10 text-warning">
-            <UserPlus className="h-3.5 w-3.5" />
-          </div>}
-          value="567 регистраций"
-          sub="Сегодня"
+          sub="Сейчас на сервере"
         />
         <SidebarStat
           icon={<div className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
