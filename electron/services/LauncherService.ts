@@ -1,16 +1,47 @@
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
+import yauzl from 'yauzl';
+import type { BrowserWindow } from 'electron';
+import {
+  filterByOsRules,
+  platformOsName,
+  type AssetIndex,
+  type Library,
+  type VanillaVersion,
+} from './MojangService';
+import { MojangService } from './MojangService';
+import { DownloadService, type DownloadJob } from './DownloadService';
+import { JavaService } from './JavaService';
+import { AuthService } from './AuthService';
+import { MinecraftService, type LaunchHandle } from './MinecraftService';
+import {
+  getAssetObjectPath,
+  getAssetsDir,
+  getLibrariesDir,
+  getMinecraftDir,
+  getNativesDir,
+  getVersionJarPath,
+} from '../utils/paths';
 
-export interface LaunchOptions {
-  version: string;
-  loader: 'forge' | 'fabric' | 'neoforge';
-  username: string;
-  memory: number;
-}
+export type Stage =
+  | 'idle'
+  | 'resolving'
+  | 'java-check'
+  | 'libraries'
+  | 'assets'
+  | 'natives-extract'
+  | 'forge-install'
+  | 'spawn'
+  | 'running'
+  | 'error';
 
 export interface LaunchProgress {
-  stage: 'idle' | 'preparing' | 'downloading' | 'launching' | 'running' | 'error';
+  stage: Stage;
   progress: number;
   message: string;
+  detail?: string;
 }
 
 export interface ServerStatus {
@@ -32,31 +63,281 @@ export interface ServerInfo {
   ping: number;
 }
 
-export class LauncherService extends EventEmitter {
-  private status: LaunchProgress = {
-    stage: 'idle',
-    progress: 0,
-    message: 'Готов к запуску',
-  };
+export interface PlayOptions {
+  version: string;
+  loader?: 'forge' | 'fabric' | 'neoforge' | 'vanilla';
+  username: string;
+  memory: number;
+}
 
-  async play(_options: unknown): Promise<{ ok: boolean }> {
-    this.status = { stage: 'preparing', progress: 5, message: 'Подготовка окружения...' };
-    this.emit('progress', this.status);
-    return { ok: true };
+export function parseVersionId(id: string): { loader: string; mcVersion: string } {
+  if (id.startsWith('forge-')) return { loader: 'forge', mcVersion: id.slice('forge-'.length) };
+  if (id.startsWith('fabric-')) return { loader: 'fabric', mcVersion: id.slice('fabric-'.length) };
+  if (id.startsWith('neoforge-')) return { loader: 'neoforge', mcVersion: id.slice('neoforge-'.length) };
+  return { loader: 'vanilla', mcVersion: id };
+}
+
+export const ASSET_BASE_URL = 'https://resources.download.minecraft.net';
+
+const CHANNEL_PROGRESS = 'launcher:progress';
+const CHANNEL_LOG = 'launcher:log';
+
+export class LauncherService extends EventEmitter {
+  private window: BrowserWindow | null = null;
+  private wired = false;
+  private status: LaunchProgress = { stage: 'idle', progress: 0, message: 'Готов к запуску' };
+  private currentProc: LaunchHandle | null = null;
+  private cancelled = false;
+
+  private readonly mojang = new MojangService();
+  private readonly download = new DownloadService(8);
+  private readonly java = new JavaService();
+  private readonly auth = new AuthService();
+  private readonly minecraft = new MinecraftService();
+
+  attach(win: BrowserWindow): void {
+    this.window = win;
+    if (this.wired) return;
+    this.wired = true;
+    this.java.on('progress', (p: { progress: number; message: string }) => {
+      this.report({
+        stage: 'java-check',
+        progress: p.progress,
+        message: p.message,
+      });
+    });
   }
 
   getStatus(): LaunchProgress {
     return this.status;
   }
 
+  async cancel(): Promise<void> {
+    this.cancelled = true;
+    if (this.currentProc) {
+      this.currentProc.kill();
+      this.currentProc = null;
+    }
+    this.report({ stage: 'idle', progress: 0, message: 'Отменено' });
+  }
+
+  async play(opts: PlayOptions): Promise<{ ok: boolean; error?: string }> {
+    this.cancelled = false;
+    try {
+      const parsed = parseVersionId(opts.version);
+      await this.runPipeline(parsed.mcVersion, parsed.loader, opts);
+      return { ok: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.report({ stage: 'error', progress: 0, message: `Ошибка: ${msg}` });
+      return { ok: false, error: msg };
+    }
+  }
+
+  private async runPipeline(mcVersion: string, loader: string, opts: PlayOptions): Promise<void> {
+    this.report({ stage: 'resolving', progress: 0, message: 'Получение манифеста Mojang...' });
+    const version = await this.mojang.resolveVersion(mcVersion);
+    this.throwIfCancelled();
+
+    this.report({ stage: 'java-check', progress: 0, message: 'Проверка Java...' });
+    let java = await this.java.detect();
+    if (!java) {
+      this.report({ stage: 'java-check', progress: 5, message: 'Java не найдена, ставим...' });
+      java = await this.java.install();
+    }
+    this.throwIfCancelled();
+
+    this.report({ stage: 'libraries', progress: 0, message: 'Загрузка библиотек...' });
+    const libJobs = this.buildLibraryJobs(version.libraries);
+    await this.download.downloadMany(libJobs, (done, total, file) => {
+      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      this.report({
+        stage: 'libraries',
+        progress: pct,
+        message: `Библиотеки ${pct}%`,
+        detail: path.basename(file),
+      });
+    });
+    this.throwIfCancelled();
+
+    this.report({ stage: 'libraries', progress: 100, message: 'Загрузка клиента...' });
+    await this.download.downloadMany(
+      [
+        {
+          url: version.downloads.client.url,
+          dest: getVersionJarPath(version.id),
+          sha1: version.downloads.client.sha1,
+          size: version.downloads.client.size,
+        },
+      ],
+      () => undefined,
+    );
+    this.throwIfCancelled();
+
+    this.report({ stage: 'assets', progress: 0, message: 'Получение индекса ресурсов...' });
+    const index = await this.mojang.resolveAssetIndex(version);
+    const assetJobs = this.buildAssetJobs(index);
+    await this.download.downloadMany(assetJobs, (done, total) => {
+      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      this.report({ stage: 'assets', progress: pct, message: `Ресурсы ${pct}%` });
+    });
+    this.throwIfCancelled();
+
+    this.report({ stage: 'natives-extract', progress: 0, message: 'Распаковка нативных библиотек...' });
+    await this.extractNatives(version);
+    this.throwIfCancelled();
+
+    if (loader !== 'vanilla' && loader !== 'forge') {
+      this.report({
+        stage: 'libraries',
+        progress: 100,
+        message: `${loader} ещё не поддерживается — запускаем ваниль`,
+      });
+    }
+
+    if (loader === 'forge') {
+      this.report({
+        stage: 'forge-install',
+        progress: 0,
+        message: 'Forge интеграция будет в следующих коммитах — запускаем ваниль',
+      });
+    }
+
+    const user = (await this.auth.getUser()) ?? (await this.auth.login(opts.username));
+    this.throwIfCancelled();
+
+    this.report({ stage: 'spawn', progress: 0, message: 'Запуск Minecraft...' });
+    await fsp.mkdir(getMinecraftDir(), { recursive: true });
+
+    const handle = this.minecraft.launch({
+      version,
+      javaPath: java.path,
+      gameDir: getMinecraftDir(),
+      assetsDir: getAssetsDir(),
+      nativesDir: getNativesDir(version.id),
+      clientJar: getVersionJarPath(version.id),
+      user,
+      memory: opts.memory,
+    });
+
+    this.currentProc = handle;
+    handle.on('log', (line: { stream: string; line: string }) => {
+      this.window?.webContents.send(CHANNEL_LOG, line);
+    });
+    handle.on('exit', ({ code }: { code: number | null }) => {
+      this.currentProc = null;
+      this.report({
+        stage: 'idle',
+        progress: 0,
+        message: code === 0 || code === null ? 'Игра завершена' : `Игра упала (код ${code})`,
+      });
+    });
+
+    this.report({ stage: 'running', progress: 100, message: `Игра запущена (pid ${handle.pid})` });
+  }
+
+  private buildLibraryJobs(libs: Library[]): DownloadJob[] {
+    const filtered = filterByOsRules(libs, platformOsName());
+    const jobs: DownloadJob[] = [];
+    for (const lib of filtered) {
+      const artifact = lib.downloads?.artifact;
+      if (artifact?.path && artifact.url) {
+        jobs.push({
+          url: artifact.url,
+          dest: path.join(getLibrariesDir(), ...artifact.path.split('/')),
+          sha1: artifact.sha1,
+          size: artifact.size,
+        });
+      }
+    }
+    return jobs;
+  }
+
+  private buildAssetJobs(index: AssetIndex): DownloadJob[] {
+    const jobs: DownloadJob[] = [];
+    for (const obj of Object.values(index.objects)) {
+      const prefix = obj.hash.slice(0, 2);
+      jobs.push({
+        url: `${ASSET_BASE_URL}/${prefix}/${obj.hash}`,
+        dest: getAssetObjectPath(obj.hash),
+        sha1: obj.hash,
+        size: obj.size,
+      });
+    }
+    return jobs;
+  }
+
+  private async extractNatives(version: VanillaVersion): Promise<void> {
+    const os = platformOsName();
+    const nativesDir = getNativesDir(version.id);
+    await fsp.mkdir(nativesDir, { recursive: true });
+
+    const nativeLibs = filterByOsRules(version.libraries, os).filter((lib) =>
+      lib.name.endsWith(`:natives-${os === 'osx' ? 'macos' : os}`) || lib.name.includes(`:natives-${os}`),
+    );
+
+    for (const lib of nativeLibs) {
+      const artifactPath = lib.downloads?.artifact?.path;
+      if (!artifactPath) continue;
+      const jar = path.join(getLibrariesDir(), ...artifactPath.split('/'));
+      if (!fs.existsSync(jar)) continue;
+      await this.extractNonClassEntries(jar, nativesDir);
+    }
+  }
+
+  private extractNonClassEntries(jar: string, destDir: string): Promise<void> {
+    const root = path.resolve(destDir);
+    return new Promise((resolve, reject) => {
+      yauzl.open(jar, { lazyEntries: true }, (err, zip) => {
+        if (err || !zip) return reject(err ?? new Error('zip open failed'));
+        zip.readEntry();
+        zip.on('entry', (entry) => {
+          const lower = entry.fileName.toLowerCase();
+          if (
+            entry.fileName.includes('\0') ||
+            (process.platform !== 'win32' && entry.fileName.includes('\\'))
+          ) {
+            return reject(new Error(`Unsafe entry: ${entry.fileName}`));
+          }
+          const skip =
+            lower.startsWith('meta-inf/') ||
+            lower.endsWith('.class') ||
+            lower.endsWith('.git') ||
+            /\/$/.test(entry.fileName);
+          if (skip) {
+            zip.readEntry();
+            return;
+          }
+          const resolved = path.resolve(root, path.basename(entry.fileName));
+          const rel = path.relative(root, resolved);
+          if (rel.startsWith('..') || path.isAbsolute(rel)) {
+            return reject(new Error(`Unsafe entry escapes natives dir: ${entry.fileName}`));
+          }
+          zip.openReadStream(entry, (e, stream) => {
+            if (e || !stream) return reject(e ?? new Error('zip read failed'));
+            const out = fs.createWriteStream(resolved);
+            stream.pipe(out);
+            out.on('finish', () => zip.readEntry());
+            out.on('error', reject);
+          });
+        });
+        zip.on('end', () => resolve());
+        zip.on('error', reject);
+      });
+    });
+  }
+
+  private report(p: LaunchProgress): void {
+    this.status = p;
+    this.window?.webContents.send(CHANNEL_PROGRESS, p);
+  }
+
+  private throwIfCancelled(): void {
+    if (this.cancelled) throw new Error('Отменено пользователем');
+  }
+
   async getServerStatus(): Promise<ServerStatus> {
-    return {
-      online: true,
-      players: 142,
-      maxPlayers: 500,
-      ping: 52,
-      tps: 20.0,
-    };
+    return { online: true, players: 142, maxPlayers: 500, ping: 52, tps: 20.0 };
   }
 
   async getServerInfo(): Promise<ServerInfo> {
@@ -72,3 +353,6 @@ export class LauncherService extends EventEmitter {
     };
   }
 }
+
+export const LAUNCHER_PROGRESS_CHANNEL = CHANNEL_PROGRESS;
+export const LAUNCHER_LOG_CHANNEL = CHANNEL_LOG;
