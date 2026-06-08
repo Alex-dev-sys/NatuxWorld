@@ -6,6 +6,7 @@ import type { LauncherSettings } from '../../electron/services/SettingsService';
 import type { UpdateInfo, UpdateEvent } from '../../electron/services/UpdateService';
 
 export interface NatuxAPI {
+  getVersion: () => Promise<string>;
   window: {
     minimize: () => Promise<void>;
     maximize: () => Promise<void>;

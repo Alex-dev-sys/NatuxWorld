@@ -22,7 +22,6 @@ export function StatsCards() {
         icon={<Wifi className="h-4 w-4" />}
         label="Состояние"
         value={<span className="text-success">ОНЛАЙН</span>}
-        hint={<span>пинг {status?.ping ?? 52} мс</span>}
         data={rnd(1, 24, 52, 24)}
         color="#00FF7F"
         delay={0.05}
@@ -31,7 +30,6 @@ export function StatsCards() {
         icon={<Users className="h-4 w-4" />}
         label="Игроков онлайн"
         value={status?.players ?? 142}
-        hint={`из ${status?.maxPlayers ?? 500} слотов`}
         data={rnd(2, 24, 140, 60)}
         color="#FF2B4F"
         delay={0.1}
@@ -40,7 +38,6 @@ export function StatsCards() {
         icon={<MessagesSquare className="h-4 w-4" />}
         label="Участников"
         value="2 500"
-        hint="в Discord"
         data={rnd(3, 24, 2400, 200)}
         color="#5865F2"
         delay={0.15}
@@ -49,7 +46,6 @@ export function StatsCards() {
         icon={<Calendar className="h-4 w-4" />}
         label="Аптайм"
         value={formatUptime(14)}
-        hint="без рестартов"
         data={rnd(4, 24, 18, 6)}
         color="#FF8A00"
         delay={0.2}

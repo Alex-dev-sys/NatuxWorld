@@ -74,6 +74,7 @@ function registerWindowControls(win: BrowserWindow): void {
 }
 
 app.whenReady().then(() => {
+  ipcMain.handle('app:version', () => app.getVersion());
   registerIpcHandlers();
   createWindow();
   if (mainWindow) {

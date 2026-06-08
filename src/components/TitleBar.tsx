@@ -54,19 +54,22 @@ export function TitleBar() {
 
         <button
           onClick={() => bridge.window.minimize()}
-          className="grid h-8 w-8 place-items-center rounded-lg text-white/70 hover:bg-white/5 hover:text-white"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          className="titlebar-no-drag grid h-8 w-8 place-items-center rounded-lg text-white/70 hover:bg-white/5 hover:text-white"
         >
           <Minus className="h-4 w-4" />
         </button>
         <button
           onClick={() => bridge.window.maximize()}
-          className="grid h-8 w-8 place-items-center rounded-lg text-white/70 hover:bg-white/5 hover:text-white"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          className="titlebar-no-drag grid h-8 w-8 place-items-center rounded-lg text-white/70 hover:bg-white/5 hover:text-white"
         >
           <Square className={`h-3.5 w-3.5 ${isMax ? 'rotate-45' : ''}`} />
         </button>
         <button
           onClick={() => bridge.window.close()}
-          className="grid h-8 w-8 place-items-center rounded-lg text-white/70 hover:bg-primary hover:text-white"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          className="titlebar-no-drag grid h-8 w-8 place-items-center rounded-lg text-white/70 hover:bg-primary hover:text-white"
         >
           <X className="h-4 w-4" />
         </button>

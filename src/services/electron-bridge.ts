@@ -3,6 +3,7 @@ import type { NatuxAPI } from '../types/electron';
 const noop = () => () => {};
 
 const fallback: NatuxAPI = {
+  getVersion: async () => '0.0.0',
   window: {
     minimize: async () => {},
     maximize: async () => {},

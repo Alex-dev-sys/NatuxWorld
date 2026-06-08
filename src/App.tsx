@@ -26,6 +26,7 @@ export default function App() {
   useEffect(() => {
     refreshUser();
     loadSettings();
+    bridge.getVersion().then((v) => v && setAppVersion(v));
     return bridge.app.onReady(({ version }) => setAppVersion(version));
   }, [setAppVersion, refreshUser, loadSettings]);
 
