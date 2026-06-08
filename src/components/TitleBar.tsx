@@ -1,15 +1,12 @@
-import { Minus, Square, X, Settings as SettingsIcon, User, Copy } from 'lucide-react';
+import { Minus, Square, X, Settings as SettingsIcon, Copy } from 'lucide-react';
 import { bridge } from '../services/electron-bridge';
 import { useIsMaximized } from '../hooks/useElectron';
-import { useAuthStore } from '../store/useAuthStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { Tooltip } from './ui/Tooltip';
-import { motion } from 'framer-motion';
+import { ProfileMenu } from './ProfileMenu';
 
 export function TitleBar() {
   const isMax = useIsMaximized();
-  const user = useAuthStore((s) => s.user);
-  const login = useAuthStore((s) => s.login);
   const openSettings = useSettingsStore((s) => s.open);
 
   return (
@@ -31,15 +28,7 @@ export function TitleBar() {
       </div>
 
       <div className="titlebar-no-drag flex items-center gap-1.5">
-        <motion.button
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.96 }}
-          onClick={() => (user ? null : login('Player_' + Math.floor(Math.random() * 9999)))}
-          className="flex h-8 items-center gap-2 rounded-lg bg-white/[0.04] px-3 text-xs font-medium text-white/85 ring-1 ring-white/[0.06] hover:bg-white/[0.08] hover:text-white transition-colors"
-        >
-          <User className="h-3.5 w-3.5" />
-          {user ? user.username : 'Войти'}
-        </motion.button>
+        <ProfileMenu />
 
         <Tooltip label="Настройки">
           <button
