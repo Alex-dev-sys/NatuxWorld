@@ -8,3 +8,7 @@ release
 .env
 .env.local
 tsconfig.*.tsbuildinfo
+
+# Ruflo / claude-flow — local runtime and per-machine config
+.claude/
+.claude-flow/
