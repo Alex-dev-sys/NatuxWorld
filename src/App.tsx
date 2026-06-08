@@ -34,9 +34,11 @@ export default function App() {
     <div className="relative flex h-screen w-screen flex-col overflow-hidden rounded-2xl bg-bg ring-1 ring-white/[0.04]">
       <AppBackdrop />
 
-      <TitleBar />
+      <div className="relative z-10">
+        <TitleBar />
+      </div>
 
-      <div className="relative flex flex-1 overflow-hidden">
+      <div className="relative z-10 flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="relative flex-1 overflow-y-auto px-5 pb-5">
           <AnimatePresence mode="wait">
@@ -59,7 +61,9 @@ export default function App() {
         </main>
       </div>
 
-      <Footer />
+      <div className="relative z-10">
+        <Footer />
+      </div>
       <SettingsModal />
       <UpdateToast />
     </div>

@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 
 export function AppBackdrop() {
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,#1a0008_0%,#0a0004_45%,#050000_100%)]" />
 
       <div

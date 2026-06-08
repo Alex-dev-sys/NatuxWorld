@@ -38,8 +38,8 @@ export function Sidebar() {
   const navigate = useNavigate();
 
   return (
-    <aside className="relative flex w-[300px] shrink-0 flex-col gap-4 p-4 pt-0">
-      <div className="absolute inset-x-0 top-0 -z-10 h-72 bg-red-radial opacity-50 blur-2xl" />
+    <aside className="relative flex h-full w-[300px] shrink-0 flex-col gap-4 overflow-y-auto p-4 pt-0">
+      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 bg-red-radial opacity-50 blur-2xl" />
 
       <motion.button
         onClick={() => navigate('/')}

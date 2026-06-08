@@ -12,7 +12,7 @@ const links = [
 export function Footer() {
   const version = useLauncherStore((s) => s.appVersion);
   return (
-    <footer className="flex h-10 shrink-0 items-center justify-between border-t border-white/[0.04] px-5 text-[11px] text-muted">
+    <footer className="relative flex h-10 shrink-0 items-center justify-between border-t border-white/[0.04] bg-bg/80 px-5 text-[11px] text-muted backdrop-blur-md">
       <span>© 2025 NATUX WORLD — Выживай или умри</span>
       <div className="flex items-center gap-5">
         {links.map((l) => (
