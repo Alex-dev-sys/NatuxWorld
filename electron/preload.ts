@@ -43,10 +43,11 @@ const api = {
   },
   updater: {
     check: () => ipcRenderer.invoke('updater:check'),
+    install: () => ipcRenderer.invoke('updater:install'),
     onUpdate: (cb: (info: unknown) => void) => {
       const listener = (_e: unknown, info: unknown) => cb(info);
-      ipcRenderer.on('updater:update', listener);
-      return () => ipcRenderer.removeListener('updater:update', listener);
+      ipcRenderer.on('updater:event', listener);
+      return () => ipcRenderer.removeListener('updater:event', listener);
     },
   },
   shell: {

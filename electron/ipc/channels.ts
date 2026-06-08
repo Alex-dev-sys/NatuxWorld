@@ -33,7 +33,8 @@ export const IPC = {
   },
   UPDATER: {
     CHECK: 'updater:check',
-    UPDATE: 'updater:update',
+    INSTALL: 'updater:install',
+    EVENT: 'updater:event',
   },
   SHELL: {
     OPEN_EXTERNAL: 'shell:openExternal',

@@ -58,6 +58,7 @@ const fallback: NatuxAPI = {
   },
   updater: {
     check: async () => ({ available: false }),
+    install: async () => {},
     onUpdate: noop,
   },
   shell: {

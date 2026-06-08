@@ -12,7 +12,7 @@ const java = new JavaService();
 const auth = new AuthService();
 const news = new NewsService();
 const settings = new SettingsService();
-const updater = new UpdateService();
+export const updater = new UpdateService();
 
 export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.LAUNCHER.PLAY, (_e, options) => launcher.play(options));
@@ -34,6 +34,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.SETTINGS.SET, (_e, s) => settings.set(s));
 
   ipcMain.handle(IPC.UPDATER.CHECK, () => updater.check());
+  ipcMain.handle(IPC.UPDATER.INSTALL, () => updater.installNow());
 
   ipcMain.handle(IPC.SHELL.OPEN_EXTERNAL, (_e, url: string) => shell.openExternal(url));
 }

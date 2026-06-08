@@ -1,14 +1,13 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { registerIpcHandlers } from './ipc/handlers';
+import { registerIpcHandlers, updater } from './ipc/handlers';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 process.env.APP_ROOT = path.join(__dirname, '..');
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist');
-const PUBLIC_DIR = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST;
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -23,7 +22,7 @@ function createWindow(): void {
     resizable: true,
     backgroundColor: '#070707',
     title: 'NATUX WORLD',
-    icon: path.join(PUBLIC_DIR, 'icon.png'),
+    icon: path.join(process.env.APP_ROOT ?? '', 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       contextIsolation: true,
@@ -67,6 +66,11 @@ function registerWindowControls(win: BrowserWindow): void {
 app.whenReady().then(() => {
   registerIpcHandlers();
   createWindow();
+  if (mainWindow) {
+    updater.attach(mainWindow);
+    setTimeout(() => updater.check(), 4000);
+    setInterval(() => updater.check(), 1000 * 60 * 30);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
