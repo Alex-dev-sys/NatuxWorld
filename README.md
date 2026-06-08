@@ -81,6 +81,44 @@ Theme: Dark Cyber Fantasy
 
 All cards use soft glassmorphism, premium shadows, and red-radial ambient lighting. Buttons use Framer Motion spring scale + glow. The PLAY button has an animated pulsing red gradient with shimmer overlay.
 
+## Building installers
+
+### Локально (Windows)
+
+```bash
+npm install
+npm run build              # tsc + vite + electron-builder
+# готовые файлы появятся в release/:
+#   NATUX WORLD-Setup-1.2.3-x64.exe   (NSIS installer)
+#   NATUX WORLD-Portable-1.2.3-x64.exe (portable .exe)
+```
+
+### Через GitHub Actions
+
+Workflow `.github/workflows/build.yml` собирает Windows-инсталлятор на каждый push в `main` и на каждый pull request.
+
+**Сделать релиз с автоматической публикацией .exe:**
+
+```bash
+# 1. Обнови версию в package.json (например 1.2.4)
+# 2. Закоммить и запушь
+git commit -am "release: v1.2.4"
+git push
+
+# 3. Создай тег
+git tag v1.2.4
+git push origin v1.2.4
+```
+
+Workflow соберёт `.exe`, поднимет артефакты, и при наличии тега `v*` создаст GitHub Release с прикреплёнными файлами.
+
+**Где взять собранный .exe без релиза:**
+GitHub → Actions → последний прогон Build → Artifacts → `natux-world-windows-latest`.
+
+### Иконки
+
+Положи `icon.ico` (Windows), `icon.icns` (macOS), `icon.png` (Linux) в папку `build/`. Без них electron-builder возьмёт стандартную электроновскую.
+
 ## Architecture notes
 
 - **Preload bridge**: `window.natux` exposes typed APIs (`launcher`, `auth`, `java`, `news`, `server`, `settings`, `updater`, `window`, `shell`, `app`).
