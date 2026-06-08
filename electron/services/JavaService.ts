@@ -208,20 +208,28 @@ export class JavaService extends EventEmitter {
   }
 
   private extractZip(archive: string, destDir: string): Promise<void> {
+    const root = path.resolve(destDir);
     return new Promise((resolve, reject) => {
       yauzl.open(archive, { lazyEntries: true }, (err, zip) => {
         if (err || !zip) return reject(err ?? new Error('zip open failed'));
         zip.readEntry();
         zip.on('entry', (entry) => {
-          const targetPath = path.join(destDir, entry.fileName);
+          if (entry.fileName.includes('\0') || (process.platform !== 'win32' && entry.fileName.includes('\\'))) {
+            return reject(new Error(`Unsafe zip entry: ${entry.fileName}`));
+          }
+          const resolved = path.resolve(root, entry.fileName);
+          const rel = path.relative(root, resolved);
+          if (rel.startsWith('..') || path.isAbsolute(rel)) {
+            return reject(new Error(`Unsafe zip entry escapes destination: ${entry.fileName}`));
+          }
           if (/\/$/.test(entry.fileName)) {
-            fsp.mkdir(targetPath, { recursive: true }).then(() => zip.readEntry()).catch(reject);
+            fsp.mkdir(resolved, { recursive: true }).then(() => zip.readEntry()).catch(reject);
             return;
           }
-          fsp.mkdir(path.dirname(targetPath), { recursive: true }).then(() => {
+          fsp.mkdir(path.dirname(resolved), { recursive: true }).then(() => {
             zip.openReadStream(entry, (e, stream) => {
               if (e || !stream) return reject(e ?? new Error('zip read stream failed'));
-              const out = createWriteStream(targetPath);
+              const out = createWriteStream(resolved);
               stream.pipe(out);
               out.on('finish', () => zip.readEntry());
               out.on('error', reject);
