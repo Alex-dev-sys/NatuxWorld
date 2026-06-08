@@ -14,21 +14,24 @@ import { SupportPage } from './pages/SupportPage';
 import { bridge } from './services/electron-bridge';
 import { useLauncherStore } from './store/useLauncherStore';
 import { useAuthStore } from './store/useAuthStore';
+import { useSettingsStore } from './store/useSettingsStore';
+import { AppBackdrop } from './components/AppBackdrop';
 
 export default function App() {
   const location = useLocation();
   const setAppVersion = useLauncherStore((s) => s.setAppVersion);
   const refreshUser = useAuthStore((s) => s.refresh);
+  const loadSettings = useSettingsStore((s) => s.load);
 
   useEffect(() => {
     refreshUser();
+    loadSettings();
     return bridge.app.onReady(({ version }) => setAppVersion(version));
-  }, [setAppVersion, refreshUser]);
+  }, [setAppVersion, refreshUser, loadSettings]);
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden rounded-2xl bg-bg ring-1 ring-white/[0.04]">
-      <div className="pointer-events-none absolute inset-0 grid-bg opacity-30" />
-      <div className="pointer-events-none absolute -top-32 left-1/4 h-96 w-[480px] rounded-full bg-primary/20 blur-[140px]" />
+      <AppBackdrop />
 
       <TitleBar />
 

@@ -1,6 +1,7 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
+  Home,
   Newspaper,
   ShoppingCart,
   ScrollText,
@@ -19,6 +20,7 @@ import { bridge } from '../services/electron-bridge';
 import { cn } from '../utils/cn';
 
 const navItems = [
+  { to: '/', icon: Home, label: 'Главная', end: true },
   { to: '/news', icon: Newspaper, label: 'Новости' },
   { to: '/store', icon: ShoppingCart, label: 'Донат-магазин' },
   { to: '/rules', icon: ScrollText, label: 'Правила' },
@@ -33,16 +35,18 @@ const community = [
 
 export function Sidebar() {
   const { status } = useServerStatus();
+  const navigate = useNavigate();
 
   return (
     <aside className="relative flex w-[300px] shrink-0 flex-col gap-4 p-4 pt-0">
       <div className="absolute inset-x-0 top-0 -z-10 h-72 bg-red-radial opacity-50 blur-2xl" />
 
-      <motion.div
+      <motion.button
+        onClick={() => navigate('/')}
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
-        className="relative flex items-center gap-3 rounded-2xl glass p-3"
+        className="relative flex items-center gap-3 rounded-2xl glass p-3 text-left hover:border-white/15 transition"
       >
         <div className="relative grid h-14 w-14 place-items-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary-glow to-[#8a0020] shadow-[0_0_24px_rgba(255,0,55,0.5)] ring-1 ring-white/10">
           <span className="absolute inset-0 bg-[radial-gradient(120%_100%_at_50%_0%,rgba(255,255,255,0.45)_0%,transparent_55%)]" />
@@ -57,7 +61,7 @@ export function Sidebar() {
             WORLD
           </div>
         </div>
-      </motion.div>
+      </motion.button>
 
       <motion.div
         initial={{ opacity: 0, y: 8 }}
@@ -105,6 +109,7 @@ export function Sidebar() {
           >
             <NavLink
               to={item.to}
+              end={item.end}
               className={({ isActive }) =>
                 cn(
                   'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-white/70 transition-colors',
