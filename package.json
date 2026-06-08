@@ -1,6 +1,6 @@
 {
   "name": "natux-world-launcher",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "NATUX WORLD - Premium Minecraft Launcher",
   "main": "dist-electron/main.js",
   "type": "module",
@@ -58,7 +58,8 @@
       {
         "provider": "github",
         "owner": "Alex-dev-sys",
-        "repo": "NatuxWorld"
+        "repo": "NatuxWorld",
+        "releaseType": "release"
       }
     ],
     "nsis": {
