@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Newspaper, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNews } from '../hooks/useNews';
@@ -8,6 +9,7 @@ import type { NewsItem } from '../../electron/services/NewsService';
 
 export function NewsSection() {
   const news = useNews();
+  const navigate = useNavigate();
   const [active, setActive] = useState<NewsItem | null>(null);
 
   return (
@@ -27,7 +29,10 @@ export function NewsSection() {
               Последние новости
             </span>
           </div>
-          <button className="group flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-primary hover:text-primary-glow">
+          <button
+            onClick={() => navigate('/news')}
+            className="group flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-primary hover:text-primary-glow"
+          >
             Все новости
             <ArrowRight className="h-3 w-3 transition group-hover:translate-x-0.5" />
           </button>
