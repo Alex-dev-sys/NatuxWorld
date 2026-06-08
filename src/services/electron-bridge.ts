@@ -18,10 +18,10 @@ const fallback: NatuxAPI = {
   },
   auth: {
     login: async (c) => ({
-      id: 'web',
       username: c.username,
       uuid: 'web-uuid',
       accessToken: 'web',
+      type: 'offline' as const,
     }),
     logout: async () => {},
     getUser: async () => null,

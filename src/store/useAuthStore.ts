@@ -2,9 +2,10 @@ import { create } from 'zustand';
 import { bridge } from '../services/electron-bridge';
 
 interface User {
-  id: string;
   username: string;
   uuid: string;
+  accessToken?: string;
+  type?: 'offline' | 'microsoft';
   avatar?: string;
 }
 
