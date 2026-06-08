@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { ShoppingBag, Sparkles, Crown, Zap } from 'lucide-react';
+import { Tooltip } from '../components/ui/Tooltip';
 
 const items = [
   { name: 'VIP', price: '299₽', perk: 'Привилегии и киты', icon: Sparkles, color: '#FF8A00' },
@@ -33,12 +34,17 @@ export function StorePage() {
               <span className="text-2xl font-bold">{item.price}</span>
               <span className="text-xs text-muted">/ навсегда</span>
             </div>
-            <button
-              className="mt-4 w-full rounded-xl py-2 text-sm font-semibold ring-1 ring-white/10 hover:bg-white/[0.05]"
-              style={{ color: item.color }}
-            >
-              Купить
-            </button>
+            <Tooltip label="Скоро доступно">
+              <button
+                type="button"
+                disabled
+                aria-disabled="true"
+                className="mt-4 w-full cursor-not-allowed rounded-xl py-2 text-sm font-semibold opacity-50 ring-1 ring-white/10"
+                style={{ color: item.color }}
+              >
+                Купить
+              </button>
+            </Tooltip>
           </motion.div>
         ))}
       </div>
