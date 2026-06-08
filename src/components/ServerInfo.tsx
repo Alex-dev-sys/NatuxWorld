@@ -1,11 +1,12 @@
-import { motion } from 'framer-motion';
-import { Server, Copy, Check, ArrowRight } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Server, Copy, Check, ChevronDown, Lock, Unlock, Map as MapIcon, ShieldAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useServerStatus } from '../hooks/useServerStatus';
 
 export function ServerInfo() {
   const { status, info } = useServerStatus();
   const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (!copied) return;
@@ -79,10 +80,52 @@ export function ServerInfo() {
           </div>
         ))}
       </div>
-      <button className="group mt-1 flex items-center justify-center gap-1 rounded-xl bg-white/[0.03] py-2 text-[11px] font-semibold uppercase tracking-wider text-white/70 ring-1 ring-white/[0.05] hover:bg-white/[0.06] hover:text-white">
-        Подробнее о сервере
-        <ArrowRight className="h-3 w-3 transition group-hover:translate-x-0.5" />
+
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            key="extra"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: [0.22, 0.8, 0.36, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="flex flex-col gap-2 pt-1">
+              <ExtraRow icon={<MapIcon className="h-3.5 w-3.5" />} label="Карта" value={info?.map ?? 'world_anarchy'} />
+              <ExtraRow icon={<ShieldAlert className="h-3.5 w-3.5" />} label="Сложность" value={info?.difficulty ?? 'Hard'} />
+              <ExtraRow
+                icon={info?.whitelist ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+                label="Whitelist"
+                value={info?.whitelist ? 'Включён' : 'Выключен'}
+              />
+              <div className="mt-1 rounded-xl bg-white/[0.02] p-3 text-xs leading-relaxed text-muted ring-1 ring-white/[0.04]">
+                Сервер NATUX WORLD. Анархия. Сезон 7. Гриф разрешён, PvP включён.
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="group mt-1 flex items-center justify-center gap-1 rounded-xl bg-white/[0.03] py-2 text-[11px] font-semibold uppercase tracking-wider text-white/70 ring-1 ring-white/[0.05] hover:bg-white/[0.06] hover:text-white"
+      >
+        {expanded ? 'Свернуть' : 'Подробнее о сервере'}
+        <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
       </button>
     </motion.div>
+  );
+}
+
+function ExtraRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg bg-white/[0.02] px-3 py-1.5 text-xs ring-1 ring-white/[0.04]">
+      <span className="flex items-center gap-2 text-muted">
+        <span className="text-primary/80">{icon}</span>
+        {label}
+      </span>
+      <span className="font-medium text-white/90">{value}</span>
+    </div>
   );
 }
