@@ -7,7 +7,7 @@ import { NewsService } from '../services/NewsService';
 import { SettingsService } from '../services/SettingsService';
 import { UpdateService } from '../services/UpdateService';
 
-const launcher = new LauncherService();
+export const launcher = new LauncherService();
 const java = new JavaService();
 const auth = new AuthService();
 const news = new NewsService();
@@ -17,6 +17,7 @@ export const updater = new UpdateService();
 export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.LAUNCHER.PLAY, (_e, options) => launcher.play(options));
   ipcMain.handle(IPC.LAUNCHER.GET_STATUS, () => launcher.getStatus());
+  ipcMain.handle(IPC.LAUNCHER.CANCEL, () => launcher.cancel());
 
   ipcMain.handle(IPC.AUTH.LOGIN, (_e, creds) => auth.login(creds));
   ipcMain.handle(IPC.AUTH.LOGOUT, () => auth.logout());

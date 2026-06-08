@@ -13,8 +13,10 @@ const fallback: NatuxAPI = {
   },
   launcher: {
     play: async () => ({ ok: true }),
-    getStatus: async () => ({ stage: 'idle', progress: 0, message: 'Готов к запуску' }),
+    getStatus: async () => ({ stage: 'idle' as const, progress: 0, message: 'Готов к запуску' }),
+    cancel: async () => {},
     onProgress: noop,
+    onLog: noop,
   },
   auth: {
     login: async (c) => ({
@@ -28,7 +30,7 @@ const fallback: NatuxAPI = {
   },
   java: {
     detect: async () => null,
-    install: async () => ({ ok: true }),
+    install: async () => ({ version: '21', vendor: 'Temurin' as const, path: '/web/jre' }),
   },
   news: {
     getAll: async () => (await import('../data/news.json')).default as never,

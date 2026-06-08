@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { registerIpcHandlers, updater } from './ipc/handlers';
+import { registerIpcHandlers, updater, launcher } from './ipc/handlers';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -79,6 +79,7 @@ app.whenReady().then(() => {
   createWindow();
   if (mainWindow) {
     updater.attach(mainWindow);
+    launcher.attach(mainWindow);
     setTimeout(() => updater.check(), 4000);
     setInterval(() => updater.check(), 1000 * 60 * 30);
   }

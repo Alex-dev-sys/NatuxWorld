@@ -1,9 +1,19 @@
-import type { ServerStatus, ServerInfo, LaunchProgress, LaunchOptions } from '../../electron/services/LauncherService';
+import type {
+  ServerStatus,
+  ServerInfo,
+  LaunchProgress,
+  PlayOptions,
+} from '../../electron/services/LauncherService';
 import type { NewsItem } from '../../electron/services/NewsService';
 import type { User, Credentials } from '../../electron/services/AuthService';
 import type { JavaInstallation } from '../../electron/services/JavaService';
 import type { LauncherSettings } from '../../electron/services/SettingsService';
 import type { UpdateInfo, UpdateEvent } from '../../electron/services/UpdateService';
+
+export interface LauncherLog {
+  stream: 'stdout' | 'stderr';
+  line: string;
+}
 
 export interface NatuxAPI {
   getVersion: () => Promise<string>;
@@ -15,9 +25,11 @@ export interface NatuxAPI {
     onMaximizedChange: (cb: (val: boolean) => void) => () => void;
   };
   launcher: {
-    play: (options: LaunchOptions) => Promise<{ ok: boolean }>;
+    play: (options: PlayOptions) => Promise<{ ok: boolean; error?: string }>;
     getStatus: () => Promise<LaunchProgress>;
+    cancel: () => Promise<void>;
     onProgress: (cb: (p: LaunchProgress) => void) => () => void;
+    onLog: (cb: (line: LauncherLog) => void) => () => void;
   };
   auth: {
     login: (creds: Credentials) => Promise<User>;
@@ -26,7 +38,7 @@ export interface NatuxAPI {
   };
   java: {
     detect: () => Promise<JavaInstallation | null>;
-    install: (version: string) => Promise<{ ok: boolean; path?: string }>;
+    install: () => Promise<JavaInstallation>;
   };
   news: {
     getAll: () => Promise<NewsItem[]>;

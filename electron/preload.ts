@@ -16,10 +16,16 @@ const api = {
   launcher: {
     play: (options: unknown) => ipcRenderer.invoke('launcher:play', options),
     getStatus: () => ipcRenderer.invoke('launcher:getStatus'),
+    cancel: () => ipcRenderer.invoke('launcher:cancel'),
     onProgress: (cb: (progress: unknown) => void) => {
       const listener = (_e: unknown, p: unknown) => cb(p);
       ipcRenderer.on('launcher:progress', listener);
       return () => ipcRenderer.removeListener('launcher:progress', listener);
+    },
+    onLog: (cb: (line: unknown) => void) => {
+      const listener = (_e: unknown, line: unknown) => cb(line);
+      ipcRenderer.on('launcher:log', listener);
+      return () => ipcRenderer.removeListener('launcher:log', listener);
     },
   },
   auth: {

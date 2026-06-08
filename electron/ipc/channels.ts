@@ -10,6 +10,8 @@ export const IPC = {
     PLAY: 'launcher:play',
     GET_STATUS: 'launcher:getStatus',
     PROGRESS: 'launcher:progress',
+    LOG: 'launcher:log',
+    CANCEL: 'launcher:cancel',
   },
   AUTH: {
     LOGIN: 'auth:login',
