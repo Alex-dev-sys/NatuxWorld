@@ -14,7 +14,6 @@ import {
   Terminal,
 } from 'lucide-react';
 import { PlayButton } from './PlayButton';
-import { VersionSelector } from './VersionSelector';
 import { useServerStatus } from '../hooks/useServerStatus';
 import { bridge } from '../services/electron-bridge';
 import { cn } from '../utils/cn';
@@ -92,7 +91,6 @@ export function Sidebar() {
 
       <div className="mt-2 flex flex-col gap-2">
         <PlayButton />
-        <VersionSelector />
       </div>
 
       <nav className="mt-2 flex flex-col gap-1">

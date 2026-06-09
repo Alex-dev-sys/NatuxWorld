@@ -70,6 +70,8 @@ export interface PlayOptions {
   loader?: 'forge' | 'fabric' | 'neoforge' | 'vanilla';
   username: string;
   memory: number;
+  /** When set, the game connects straight to this server on launch (quick play). */
+  server?: string;
 }
 
 export function parseVersionId(id: string): { loader: string; mcVersion: string } {
@@ -225,6 +227,7 @@ export class LauncherService extends EventEmitter {
       clientJar: getVersionJarPath(version.id),
       user,
       memory: opts.memory,
+      quickPlayServer: opts.server,
     });
 
     this.currentProc = handle;

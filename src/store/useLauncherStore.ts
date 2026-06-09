@@ -1,14 +1,11 @@
 import { create } from 'zustand';
-import type { LoaderKind, MinecraftVersion } from '../types';
 import type { LaunchProgress } from '../../electron/services/LauncherService';
 import { bridge } from '../services/electron-bridge';
 
-export const VERSIONS: MinecraftVersion[] = [
-  { id: 'forge-1.21.6', label: 'Forge 1.21.6', loader: 'forge', recommended: true },
-  { id: 'fabric-1.21.6', label: 'Fabric 1.21.6', loader: 'fabric' },
-  { id: 'neoforge-1.21.6', label: 'NeoForge 1.21.6', loader: 'neoforge' },
-  { id: 'forge-1.20.1', label: 'Forge 1.20.1', loader: 'forge' },
-];
+// Single fixed build + server — no version picking, one PLAY button.
+const FIXED_VERSION = 'forge-1.21.6';
+const FIXED_LOADER = 'forge' as const;
+const SERVER_IP = 'mc.vibestudy.ru';
 
 const STAGE_LABEL: Record<string, string> = {
   idle: 'Готов к запуску',
@@ -24,7 +21,6 @@ const STAGE_LABEL: Record<string, string> = {
 };
 
 interface LauncherState {
-  selectedVersion: MinecraftVersion;
   isLaunching: boolean;
   progress: number;
   progressMessage: string;
@@ -32,14 +28,12 @@ interface LauncherState {
   appVersion: string;
   errorMessage: string | null;
   unsubProgress: (() => void) | null;
-  setVersion: (v: MinecraftVersion) => void;
   play: () => Promise<void>;
   cancel: () => Promise<void>;
   setAppVersion: (v: string) => void;
 }
 
 export const useLauncherStore = create<LauncherState>((set, get) => ({
-  selectedVersion: VERSIONS[0],
   isLaunching: false,
   progress: 0,
   progressMessage: 'Готов к запуску',
@@ -48,11 +42,10 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
   errorMessage: null,
   unsubProgress: null,
 
-  setVersion: (v) => set({ selectedVersion: v }),
   setAppVersion: (v) => set({ appVersion: v }),
 
   play: async () => {
-    const { selectedVersion, isLaunching, unsubProgress } = get();
+    const { isLaunching, unsubProgress } = get();
     if (isLaunching) return;
     if (unsubProgress) unsubProgress();
 
@@ -76,10 +69,11 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
     });
 
     const result = await bridge.launcher.play({
-      version: selectedVersion.id,
-      loader: selectedVersion.loader as LoaderKind,
+      version: FIXED_VERSION,
+      loader: FIXED_LOADER,
       username: 'Player',
       memory: 4096,
+      server: SERVER_IP,
     });
 
     if (!result.ok) {

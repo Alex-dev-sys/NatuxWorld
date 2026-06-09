@@ -102,6 +102,8 @@ export interface LaunchInput {
   clientJar: string;
   user: User;
   memory: number;
+  /** If set, append --quickPlayMultiplayer so MC joins this server directly. */
+  quickPlayServer?: string;
 }
 
 export class MinecraftService {
@@ -136,6 +138,9 @@ export class MinecraftService {
     ];
 
     const gameArgs = resolveGameArguments(input.version, values as unknown as Record<string, string>);
+    if (input.quickPlayServer) {
+      gameArgs.push('--quickPlayMultiplayer', input.quickPlayServer);
+    }
 
     // The full classpath (esp. with Forge) blows past the OS command-line length limit
     // and yields "spawn ENAMETOOLONG". Java 9+ reads args from an @argfile instead.
