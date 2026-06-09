@@ -62,10 +62,25 @@ export function platformOsName(platform: NodeJS.Platform = process.platform): Os
   return 'linux';
 }
 
-export function evaluateRules(rules: Rule[], os: OsName = platformOsName()): boolean {
+export function evaluateRules(
+  rules: Rule[],
+  os: OsName = platformOsName(),
+  features: Record<string, boolean> = {},
+): boolean {
   let allow = false;
   for (const r of rules) {
-    const matches = !r.os || !r.os.name || r.os.name === os;
+    let matches = !r.os || !r.os.name || r.os.name === os;
+    // Feature-gated args (--demo, --width/--height, --quickPlay*) must be skipped
+    // unless that feature is active — otherwise their empty ${...} values reach the
+    // game. Vanilla tolerates empty width/height; Forge's jopt parser throws on "".
+    if (matches && r.features) {
+      for (const [key, want] of Object.entries(r.features)) {
+        if ((features[key] ?? false) !== want) {
+          matches = false;
+          break;
+        }
+      }
+    }
     if (matches) allow = r.action === 'allow';
   }
   return allow;

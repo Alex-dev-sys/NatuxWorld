@@ -59,6 +59,17 @@ describe('evaluateRules', () => {
     expect(evaluateRules(rules, 'windows')).toBe(true);
     expect(evaluateRules(rules, 'linux')).toBe(false);
   });
+
+  it('excludes feature-gated args when the feature is inactive', () => {
+    const demo = [{ action: 'allow' as const, features: { is_demo_user: true } }];
+    expect(evaluateRules(demo, 'windows')).toBe(false); // no features active → skip --demo
+    expect(evaluateRules(demo, 'windows', { is_demo_user: true })).toBe(true);
+  });
+
+  it('excludes custom-resolution args by default', () => {
+    const res = [{ action: 'allow' as const, features: { has_custom_resolution: true } }];
+    expect(evaluateRules(res, 'windows')).toBe(false); // prevents empty --width/--height
+  });
 });
 
 describe('filterByOsRules', () => {
