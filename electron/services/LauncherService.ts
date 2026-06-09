@@ -16,6 +16,7 @@ import { MojangService } from './MojangService';
 import { DownloadService, type DownloadJob } from './DownloadService';
 import { JavaService } from './JavaService';
 import { AuthService } from './AuthService';
+import { ForgeService } from './ForgeService';
 import { MinecraftService, type LaunchHandle } from './MinecraftService';
 import {
   getAssetObjectPath,
@@ -94,6 +95,7 @@ export class LauncherService extends EventEmitter {
   private readonly download = new DownloadService(8);
   private readonly java = new JavaService();
   private readonly auth = new AuthService();
+  private readonly forge = new ForgeService();
   private readonly minecraft = new MinecraftService();
 
   attach(win: BrowserWindow): void {
@@ -106,6 +108,9 @@ export class LauncherService extends EventEmitter {
         progress: p.progress,
         message: p.message,
       });
+    });
+    this.forge.on('log', (line: { stream: string; line: string }) => {
+      this.window?.webContents.send(CHANNEL_LOG, line);
     });
   }
 
@@ -196,12 +201,13 @@ export class LauncherService extends EventEmitter {
       });
     }
 
+    // Forge installs on top of the prepared vanilla files; merged manifest drives the launch.
+    // The vanilla client jar and natives dir are reused (Forge inherits them).
+    let launchVersion = version;
     if (loader === 'forge') {
-      this.report({
-        stage: 'forge-install',
-        progress: 0,
-        message: 'Forge интеграция будет в следующих коммитах — запускаем ваниль',
-      });
+      this.report({ stage: 'forge-install', progress: 0, message: 'Установка Forge...' });
+      launchVersion = await this.forge.install(mcVersion, java.path, version, (p) => this.report(p));
+      this.throwIfCancelled();
     }
 
     const user = (await this.auth.getUser()) ?? (await this.auth.login(opts.username));
@@ -211,7 +217,7 @@ export class LauncherService extends EventEmitter {
     await fsp.mkdir(getMinecraftDir(), { recursive: true });
 
     const handle = this.minecraft.launch({
-      version,
+      version: launchVersion,
       javaPath: java.path,
       gameDir: getMinecraftDir(),
       assetsDir: getAssetsDir(),
