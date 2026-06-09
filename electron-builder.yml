@@ -32,9 +32,15 @@ nsis:
 portable:
   artifactName: ${productName}-Portable-${version}-${arch}.${ext}
 mac:
-  target: dmg
-  icon: build/icon.icns
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  icon: build/icon.png
   category: public.app-category.games
+  identity: null
+  artifactName: ${productName}-${version}-${arch}.${ext}
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
 linux:
   target: AppImage
   icon: build/icon.png
