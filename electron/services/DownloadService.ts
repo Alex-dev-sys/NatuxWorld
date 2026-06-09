@@ -130,6 +130,12 @@ export class DownloadService {
       tryGet(job.url);
     });
 
+    // Catch truncated downloads (dropped connection) even when no sha1 is provided.
+    if (job.size && received !== job.size) {
+      await fsp.unlink(tmp).catch(() => undefined);
+      throw new Error(`Size mismatch for ${job.url}: got ${received}, expected ${job.size}`);
+    }
+
     if (job.sha1) {
       const got = hash.digest('hex');
       if (got !== job.sha1.toLowerCase()) {

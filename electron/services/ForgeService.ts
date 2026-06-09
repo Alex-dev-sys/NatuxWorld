@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import yauzl from 'yauzl';
 import { DownloadService } from './DownloadService';
 import type { ArgEntry, Library, VanillaVersion } from './MojangService';
 import {
@@ -65,6 +66,17 @@ export function mergeVersions(vanilla: VanillaVersion, forge: ForgeVersionJson):
   };
 }
 
+/** True if the file opens as a valid zip (central directory intact). */
+function isValidZip(file: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    yauzl.open(file, { lazyEntries: true }, (err, zip) => {
+      if (err || !zip) return resolve(false);
+      zip.close();
+      resolve(true);
+    });
+  });
+}
+
 export function forgeVersionId(mcVersion: string, build: string): string {
   return `${mcVersion}-forge-${build}`;
 }
@@ -123,7 +135,7 @@ export class ForgeService extends EventEmitter {
     const installer = path.join(getForgeDir(mcVersion), `forge-${mcVersion}-${build}-installer.jar`);
 
     onProgress({ stage: 'forge-install', progress: 0, message: 'Загрузка установщика Forge...' });
-    await this.download.downloadMany([{ url: installerUrl(mcVersion, build), dest: installer }], () => undefined);
+    await this.ensureInstaller(installer, installerUrl(mcVersion, build));
 
     // Forge installer refuses to run without a launcher_profiles.json in the target dir.
     const gameDir = getMinecraftDir();
@@ -136,6 +148,22 @@ export class ForgeService extends EventEmitter {
 
     onProgress({ stage: 'forge-install', progress: 20, message: 'Установка Forge (процессоры)...' });
     await this.spawnInstaller(consoleJava(javaPath), installer, gameDir, onProgress);
+  }
+
+  /**
+   * Download the installer, re-fetching if a cached copy is a truncated/corrupt jar
+   * (which would otherwise fail at `java -jar` with "central directory not found").
+   * The installer has no published sha1, so we validate it opens as a zip instead.
+   */
+  private async ensureInstaller(installer: string, url: string): Promise<void> {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (fs.existsSync(installer) && (await isValidZip(installer))) return;
+      await fsp.unlink(installer).catch(() => undefined);
+      await this.download.downloadMany([{ url, dest: installer }], () => undefined);
+    }
+    if (!(await isValidZip(installer))) {
+      throw new Error('Установщик Forge скачался повреждённым (битый архив). Проверь соединение и повтори.');
+    }
   }
 
   private spawnInstaller(
