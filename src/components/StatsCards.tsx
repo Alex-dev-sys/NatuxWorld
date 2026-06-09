@@ -1,7 +1,6 @@
-import { Wifi, Users, MessagesSquare, Calendar } from 'lucide-react';
+import { Wifi, Users, Gauge, Server } from 'lucide-react';
 import { StatCard } from './StatCard';
 import { useServerStatus } from '../hooks/useServerStatus';
-import { formatUptime } from '../utils/format';
 
 function rnd(seed: number, n: number, base: number, variance: number): number[] {
   const out: number[] = [];
@@ -16,37 +15,46 @@ function rnd(seed: number, n: number, base: number, variance: number): number[] 
 export function StatsCards() {
   const { status } = useServerStatus();
 
+  const isOnline = status?.online ?? false;
+  const tps = status?.tps ?? null;
+  const tpsColor = tps === null ? '#888' : tps >= 18 ? '#00FF7F' : tps >= 15 ? '#FF8A00' : '#FF2B4F';
+  const tpsLabel = tps === null ? '—' : `${tps.toFixed(1)}`;
+
   return (
     <div className="grid grid-cols-4 gap-4">
       <StatCard
         icon={<Wifi className="h-4 w-4" />}
         label="Состояние"
-        value={<span className="text-success">ОНЛАЙН</span>}
+        value={
+          isOnline
+            ? <span className="text-success">ОНЛАЙН</span>
+            : <span className="text-red-400">ОФФЛАЙН</span>
+        }
         data={rnd(1, 24, 52, 24)}
-        color="#00FF7F"
+        color={isOnline ? '#00FF7F' : '#FF2B4F'}
         delay={0.05}
       />
       <StatCard
         icon={<Users className="h-4 w-4" />}
         label="Игроков онлайн"
-        value={status?.players ?? 142}
-        data={rnd(2, 24, 140, 60)}
+        value={status ? `${status.players}/${status.maxPlayers}` : '—'}
+        data={rnd(2, 24, 10, 20)}
         color="#FF2B4F"
         delay={0.1}
       />
       <StatCard
-        icon={<MessagesSquare className="h-4 w-4" />}
-        label="Участников"
-        value="2 500"
-        data={rnd(3, 24, 2400, 200)}
-        color="#5865F2"
+        icon={<Gauge className="h-4 w-4" />}
+        label="TPS"
+        value={<span style={{ color: tpsColor }}>{tpsLabel}</span>}
+        data={rnd(3, 24, 19, 3)}
+        color={tpsColor}
         delay={0.15}
       />
       <StatCard
-        icon={<Calendar className="h-4 w-4" />}
-        label="Аптайм"
-        value={formatUptime(14)}
-        data={rnd(4, 24, 18, 6)}
+        icon={<Server className="h-4 w-4" />}
+        label="Пинг"
+        value={status?.ping ? `${status.ping} мс` : '—'}
+        data={rnd(4, 24, 50, 30)}
         color="#FF8A00"
         delay={0.2}
       />

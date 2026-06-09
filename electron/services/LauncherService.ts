@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import https from 'node:https';
 import yauzl from 'yauzl';
 import type { BrowserWindow } from 'electron';
 import {
@@ -336,21 +337,68 @@ export class LauncherService extends EventEmitter {
     if (this.cancelled) throw new Error('Отменено пользователем');
   }
 
+  private async fetchSiteApi<T>(path: string): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const req = https.get(`https://vibestudy.ru${path}`, { timeout: 6000 }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          try { resolve(JSON.parse(data)); }
+          catch { reject(new Error('Invalid JSON')); }
+        });
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+    });
+  }
+
   async getServerStatus(): Promise<ServerStatus> {
-    return { online: true, players: 142, maxPlayers: 500, ping: 52, tps: 20.0 };
+    try {
+      const t0 = Date.now();
+      const data = await this.fetchSiteApi<{
+        online: boolean; players: { online: number; max: number }; tps?: number;
+      }>('/api/server/status');
+      const ping = Date.now() - t0;
+      return {
+        online: data.online,
+        players: data.players?.online ?? 0,
+        maxPlayers: data.players?.max ?? 100,
+        ping,
+        tps: data.tps ?? 20.0,
+      };
+    } catch {
+      return { online: false, players: 0, maxPlayers: 100, ping: 0, tps: 0 };
+    }
   }
 
   async getServerInfo(): Promise<ServerInfo> {
-    return {
-      ip: 'mc.xbestu.ru',
-      version: '1.21.6 Forge',
-      mode: 'Анархия',
-      map: 'world_anarchy',
-      difficulty: 'Hard',
-      whitelist: false,
-      tps: 20.0,
-      ping: 52,
-    };
+    try {
+      const data = await this.fetchSiteApi<{
+        online: boolean; players: { online: number; max: number }; version: string; tps?: number;
+      }>('/api/server/status');
+      const status = await this.getServerStatus();
+      return {
+        ip: 'mc.vibestudy.ru',
+        version: data.version || '1.20.1+',
+        mode: 'Анархия · PvP · Выживание',
+        map: 'world_anarchy',
+        difficulty: 'Hard',
+        whitelist: false,
+        tps: data.tps ?? status.tps,
+        ping: status.ping,
+      };
+    } catch {
+      return {
+        ip: 'mc.vibestudy.ru',
+        version: '1.20.1+',
+        mode: 'Анархия · PvP · Выживание',
+        map: 'world_anarchy',
+        difficulty: 'Hard',
+        whitelist: false,
+        tps: 0,
+        ping: 0,
+      };
+    }
   }
 }
 
