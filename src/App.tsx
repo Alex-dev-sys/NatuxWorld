@@ -11,8 +11,10 @@ import { NewsPage } from './pages/NewsPage';
 import { StorePage } from './pages/StorePage';
 import { RulesPage } from './pages/RulesPage';
 import { SupportPage } from './pages/SupportPage';
+import { LogsPage } from './pages/LogsPage';
 import { bridge } from './services/electron-bridge';
 import { useLauncherStore } from './store/useLauncherStore';
+import { useLogStore } from './store/useLogStore';
 import { useAuthStore } from './store/useAuthStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { AppBackdrop } from './components/AppBackdrop';
@@ -22,13 +24,15 @@ export default function App() {
   const setAppVersion = useLauncherStore((s) => s.setAppVersion);
   const refreshUser = useAuthStore((s) => s.refresh);
   const loadSettings = useSettingsStore((s) => s.load);
+  const startLogCapture = useLogStore((s) => s.startCapture);
 
   useEffect(() => {
     refreshUser();
     loadSettings();
+    startLogCapture();
     bridge.getVersion().then((v) => v && setAppVersion(v));
     return bridge.app.onReady(({ version }) => setAppVersion(version));
-  }, [setAppVersion, refreshUser, loadSettings]);
+  }, [setAppVersion, refreshUser, loadSettings, startLogCapture]);
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden rounded-2xl bg-bg ring-1 ring-white/[0.04]">
@@ -55,6 +59,7 @@ export default function App() {
                 <Route path="/store" element={<StorePage />} />
                 <Route path="/rules" element={<RulesPage />} />
                 <Route path="/support" element={<SupportPage />} />
+                <Route path="/logs" element={<LogsPage />} />
               </Routes>
             </motion.div>
           </AnimatePresence>

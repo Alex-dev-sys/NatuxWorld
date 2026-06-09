@@ -11,7 +11,7 @@ import type { LauncherSettings } from '../../electron/services/SettingsService';
 import type { UpdateInfo, UpdateEvent } from '../../electron/services/UpdateService';
 
 export interface LauncherLog {
-  stream: 'stdout' | 'stderr';
+  stream: 'stdout' | 'stderr' | 'forge' | string;
   line: string;
 }
 

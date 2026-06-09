@@ -11,6 +11,7 @@ import {
   Users,
   Activity,
   Gauge,
+  Terminal,
 } from 'lucide-react';
 import { PlayButton } from './PlayButton';
 import { VersionSelector } from './VersionSelector';
@@ -24,6 +25,7 @@ const navItems = [
   { to: '/store', icon: ShoppingCart, label: 'Донат-магазин' },
   { to: '/rules', icon: ScrollText, label: 'Правила' },
   { to: '/support', icon: LifeBuoy, label: 'Поддержка' },
+  { to: '/logs', icon: Terminal, label: 'Логи' },
 ];
 
 const community = [

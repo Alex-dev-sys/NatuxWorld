@@ -142,11 +142,15 @@ export class MinecraftService {
     const argfile = path.join(input.gameDir, 'launch-args.txt');
     writeFileSync(argfile, MinecraftService.toArgFile([...jvmArgs, ...gameArgs]), 'utf-8');
 
-    const proc = spawn(input.javaPath, [`@${argfile}`], {
+    // javaw.exe has NO stdout/stderr — a crash would surface only as "exit 1" with no logs.
+    // Use java.exe (console hidden via windowsHide) so we can capture and forward output.
+    const java = input.javaPath.replace(/javaw\.exe$/i, 'java.exe');
+
+    const proc = spawn(java, [`@${argfile}`], {
       cwd: input.gameDir,
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
-      windowsHide: false,
+      windowsHide: true,
     });
 
     return MinecraftService.wrapProcess(proc);
