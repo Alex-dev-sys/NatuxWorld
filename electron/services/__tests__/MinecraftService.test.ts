@@ -4,12 +4,24 @@ import {
   classpathSeparator,
   resolveLibraryPaths,
   buildGameValues,
+  MinecraftService,
 } from '../MinecraftService';
 import type { Library } from '../MojangService';
 
 vi.mock('electron', () => ({
   app: { getPath: () => 'C:\\Users\\Test\\AppData\\Roaming\\NATUX WORLD' },
 }));
+
+describe('toArgFile', () => {
+  it('quotes each arg and escapes backslashes for Java @argfile', () => {
+    const out = MinecraftService.toArgFile(['-cp', 'C:\\libs\\a.jar;C:\\libs\\b.jar', 'Main']);
+    expect(out).toBe('"-cp"\n"C:\\\\libs\\\\a.jar;C:\\\\libs\\\\b.jar"\n"Main"');
+  });
+
+  it('escapes embedded quotes', () => {
+    expect(MinecraftService.toArgFile(['a"b'])).toBe('"a\\"b"');
+  });
+});
 
 describe('classpathSeparator', () => {
   it(': on unix, ; on windows', () => {

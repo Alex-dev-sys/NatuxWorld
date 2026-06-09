@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   filterByOsRules,
@@ -136,7 +137,12 @@ export class MinecraftService {
 
     const gameArgs = resolveGameArguments(input.version, values as unknown as Record<string, string>);
 
-    const proc = spawn(input.javaPath, [...jvmArgs, ...gameArgs], {
+    // The full classpath (esp. with Forge) blows past the OS command-line length limit
+    // and yields "spawn ENAMETOOLONG". Java 9+ reads args from an @argfile instead.
+    const argfile = path.join(input.gameDir, 'launch-args.txt');
+    writeFileSync(argfile, MinecraftService.toArgFile([...jvmArgs, ...gameArgs]), 'utf-8');
+
+    const proc = spawn(input.javaPath, [`@${argfile}`], {
       cwd: input.gameDir,
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
@@ -144,6 +150,16 @@ export class MinecraftService {
     });
 
     return MinecraftService.wrapProcess(proc);
+  }
+
+  /**
+   * Serialize args into a Java @argfile. Each arg is double-quoted; backslashes and
+   * quotes are escaped, because Java treats `\` as an escape char inside argfiles.
+   */
+  static toArgFile(args: string[]): string {
+    return args
+      .map((a) => `"${a.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`)
+      .join('\n');
   }
 
   private static wrapProcess(proc: ChildProcess): LaunchHandle {
