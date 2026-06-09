@@ -43,3 +43,4 @@ publish:
   - provider: github
     owner: Alex-dev-sys
     repo: NatuxWorld
+    releaseType: release
