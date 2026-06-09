@@ -64,4 +64,5 @@ export interface ServerStatus {
   players: { online: number; max: number }
   version: string
   motd?: string
+  tps?: number
 }
