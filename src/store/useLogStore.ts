@@ -13,7 +13,7 @@ let started = false;
 
 interface LogState {
   lines: LogLine[];
-  append: (l: LauncherLog) => void;
+  appendMany: (batch: LauncherLog[]) => void;
   clear: () => void;
   asText: () => string;
   startCapture: () => void;
@@ -21,9 +21,12 @@ interface LogState {
 
 export const useLogStore = create<LogState>((set, get) => ({
   lines: [],
-  append: (l) =>
+  // One setState per batch (not per line) — Minecraft floods thousands of lines.
+  appendMany: (batch) =>
     set((s) => {
-      const next = [...s.lines, { stream: l.stream, line: l.line, ts: Date.now() }];
+      if (!batch.length) return s;
+      const ts = Date.now();
+      const next = [...s.lines, ...batch.map((l) => ({ stream: l.stream, line: l.line, ts }))];
       return { lines: next.length > MAX_LINES ? next.slice(next.length - MAX_LINES) : next };
     }),
   clear: () => set({ lines: [] }),
@@ -33,11 +36,11 @@ export const useLogStore = create<LogState>((set, get) => ({
     started = true;
     // Subscribe once for the whole app lifetime so crash output is captured
     // even when the Logs page isn't open.
-    bridge.launcher.onLog((l) => get().append(l));
+    bridge.launcher.onLog((batch) => get().appendMany(batch));
     // Mirror launcher errors / exit codes into the log so they end up in the report.
     bridge.launcher.onProgress((p) => {
       if (p.stage === 'error' || /упал|завершен/i.test(p.message)) {
-        get().append({ stream: 'launcher', line: p.message });
+        get().appendMany([{ stream: 'launcher', line: p.message }]);
       }
     });
   },

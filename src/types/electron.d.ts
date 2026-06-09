@@ -29,7 +29,7 @@ export interface NatuxAPI {
     getStatus: () => Promise<LaunchProgress>;
     cancel: () => Promise<void>;
     onProgress: (cb: (p: LaunchProgress) => void) => () => void;
-    onLog: (cb: (line: LauncherLog) => void) => () => void;
+    onLog: (cb: (lines: LauncherLog[]) => void) => () => void;
   };
   auth: {
     login: (creds: Credentials) => Promise<User>;

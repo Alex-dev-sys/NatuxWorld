@@ -100,6 +100,27 @@ export class LauncherService extends EventEmitter {
   private readonly forge = new ForgeService();
   private readonly minecraft = new MinecraftService();
 
+  // Minecraft is extremely chatty (thousands of lines on boot). Sending each line
+  // as its own IPC message floods the renderer and stalls the progress UI. Buffer
+  // lines and flush them as one batched array on a short timer.
+  private logBuffer: Array<{ stream: string; line: string }> = [];
+  private logTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private queueLog(line: { stream: string; line: string }): void {
+    this.logBuffer.push(line);
+    if (this.logBuffer.length > 1000) this.logBuffer.shift();
+    if (!this.logTimer) {
+      this.logTimer = setTimeout(() => this.flushLogs(), 150);
+    }
+  }
+
+  private flushLogs(): void {
+    const batch = this.logBuffer;
+    this.logBuffer = [];
+    this.logTimer = null;
+    if (batch.length) this.window?.webContents.send(CHANNEL_LOG, batch);
+  }
+
   attach(win: BrowserWindow): void {
     this.window = win;
     if (this.wired) return;
@@ -112,7 +133,7 @@ export class LauncherService extends EventEmitter {
       });
     });
     this.forge.on('log', (line: { stream: string; line: string }) => {
-      this.window?.webContents.send(CHANNEL_LOG, line);
+      this.queueLog(line);
     });
   }
 
@@ -232,7 +253,7 @@ export class LauncherService extends EventEmitter {
 
     this.currentProc = handle;
     handle.on('log', (line: { stream: string; line: string }) => {
-      this.window?.webContents.send(CHANNEL_LOG, line);
+      this.queueLog(line);
     });
     handle.on('exit', ({ code }: { code: number | null }) => {
       this.currentProc = null;
