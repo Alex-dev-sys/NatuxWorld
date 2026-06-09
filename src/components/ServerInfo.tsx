@@ -28,7 +28,7 @@ export function ServerInfo() {
         onClick={copyIp}
         className="group inline-flex items-center gap-1.5 text-white hover:text-primary transition"
       >
-        <span className="font-mono text-sm">{info?.ip ?? 'mc.xbestu.ru'}</span>
+        <span className="font-mono text-sm">{info?.ip ?? 'mc.vibestudy.ru'}</span>
         {copied ? (
           <Check className="h-3.5 w-3.5 text-success" />
         ) : (

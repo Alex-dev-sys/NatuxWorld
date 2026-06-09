@@ -24,10 +24,10 @@ export function TitleBar() {
           <span className="h-1.5 w-1.5 rounded-full bg-success shadow-[0_0_8px_rgba(0,255,127,0.8)]" />
           <span className="text-[11px] font-medium text-white/70">NATUX WORLD</span>
           <span className="text-[10px] text-muted">·</span>
-          <span className="text-[10px] text-muted">mc.xbestu.ru</span>
+          <span className="text-[10px] text-muted">mc.vibestudy.ru</span>
           <button
             onClick={async () => {
-              await navigator.clipboard.writeText('mc.xbestu.ru');
+              await navigator.clipboard.writeText('mc.vibestudy.ru');
               setIpCopied(true);
             }}
             className="ml-1 text-muted hover:text-white"
