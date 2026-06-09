@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import ServerStatus from '@/components/ServerStatus'
 import TopDonors from '@/components/TopDonors'
 import HeroParticles from '@/components/HeroParticles'
+import type { ServerStatus as ServerStatusType } from '@/lib/types'
 
 function CopyIPButton() {
   const [copied, setCopied] = useState(false)
@@ -67,11 +68,10 @@ const features = [
   },
 ]
 
-const stats = [
+const BASE_STATS = [
   { value: '15', label: 'УРОВНЕЙ ДОПУСКА', sub: 'RANKS' },
   { value: '24/7', label: 'ОНЛАЙН', sub: 'UPTIME' },
-  { value: '1.20+', label: 'ВЕРСИЯ', sub: 'BUILD' },
-  { value: '100+', label: 'ОПЕРАТИВНИКОВ', sub: 'ACTIVE' },
+  { value: process.env.NEXT_PUBLIC_SERVER_VERSION ?? '1.20+', label: 'ВЕРСИЯ', sub: 'BUILD' },
 ]
 
 const GALLERY = [
@@ -133,18 +133,14 @@ function GalleryCard({ title, coord, bg }: { title: string; coord: string; bg: s
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
     >
-      {/* Noise texture effect */}
       <div style={{
         position: 'absolute', inset: 0,
         backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px)',
         pointerEvents: 'none',
       }} />
-      {/* Corner bracket TL */}
       <div style={{ position: 'absolute', top: 8, left: 8, width: 12, height: 12, borderLeft: '1.5px solid #FF2B4F60', borderTop: '1.5px solid #FF2B4F60' }} />
-      {/* Corner bracket BR */}
       <div style={{ position: 'absolute', bottom: 8, right: 8, width: 12, height: 12, borderRight: '1.5px solid #FF2B4F60', borderBottom: '1.5px solid #FF2B4F60' }} />
 
-      {/* Normal state info */}
       <div style={{
         position: 'absolute', bottom: 0, left: 0, right: 0,
         padding: '16px 14px 12px',
@@ -155,7 +151,6 @@ function GalleryCard({ title, coord, bg }: { title: string; coord: string; bg: s
         <div style={{ fontFamily: '"Bebas Neue", sans-serif', fontSize: 16, color: '#fff', letterSpacing: '0.08em' }}>{title}</div>
       </div>
 
-      {/* Hover overlay */}
       <div style={{
         position: 'absolute', inset: 0,
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -288,30 +283,34 @@ function FAQSection() {
 }
 
 export default function HomePage() {
+  const [serverStatus, setServerStatus] = useState<ServerStatusType | null>(null)
+
+  useEffect(() => {
+    fetch('/api/server/status')
+      .then(r => r.json())
+      .then(setServerStatus)
+      .catch(() => {})
+  }, [])
+
+  const stats = [
+    ...BASE_STATS,
+    {
+      value: serverStatus?.online ? String(serverStatus.players.online) : '...',
+      label: 'ОНЛАЙН СЕЙЧАС',
+      sub: 'ACTIVE',
+    },
+  ]
+
   return (
     <div>
-      {/* ═══════════════════════════════
-          HERO — COMMAND BRIEFING ROOM
-          ═══════════════════════════════ */}
       <section className="relative overflow-hidden min-h-[92vh] flex flex-col justify-center scanline">
-        {/* Grid background */}
         <div className="absolute inset-0 grid-bg opacity-60" />
-        {/* Pixel particles */}
         <HeroParticles />
-
-        {/* Radial red vignette */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_40%,rgba(139,0,24,0.18)_0%,transparent_70%)]" />
-
-        {/* Bottom fade */}
         <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-site-bg to-transparent" />
-
-        {/* Left vertical accent */}
         <div className="absolute left-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-site-accent to-transparent opacity-30" />
-
-        {/* Right vertical accent */}
         <div className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-site-accent to-transparent opacity-30" />
 
-        {/* Top classified bar */}
         <div className="relative z-10 border-b border-[#3A1017] bg-[#0a0000]/80 px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-1.5 h-1.5 bg-site-accent rounded-full animate-pulse-dot" />
@@ -325,7 +324,6 @@ export default function HomePage() {
         </div>
 
         <div className="relative z-10 max-w-7xl mx-auto px-4 py-16 md:py-24 w-full">
-          {/* Status badge */}
           <div className="flex justify-center mb-8 animate-fade-in-down">
             <div className="flex items-center gap-3 px-5 py-2.5 border border-[#3A1017] bg-[#0d0000]/60 clip-angle-sm">
               <ServerStatus compact />
@@ -336,7 +334,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Main title */}
           <div className="text-center mb-6 animate-fade-in-up">
             <div className="relative inline-block">
               <h1
@@ -357,7 +354,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Tactical subtitle */}
           <div className="text-center mb-10 animate-fade-in-up delay-200">
             <div className="inline-flex items-center gap-2 md:gap-4">
               <div className="h-px w-12 md:w-24 bg-gradient-to-r from-transparent to-site-accent" />
@@ -371,7 +367,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* CTA buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8 animate-fade-in-up delay-300">
             <Link
               href="/shop"
@@ -390,13 +385,11 @@ export default function HomePage() {
             </Link>
           </div>
 
-          {/* IP copy */}
           <div className="flex justify-center animate-fade-in-up delay-400">
             <CopyIPButton />
           </div>
         </div>
 
-        {/* Bottom indicator */}
         <div className="relative z-10 border-t border-[#3A1017] bg-[#0a0000]/80 px-4 py-2 flex items-center justify-center gap-8">
           <span className="text-[9px] text-[#3A1017] tracking-[0.4em] uppercase" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
             MINECRAFT 1.20+ · JAVA EDITION · mc.vibestudy.ru
@@ -404,9 +397,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ═══════════════════════════════
-          ОПЕРАТИВНЫЕ ДАННЫЕ — STATS BAR
-          ═══════════════════════════════ */}
       <section className="border-y border-[#3A1017] bg-[#0d0000]/80 relative overflow-hidden">
         <div className="absolute inset-0 grid-bg-dense opacity-30" />
         <div className="relative max-w-7xl mx-auto px-4 py-8">
@@ -450,9 +440,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ═══════════════════════════════
-          FACTION ADVANTAGES — FEATURES
-          ═══════════════════════════════ */}
       <section className="max-w-7xl mx-auto px-4 py-20">
         <div className="flex items-center gap-4 mb-12">
           <div className="flex flex-col gap-1">
@@ -479,28 +466,22 @@ export default function HomePage() {
               className="group relative bg-[#0d0000]/60 border border-[#3A1017] hover:border-site-accent/60 clip-tr transition-all duration-300 p-5 hover:bg-[#130000]/80"
               style={{ animationDelay: `${i * 0.1}s` }}
             >
-              {/* Corner accent */}
               <div className="absolute top-0 right-0 w-5 h-5 overflow-hidden">
                 <div className="absolute top-0 right-0 w-0 h-0 border-l-[20px] border-l-transparent border-t-[20px] border-t-[#3A1017] group-hover:border-t-site-accent transition-colors" />
               </div>
-
-              {/* Code label */}
               <div
                 className="text-[9px] text-[#3A1017] group-hover:text-site-accent/50 tracking-[0.4em] mb-4 transition-colors"
                 style={{ fontFamily: '"JetBrains Mono", monospace' }}
               >
                 {f.code} // {f.tag}
               </div>
-
               <h3
                 className="font-display text-2xl text-white mb-3 group-hover:text-site-accent transition-colors"
                 style={{ fontFamily: '"Bebas Neue", sans-serif', letterSpacing: '0.05em' }}
               >
                 {f.title}
               </h3>
-
               <div className="w-8 h-px bg-site-accent mb-3 transition-all duration-300 group-hover:w-16" />
-
               <p
                 className="text-site-muted text-xs leading-relaxed"
                 style={{ fontFamily: '"JetBrains Mono", monospace', lineHeight: '1.7' }}
@@ -512,32 +493,17 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ═══════════════════════════════
-          TOP DONORS
-          ═══════════════════════════════ */}
       <div className="border-t border-[#3A1017]">
         <TopDonors />
       </div>
 
-      {/* ═══════════════════════════════
-          GALLERY — АРХИВ ОПЕРАЦИЙ
-          ═══════════════════════════════ */}
       <GallerySection />
-
-      {/* ═══════════════════════════════
-          FAQ — БРИФИНГ
-          ═══════════════════════════════ */}
       <FAQSection />
 
-      {/* ═══════════════════════════════
-          FINAL CTA — MISSION BRIEFING
-          ═══════════════════════════════ */}
       <section className="relative overflow-hidden border-t border-[#3A1017]">
         <div className="absolute inset-0 bg-[#0d0000]" />
         <div className="absolute inset-0 grid-bg opacity-40" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_50%,rgba(139,0,24,0.25)_0%,transparent_70%)]" />
-
-        {/* Corner accents */}
         <div className="absolute top-4 left-4 w-8 h-8 border-l-2 border-t-2 border-site-accent/50" />
         <div className="absolute top-4 right-4 w-8 h-8 border-r-2 border-t-2 border-site-accent/50" />
         <div className="absolute bottom-4 left-4 w-8 h-8 border-l-2 border-b-2 border-site-accent/50" />
@@ -550,14 +516,12 @@ export default function HomePage() {
           >
             — ПРИКАЗ К ОПЕРАЦИИ —
           </div>
-
           <div
             className="font-display text-5xl md:text-7xl text-white mb-2 text-glow-white"
             style={{ fontFamily: '"Bebas Neue", sans-serif', letterSpacing: '0.05em' }}
           >
             ГОТОВ К БОЮ?
           </div>
-
           <p
             className="text-site-muted text-xs md:text-sm mb-10 max-w-lg mx-auto leading-relaxed"
             style={{ fontFamily: '"JetBrains Mono", monospace', lineHeight: '1.8' }}
@@ -565,7 +529,6 @@ export default function HomePage() {
             15 уровней допуска. Промокоды. Автовыдача.<br />
             <span className="text-site-accent">Привилегии активируются через минуту после оплаты.</span>
           </p>
-
           <Link
             href="/shop"
             className="group relative inline-flex items-center gap-3 px-12 py-5 bg-site-accent hover:bg-red-600 text-white font-bold clip-angle-lg transition-all duration-200 glow-red-lg hover:glow-red-lg uppercase overflow-hidden"
@@ -575,7 +538,6 @@ export default function HomePage() {
             <span className="relative z-10 text-white/60 group-hover:text-white transition-colors" style={{ fontSize: '14px' }}>→</span>
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
           </Link>
-
           <div className="mt-6 flex items-center justify-center gap-2">
             <span
               className="text-[9px] text-[#3A1017] tracking-[0.4em] uppercase cursor-blink"
