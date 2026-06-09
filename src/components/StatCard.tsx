@@ -1,5 +1,4 @@
 import { motion } from 'framer-motion';
-import { Area, AreaChart, ResponsiveContainer } from 'recharts';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import type { ReactNode } from 'react';
 
@@ -15,8 +14,6 @@ interface Props {
 }
 
 export function StatCard({ icon, label, value, hint, data, color, delay = 0, trend }: Props) {
-  const chartData = data.map((v, i) => ({ i, v }));
-  const id = `g-${label.replace(/\s+/g, '')}`;
   const computedTrend =
     typeof trend === 'number'
       ? trend
@@ -60,29 +57,6 @@ export function StatCard({ icon, label, value, hint, data, color, delay = 0, tre
           className="pointer-events-none absolute left-5 right-5 top-0 h-px"
           style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)` }}
         />
-
-        {/* subtle sparkline woven into the glow */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 opacity-40 transition-opacity duration-500 group-hover:opacity-70">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={color} stopOpacity={0.35} />
-                  <stop offset="100%" stopColor={color} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <Area
-                type="monotone"
-                dataKey="v"
-                stroke={color}
-                strokeWidth={1.5}
-                strokeOpacity={0.7}
-                fill={`url(#${id})`}
-                isAnimationActive
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
 
         {/* content */}
         <div className="relative flex h-full flex-col p-5">
