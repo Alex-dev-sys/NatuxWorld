@@ -31,6 +31,7 @@ const FORGE_MAVEN = 'https://maven.minecraftforge.net/net/minecraftforge/forge';
 /** Pinned, known-good Forge builds per Minecraft version for reproducible installs. */
 export const FORGE_VERSIONS: Record<string, string> = {
   '1.21.6': '56.0.4',
+  '1.21.1': '52.1.14',
   '1.20.1': '47.4.20',
 };
 

@@ -3,7 +3,7 @@ import type { LaunchProgress } from '../../electron/services/LauncherService';
 import { bridge } from '../services/electron-bridge';
 
 // Single fixed build + server — no version picking, one PLAY button.
-const FIXED_VERSION = 'forge-1.21.6';
+const FIXED_VERSION = 'forge-1.21.1';
 const FIXED_LOADER = 'forge' as const;
 const SERVER_IP = 'mc.vibestudy.ru';
 
