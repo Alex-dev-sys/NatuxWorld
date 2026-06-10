@@ -94,10 +94,21 @@ export class DownloadService {
     let received = 0;
 
     try {
+      // Whether the very first request was https. Used to forbid a redirect from
+      // downgrading the transport (https->http MITM), which would void TLS protection.
+      const originSecure = new URL(job.url).protocol === 'https:';
       await new Promise<void>((resolve, reject) => {
         const tryGet = (rawUrl: string, redirects = 0) => {
           if (redirects > MAX_REDIRECTS) return reject(new Error('Too many redirects'));
           const target = new URL(rawUrl);
+          // Only http/https are ever valid here; reject file:, data:, etc.
+          if (target.protocol !== 'https:' && target.protocol !== 'http:') {
+            return reject(new Error(`Refusing non-http(s) URL: ${target.protocol}`));
+          }
+          // Never follow a redirect that downgrades https -> http.
+          if (originSecure && target.protocol === 'http:') {
+            return reject(new Error(`Refusing protocol downgrade to http: ${rawUrl}`));
+          }
           const client = target.protocol === 'https:' ? https : http;
           const req = client.get(
             rawUrl,

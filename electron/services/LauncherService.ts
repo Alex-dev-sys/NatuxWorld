@@ -255,6 +255,10 @@ export class LauncherService extends EventEmitter {
 
     const cfg = await this.settingsSvc.get();
 
+    // SECURITY: cfg.jvmArgs and cfg.javaPath are intentionally NOT forwarded to the launch
+    // arg builder. They originate from the (untrusted) renderer; passing jvmArgs would let a
+    // compromised UI inject arbitrary JVM flags, and javaPath would run an arbitrary binary.
+    // If ever wired in, each must be tokenized + validated (no shell, no path traversal).
     const handle = this.minecraft.launch({
       version: launchVersion,
       javaPath: java.path,

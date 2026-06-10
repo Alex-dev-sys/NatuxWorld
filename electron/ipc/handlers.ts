@@ -24,6 +24,21 @@ function clampMemory(value: unknown): number {
   return Math.max(512, Math.min(65536, Math.floor(Number(value) || 4096)));
 }
 
+// Minecraft offline nick charset. Anything outside it (incl. control chars used for
+// argfile injection) is rejected and replaced with a safe default rather than launched.
+const USERNAME_RE = /^[A-Za-z0-9_]{1,16}$/;
+/** host or host:port — the value goes into --quickPlayMultiplayer, so keep it strict. */
+const SERVER_RE = /^[A-Za-z0-9.-]+(:\d{1,5})?$/;
+
+function sanitizeUsername(value: unknown): string {
+  return typeof value === 'string' && USERNAME_RE.test(value) ? value : 'Player';
+}
+
+/** Returns the server string only if it's a valid host[:port], otherwise undefined (dropped). */
+function sanitizeServer(value: unknown): string | undefined {
+  return typeof value === 'string' && SERVER_RE.test(value) ? value : undefined;
+}
+
 export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.LAUNCHER.PLAY, (_e, options) => {
     if (!options || typeof options !== 'object') {
@@ -32,7 +47,8 @@ export function registerIpcHandlers(): void {
     const o = options as Record<string, unknown>;
     const sanitized = {
       ...o,
-      username: typeof o.username === 'string' ? o.username : 'Player',
+      username: sanitizeUsername(o.username),
+      server: sanitizeServer(o.server),
       memory: clampMemory(o.memory),
     };
     return launcher.play(sanitized as Parameters<typeof launcher.play>[0]);

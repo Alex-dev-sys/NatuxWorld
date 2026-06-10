@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import https from 'node:https';
@@ -147,9 +148,19 @@ export class MojangService {
     const entry = manifest.versions.find((v) => v.id === id);
     if (!entry) throw new Error(`Version "${id}" not found in Mojang manifest`);
 
-    const version = (await this.httpGetJson(entry.url)) as VanillaVersion;
+    // This document supplies the sha1 of every later artifact, so verify it against the
+    // manifest's pinned sha1 before trusting/caching. Hash the served bytes (re-serializing
+    // would change them), then parse those same bytes.
+    const body = await this.httpGetText(entry.url);
+    if (entry.sha1) {
+      const got = createHash('sha1').update(body).digest('hex');
+      if (got !== entry.sha1.toLowerCase()) {
+        throw new Error(`Version JSON sha1 mismatch for "${id}": got ${got}, expected ${entry.sha1}`);
+      }
+    }
+    const version = JSON.parse(body) as VanillaVersion;
     await fsp.mkdir(getVersionDir(id), { recursive: true });
-    await fsp.writeFile(cachedPath, JSON.stringify(version, null, 2), 'utf-8');
+    await fsp.writeFile(cachedPath, body, 'utf-8');
     return version;
   }
 
@@ -157,19 +168,43 @@ export class MojangService {
     const dest = getAssetIndexPath(version.assetIndex.id);
     if (fs.existsSync(dest)) {
       const cached = await fsp.readFile(dest, 'utf-8');
-      return JSON.parse(cached) as AssetIndex;
+      try {
+        return JSON.parse(cached) as AssetIndex;
+      } catch {
+        // Corrupt cache (truncated/partial write): drop it and re-fetch below.
+        await fsp.unlink(dest).catch(() => undefined);
+      }
     }
-    const index = (await this.httpGetJson(version.assetIndex.url)) as AssetIndex;
+    // The asset index supplies the hash of every asset object, so verify it against the
+    // sha1 pinned in the (already verified) version JSON before trusting/caching.
+    const body = await this.httpGetText(version.assetIndex.url);
+    if (version.assetIndex.sha1) {
+      const got = createHash('sha1').update(body).digest('hex');
+      if (got !== version.assetIndex.sha1.toLowerCase()) {
+        throw new Error(
+          `Asset index sha1 mismatch for "${version.assetIndex.id}": got ${got}, expected ${version.assetIndex.sha1}`,
+        );
+      }
+    }
+    const index = JSON.parse(body) as AssetIndex;
     await fsp.mkdir(path.dirname(dest), { recursive: true });
     await fsp.mkdir(getAssetsDir(), { recursive: true });
-    await fsp.writeFile(dest, JSON.stringify(index, null, 2), 'utf-8');
+    await fsp.writeFile(dest, body, 'utf-8');
     return index;
   }
 
-  private httpGetJson(url: string): Promise<unknown> {
+  private async httpGetJson(url: string): Promise<unknown> {
+    return JSON.parse(await this.httpGetText(url));
+  }
+
+  /** GET a URL and return the raw response body. https-only; refuses non-https redirects. */
+  private httpGetText(url: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const tryGet = (u: string, redirects = 0) => {
         if (redirects > 5) return reject(new Error('Too many redirects'));
+        if (new URL(u).protocol !== 'https:') {
+          return reject(new Error(`Refusing non-https URL: ${u}`));
+        }
         https
           .get(u, { headers: { 'User-Agent': 'NatuxWorldLauncher' } }, (res) => {
             if (
@@ -179,6 +214,7 @@ export class MojangService {
               res.headers.location
             ) {
               tryGet(new URL(res.headers.location, u).toString(), redirects + 1);
+              res.resume();
               return;
             }
             if (res.statusCode !== 200) {
@@ -189,13 +225,7 @@ export class MojangService {
             let body = '';
             res.setEncoding('utf-8');
             res.on('data', (chunk) => (body += chunk));
-            res.on('end', () => {
-              try {
-                resolve(JSON.parse(body));
-              } catch (err) {
-                reject(err);
-              }
-            });
+            res.on('end', () => resolve(body));
           })
           .on('error', reject);
       };

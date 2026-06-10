@@ -111,6 +111,9 @@ export interface LaunchInput {
 
 export class MinecraftService {
   launch(input: LaunchInput): LaunchHandle {
+    // SECURITY: this builder takes only memory + manifest-derived JVM args. It deliberately
+    // does NOT accept settings.jvmArgs / settings.javaPath from the renderer (arbitrary JVM
+    // flags / arbitrary binary). If those are ever wired in, tokenize + validate them first.
     const os = platformOsName();
     const libPaths = resolveLibraryPaths(input.version.libraries, os);
     const classpath = buildClasspath(libPaths, input.clientJar, process.platform);
@@ -176,7 +179,13 @@ export class MinecraftService {
    */
   static toArgFile(args: string[]): string {
     return args
-      .map((a) => `"${a.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`)
+      .map((a) =>
+        // Args are joined with \n, so a value containing a newline (or \r/\0) would split
+        // into extra argfile tokens — i.e. arbitrary injected JVM/game args. Strip all
+        // control characters before quoting so one logical arg stays one token.
+        // eslint-disable-next-line no-control-regex -- stripping control chars is the point
+        `"${a.replace(/[\x00-\x1f\x7f]/g, '').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`,
+      )
       .join('\n');
   }
 

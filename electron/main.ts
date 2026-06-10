@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerIpcHandlers, updater, launcher, settings as settingsService } from './ipc/handlers';
@@ -46,6 +46,23 @@ function createWindow(): void {
     return { action: 'deny' };
   });
 
+  // Block top-level navigation away from the app origin. The renderer ships a privileged
+  // preload, so a stray window.location to a remote site must never load in-window —
+  // external links go through setWindowOpenHandler/openExternal instead.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    let isSameOrigin = false;
+    try {
+      const target = new URL(url);
+      // Dev: same origin as the Vite dev server. Prod: the file:// app bundle.
+      isSameOrigin = VITE_DEV_SERVER_URL
+        ? target.origin === new URL(VITE_DEV_SERVER_URL).origin
+        : target.protocol === 'file:';
+    } catch {
+      isSameOrigin = false;
+    }
+    if (!isSameOrigin) event.preventDefault();
+  });
+
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
@@ -79,7 +96,56 @@ function registerWindowControls(win: BrowserWindow): void {
   win.on('unmaximize', () => win.webContents.send('window:maximized', false));
 }
 
+// Connect endpoints the app legitimately talks to (auth backend, Mojang/Forge, GitHub).
+const CONNECT_SRC = [
+  "'self'",
+  'https://vibestudy.ru',
+  'https://*.mojang.com',
+  'https://*.minecraftforge.net',
+  'https://piston-meta.mojang.com',
+  'https://resources.download.minecraft.net',
+  'https://*.githubusercontent.com',
+  'https://api.github.com',
+].join(' ');
+
+// Strict policy for the packaged (file://) build.
+const PROD_CSP = [
+  "default-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  'font-src https://fonts.gstatic.com',
+  "img-src 'self' data: https:",
+  `connect-src ${CONNECT_SRC}`,
+  "script-src 'self'",
+].join('; ');
+
+// Vite HMR needs inline/eval scripts and a ws: channel in dev, so relax those two
+// directives only when running against the dev server. Prod stays strict.
+function buildCsp(): string {
+  if (!VITE_DEV_SERVER_URL) return PROD_CSP;
+  const devOrigin = new URL(VITE_DEV_SERVER_URL).origin;
+  const wsOrigin = devOrigin.replace(/^http/, 'ws');
+  return [
+    `default-src 'self' ${devOrigin}`,
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    'font-src https://fonts.gstatic.com',
+    "img-src 'self' data: https:",
+    `connect-src ${CONNECT_SRC} ${devOrigin} ${wsOrigin}`,
+    `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${devOrigin}`,
+  ].join('; ');
+}
+
 app.whenReady().then(() => {
+  // Apply CSP to every response in both dev and prod (no meta tag in index.html).
+  const csp = buildCsp();
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [csp],
+      },
+    });
+  });
+
   ipcMain.handle('app:version', () => app.getVersion());
   registerIpcHandlers();
   createWindow();
