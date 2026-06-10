@@ -235,7 +235,10 @@ export class LauncherService extends EventEmitter {
       this.throwIfCancelled();
     }
 
-    const user = (await this.auth.getUser()) ?? (await this.auth.login(opts.username));
+    // Account nick is authoritative: re-login if the cached offline profile
+    // doesn't match (e.g. an old 'Player' identity from before login existed).
+    const cached = await this.auth.getUser();
+    const user = cached?.username === opts.username ? cached : await this.auth.login(opts.username);
     this.throwIfCancelled();
 
     this.report({ stage: 'spawn', progress: 0, message: 'Запуск Minecraft...' });
