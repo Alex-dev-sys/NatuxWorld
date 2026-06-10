@@ -13,7 +13,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-80%20passing-00FF7F)
-![Version](https://img.shields.io/badge/version-1.7.3-FF2B4F)
+![Version](https://img.shields.io/badge/version-1.8.3-FF2B4F)
 
 </div>
 
@@ -142,19 +142,28 @@ npm run build
 
 ### GitHub Actions
 
-`.github/workflows/build.yml` собирает Windows-инсталлятор на каждый push в `main` и каждый PR.
+`.github/workflows/build.yml`:
 
-**Релиз с авто-публикацией .exe:**
+- **Pull request в `main`** — typecheck + тесты + сборка (без публикации и без тега). CI красный, если тесты падают.
+- **Push в `main`** — то же самое, плюс авто-релиз, если версия в `package.json` ещё не тегирована.
+
+**Релиз управляется версией в `package.json` — теги вручную ставить НЕ нужно.**
 
 ```bash
-# 1. Бамп версии в package.json
+# 1. Бамп версии в package.json (например, 1.8.3 → 1.8.4)
 # 2. Коммит + пуш в main
-git commit -am "release: vX.Y.Z" && git push
-# 3. Тег → CI создаёт GitHub Release с .exe
-git tag vX.Y.Z && git push origin vX.Y.Z
+git commit -am "release: v1.8.4" && git push
 ```
 
-Собранный .exe без релиза: **GitHub → Actions → Build → Artifacts**.
+Дальше CI сам:
+
+1. Прогоняет `typecheck` + `test` (релиз падает, если тесты красные).
+2. Собирает и публикует `.exe` / `.dmg` в GitHub Release через `electron-builder --publish always`.
+3. **Только после успешной публикации** создаёт и пушит тег `vX.Y.Z`.
+
+Порядок «тег после публикации» защищает от бага v1.8.0, когда упавшая публикация оставляла тег и все повторные запуски считали версию уже выпущенной (`release=false`).
+
+Собранный .exe без релиза (например, из PR): **GitHub → Actions → Build → Artifacts**.
 
 ### Иконки
 

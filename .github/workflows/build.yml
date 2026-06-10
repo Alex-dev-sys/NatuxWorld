@@ -3,7 +3,13 @@ name: Build
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -37,9 +43,13 @@ jobs:
           $exists = git tag -l $tag
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "tag=$tag"   | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          if ([string]::IsNullOrEmpty($exists)) {
+          # Only release on push to main (never on pull_request).
+          if ('${{ github.event_name }}' -eq 'pull_request') {
+            "release=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            Write-Host "Pull request build: typecheck + test + build only, no publish/tag."
+          } elseif ([string]::IsNullOrEmpty($exists)) {
             "release=true"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-            Write-Host "Version $v is new, will tag + publish."
+            Write-Host "Version $v is new, will publish + tag."
           } else {
             "release=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
             Write-Host "Tag $tag already exists, build only."
@@ -53,6 +63,9 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      - name: Test
+        run: npm test
+
       - name: Build renderer + Electron
         run: npm run build:web
 
@@ -63,22 +76,16 @@ jobs:
             choco install imagemagick.app -y --no-progress
             $magick = Get-Command magick -ErrorAction SilentlyContinue
             if ($null -eq $magick) {
-              $env:Path += ";C:\Program Files\ImageMagick-7*"
+              # choco may not refresh PATH in this session; resolve the real install dir.
+              $dir = Get-ChildItem "C:\Program Files\ImageMagick-7*" -Directory -ErrorAction SilentlyContinue |
+                Sort-Object Name -Descending | Select-Object -First 1
+              if ($null -ne $dir) { $env:Path += ";$($dir.FullName)" }
             }
             magick "build/icon.png" -define icon:auto-resize=256,128,96,64,48,32,24,16 "build/icon.ico"
             Write-Host "icon.ico regenerated from icon.png"
           } else {
             Write-Host "no build/icon.png, keeping existing icon.ico"
           }
-
-      - name: Create & push tag
-        if: steps.ver.outputs.release == 'true'
-        shell: pwsh
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag ${{ steps.ver.outputs.tag }}
-          git push origin ${{ steps.ver.outputs.tag }}
 
       - name: Package & publish to Release
         if: steps.ver.outputs.release == 'true'
@@ -91,6 +98,17 @@ jobs:
         run: npx electron-builder --win --x64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tag only AFTER a successful build + publish. If publish fails, the job
+      # stops before this step, so no orphan tag is left to brick re-runs (v1.8.0 bug).
+      - name: Create & push tag
+        if: steps.ver.outputs.release == 'true'
+        shell: pwsh
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.ver.outputs.tag }}
+          git push origin ${{ steps.ver.outputs.tag }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -128,6 +146,9 @@ jobs:
 
       - name: Type check
         run: npm run typecheck
+
+      - name: Test
+        run: npm test
 
       - name: Build renderer + Electron
         run: npm run build:web

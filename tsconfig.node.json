@@ -10,6 +10,9 @@
     "moduleDetection": "force",
     "noEmit": true,
     "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    // TODO: enable "noUncheckedIndexedAccess": true as a follow-up. It surfaces
+    // many errors in JSON-parsing services (MojangService etc.); fix first, then on.
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },

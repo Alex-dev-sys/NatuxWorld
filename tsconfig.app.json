@@ -12,9 +12,13 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
+    "forceConsistentCasingInFileNames": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
+    // TODO: enable "noUncheckedIndexedAccess": true as a follow-up. It improves
+    // safety on indexed/JSON access but currently surfaces many errors in
+    // JSON-parsing code (e.g. MojangService); fix those first, then turn it on.
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
