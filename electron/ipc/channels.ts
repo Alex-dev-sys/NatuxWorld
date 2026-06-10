@@ -32,6 +32,10 @@ export const IPC = {
   SETTINGS: {
     GET: 'settings:get',
     SET: 'settings:set',
+    GET_SYSTEM_MEMORY: 'settings:getSystemMemory',
+    RESET: 'settings:reset',
+    PICK_JAVA: 'settings:pickJava',
+    VERIFY_JAVA: 'settings:verifyJava',
   },
   UPDATER: {
     CHECK: 'updater:check',

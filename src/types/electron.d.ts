@@ -50,6 +50,10 @@ export interface NatuxAPI {
   settings: {
     get: () => Promise<LauncherSettings>;
     set: (settings: Partial<LauncherSettings>) => Promise<LauncherSettings>;
+    getSystemMemory: () => Promise<number>;
+    reset: () => Promise<LauncherSettings>;
+    pickJava: () => Promise<string | null>;
+    verifyJava: (p: { path: string }) => Promise<{ ok: boolean; version?: string; error?: string }>;
   };
   updater: {
     check: () => Promise<UpdateInfo>;

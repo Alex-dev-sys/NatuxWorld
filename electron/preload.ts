@@ -47,6 +47,10 @@ const api = {
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (settings: unknown) => ipcRenderer.invoke('settings:set', settings),
+    getSystemMemory: () => ipcRenderer.invoke('settings:getSystemMemory'),
+    reset: () => ipcRenderer.invoke('settings:reset'),
+    pickJava: () => ipcRenderer.invoke('settings:pickJava'),
+    verifyJava: (p: unknown) => ipcRenderer.invoke('settings:verifyJava', p),
   },
   updater: {
     check: () => ipcRenderer.invoke('updater:check'),

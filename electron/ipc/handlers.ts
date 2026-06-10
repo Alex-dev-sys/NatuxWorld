@@ -1,4 +1,6 @@
-import { ipcMain, shell } from 'electron';
+import { ipcMain, shell, dialog } from 'electron';
+import os from 'node:os';
+import { spawn } from 'node:child_process';
 import { IPC } from './channels';
 import { LauncherService } from '../services/LauncherService';
 import { JavaService } from '../services/JavaService';
@@ -33,6 +35,26 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.SETTINGS.GET, () => settings.get());
   ipcMain.handle(IPC.SETTINGS.SET, (_e, s) => settings.set(s));
+  ipcMain.handle(IPC.SETTINGS.GET_SYSTEM_MEMORY, () => Math.floor(os.totalmem() / (1024 * 1024)));
+  ipcMain.handle(IPC.SETTINGS.RESET, () => settings.reset());
+  ipcMain.handle(IPC.SETTINGS.PICK_JAVA, async () => {
+    const r = await dialog.showOpenDialog({ properties: ['openFile'], title: 'Выберите java(w).exe' });
+    return r.canceled ? null : r.filePaths[0];
+  });
+  ipcMain.handle(IPC.SETTINGS.VERIFY_JAVA, (_e, p: { path: string }) =>
+    new Promise<{ ok: boolean; version?: string; error?: string }>((resolve) => {
+      const proc = spawn(p.path, ['-version']);
+      let out = '';
+      proc.stderr.on('data', (d) => (out += d.toString()));
+      proc.on('close', () => {
+        if (JavaService.isJava21Plus(out)) {
+          resolve({ ok: true, version: out.match(/version "([^"]+)"/)?.[1] ?? '21+' });
+        } else {
+          resolve({ ok: false, error: 'Не Java 21+ или неверный путь' });
+        }
+      });
+      proc.on('error', () => resolve({ ok: false, error: 'Файл не запускается' }));
+    }));
 
   ipcMain.handle(IPC.UPDATER.CHECK, () => updater.check());
   ipcMain.handle(IPC.UPDATER.INSTALL, () => updater.installNow());
