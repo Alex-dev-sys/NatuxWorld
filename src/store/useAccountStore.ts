@@ -16,6 +16,8 @@ interface AccountState {
   login: (login: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   clearError: () => void;
+  /** Abandon the email-verification step and return to the login/register form. */
+  cancelVerify: () => void;
 }
 
 export const useAccountStore = create<AccountState>((set, get) => ({
@@ -68,4 +70,6 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  cancelVerify: () => set({ pendingEmail: null, error: null }),
 }));

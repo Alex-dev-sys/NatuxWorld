@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { MailCheck } from 'lucide-react';
+import { MailCheck, ArrowLeft } from 'lucide-react';
 import { useAccountStore } from '../../store/useAccountStore';
 import { isValidCode } from '../../lib/validators';
 
 export function VerifyEmailScreen() {
   const verify = useAccountStore((s) => s.verify);
   const resend = useAccountStore((s) => s.resend);
+  const cancelVerify = useAccountStore((s) => s.cancelVerify);
   const email = useAccountStore((s) => s.pendingEmail);
   const error = useAccountStore((s) => s.error);
   const [code, setCode] = useState('');
@@ -39,6 +40,12 @@ export function VerifyEmailScreen() {
         </button>
         <button onClick={resend} className="text-xs text-muted hover:text-white">
           Отправить код повторно
+        </button>
+        <button
+          onClick={cancelVerify}
+          className="inline-flex items-center justify-center gap-1.5 text-xs text-muted hover:text-white"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Изменить email
         </button>
       </div>
     </motion.div>
