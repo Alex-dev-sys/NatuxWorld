@@ -5,6 +5,51 @@ import { useNavigate } from 'react-router-dom';
 import { bridge } from '../services/electron-bridge';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useLauncherStore } from '../store/useLauncherStore';
+import { useLang, pick } from '../i18n';
+
+// `ru` is the source of truth for the dict shape; `en: typeof ru` forces key parity
+// and widens every value to its base type (string / fn) so pick<T> can unify both
+// branches. Do NOT add `as const` — it narrows to mismatched string literals and
+// pick() stops type-checking ("SETTINGS" not assignable to "НАСТРОЙКИ").
+const ru = {
+  title: 'НАСТРОЙКИ', saving: 'Сохранение…', saved: 'Сохранено',
+  tabGame: 'Игра', tabLauncher: 'Лаунчер',
+  memory: 'Память для игры', memoryHint: (g: string, t: string) => `${g} GB из ${t} GB`,
+  java: 'Java', javaBundled: 'Встроенный JRE 21', javaCustom: 'Свой путь',
+  javaPathPh: 'Путь к java(w).exe', verify: 'Проверить',
+  javaOk: (v: string) => `Java OK: ${v}`, javaErr: (e: string) => `Ошибка: ${e}`,
+  resolution: 'Разрешение окна', custom: 'Своё',
+  fullscreen: 'Полноэкранный режим', fullscreenOn: 'Разрешение игнорируется', fullscreenOff: 'Оконный режим',
+  jvm: 'JVM аргументы', reset: 'Сбросить',
+  closeOnLaunch: 'Закрывать лаунчер при запуске', closeOnLaunchHint: 'Освобождает ОЗУ',
+  language: 'Язык интерфейса',
+  autoUpdate: 'Авто-обновление', autoUpdateHint: 'Применится при следующем запуске',
+  autoLaunch: 'Автозапуск игры', autoLaunchHint: 'Сразу нажимать ИГРАТЬ при старте',
+  logs: 'Логи', logsHint: 'Открыть страницу логов', open: 'Открыть',
+  resetSettings: 'Сбросить настройки', version: (v: string) => `Версия лаунчера ${v}`,
+  confirm: 'Точно', cancel: 'Отмена',
+};
+
+const en: typeof ru = {
+  title: 'SETTINGS', saving: 'Saving…', saved: 'Saved',
+  tabGame: 'Game', tabLauncher: 'Launcher',
+  memory: 'Game memory', memoryHint: (g: string, t: string) => `${g} GB of ${t} GB`,
+  java: 'Java', javaBundled: 'Bundled JRE 21', javaCustom: 'Custom path',
+  javaPathPh: 'Path to java(w).exe', verify: 'Verify',
+  javaOk: (v: string) => `Java OK: ${v}`, javaErr: (e: string) => `Error: ${e}`,
+  resolution: 'Window resolution', custom: 'Custom',
+  fullscreen: 'Fullscreen', fullscreenOn: 'Resolution ignored', fullscreenOff: 'Windowed',
+  jvm: 'JVM arguments', reset: 'Reset',
+  closeOnLaunch: 'Close launcher on launch', closeOnLaunchHint: 'Frees up RAM',
+  language: 'Interface language',
+  autoUpdate: 'Auto-update', autoUpdateHint: 'Applied on next start',
+  autoLaunch: 'Auto-launch game', autoLaunchHint: 'Press PLAY automatically on start',
+  logs: 'Logs', logsHint: 'Open the logs page', open: 'Open',
+  resetSettings: 'Reset settings', version: (v: string) => `Launcher version ${v}`,
+  confirm: 'Confirm', cancel: 'Cancel',
+};
+
+const TR = { ru, en };
 
 export function SettingsModal() {
   const isOpen = useSettingsStore((s) => s.isOpen);
@@ -15,6 +60,7 @@ export function SettingsModal() {
   const loadSystem = useSettingsStore((s) => s.loadSystem);
 
   const [tab, setTab] = useState<'game' | 'launcher'>('game');
+  const t = pick(useLang(), TR);
 
   useEffect(() => {
     if (isOpen && !settings) load();
@@ -40,17 +86,17 @@ export function SettingsModal() {
           >
             <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
               <div className="flex items-center gap-3">
-                <div className="font-display text-2xl tracking-wide">НАСТРОЙКИ</div>
+                <div className="font-display text-2xl tracking-wide">{t.title}</div>
                 <span className="inline-flex items-center gap-1.5 rounded-md bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
                   {saving ? (
                     <>
                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
-                      Сохранение…
+                      {t.saving}
                     </>
                   ) : (
                     <>
                       <Check className="h-3 w-3 text-success" />
-                      Сохранено
+                      {t.saved}
                     </>
                   )}
                 </span>
@@ -63,12 +109,12 @@ export function SettingsModal() {
               </button>
             </div>
             <div className="flex gap-1 border-b border-white/[0.06] px-5 pt-3">
-              {(['game', 'launcher'] as const).map((t) => (
-                <button key={t} onClick={() => setTab(t)}
+              {(['game', 'launcher'] as const).map((tk) => (
+                <button key={tk} onClick={() => setTab(tk)}
                   className={`rounded-t-lg px-4 py-2 text-sm font-medium transition ${
-                    tab === t ? 'bg-white/[0.05] text-white' : 'text-muted hover:text-white'
+                    tab === tk ? 'bg-white/[0.05] text-white' : 'text-muted hover:text-white'
                   }`}>
-                  {t === 'game' ? 'Игра' : 'Лаунчер'}
+                  {tk === 'game' ? t.tabGame : t.tabLauncher}
                 </button>
               ))}
             </div>
@@ -90,6 +136,7 @@ function GameTab() {
   const settings = useSettingsStore((s) => s.settings);
   const update = useSettingsStore((s) => s.update);
   const systemMemoryMb = useSettingsStore((s) => s.systemMemoryMb);
+  const t = pick(useLang(), TR);
   const memory = settings?.memory ?? 4096;
   const maxMem = Math.floor(systemMemoryMb / 512) * 512;
   const res = settings?.resolution ?? { width: 1280, height: 720 };
@@ -98,7 +145,7 @@ function GameTab() {
   const verifyJava = async () => {
     if (!settings?.javaPath) return;
     const r = await bridge.settings.verifyJava({ path: settings.javaPath });
-    alert(r.ok ? `Java OK: ${r.version}` : `Ошибка: ${r.error}`);
+    alert(r.ok ? t.javaOk(String(r.version ?? '')) : t.javaErr(String(r.error ?? '')));
   };
   const pickJava = async () => {
     const p = await bridge.settings.pickJava();
@@ -107,35 +154,35 @@ function GameTab() {
 
   return (
     <>
-      <Row icon={<MemoryStick className="h-4 w-4" />} label="Память для игры" hint={`${(memory / 1024).toFixed(1)} GB из ${(systemMemoryMb / 1024).toFixed(0)} GB`}>
+      <Row icon={<MemoryStick className="h-4 w-4" />} label={t.memory} hint={t.memoryHint((memory / 1024).toFixed(1), (systemMemoryMb / 1024).toFixed(0))}>
         <input type="range" min={1024} max={maxMem} step={512} value={Math.min(memory, maxMem)}
           onChange={(e) => update({ memory: Number(e.target.value) })} className="w-56 accent-primary" />
       </Row>
 
-      <Row icon={<Coffee className="h-4 w-4" />} label="Java" stacked>
+      <Row icon={<Coffee className="h-4 w-4" />} label={t.java} stacked>
         <div className="flex flex-col gap-2">
           <div className="flex gap-2">
             {(['bundled', 'custom'] as const).map((m) => (
               <button key={m} onClick={() => update({ javaMode: m })}
                 className={`rounded-lg px-3 py-1.5 text-xs ring-1 ring-white/10 ${settings?.javaMode === m ? 'bg-primary/15 text-primary' : 'text-muted'}`}>
-                {m === 'bundled' ? 'Встроенный JRE 21' : 'Свой путь'}
+                {m === 'bundled' ? t.javaBundled : t.javaCustom}
               </button>
             ))}
           </div>
           {settings?.javaMode === 'custom' && (
             <div className="flex items-center gap-2">
-              <input readOnly value={settings?.javaPath ?? ''} placeholder="Путь к java(w).exe"
+              <input readOnly value={settings?.javaPath ?? ''} placeholder={t.javaPathPh}
                 className="flex-1 rounded-lg bg-white/[0.04] px-3 py-2 font-mono text-xs ring-1 ring-white/10" />
               <button onClick={pickJava} className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">
                 <FolderOpen className="h-4 w-4" />
               </button>
-              <button onClick={verifyJava} className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">Проверить</button>
+              <button onClick={verifyJava} className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">{t.verify}</button>
             </div>
           )}
         </div>
       </Row>
 
-      <Row icon={<MonitorPlay className="h-4 w-4" />} label="Разрешение окна" stacked>
+      <Row icon={<MonitorPlay className="h-4 w-4" />} label={t.resolution} stacked>
         <div className="flex flex-wrap items-center gap-2">
           {PRESETS.map((p) => (
             <button key={`${p.w}x${p.h}`} onClick={() => update({ resolution: { width: p.w, height: p.h } })}
@@ -144,7 +191,7 @@ function GameTab() {
             </button>
           ))}
           <button onClick={() => update({ resolution: { width: 1366, height: 768 } })}
-            className={`rounded-lg px-3 py-1.5 text-xs ring-1 ring-white/10 ${!isPreset ? 'bg-primary/15 text-primary' : 'text-muted'}`}>Своё</button>
+            className={`rounded-lg px-3 py-1.5 text-xs ring-1 ring-white/10 ${!isPreset ? 'bg-primary/15 text-primary' : 'text-muted'}`}>{t.custom}</button>
           {!isPreset && (
             <div className="flex items-center gap-1">
               <input type="number" min={640} value={res.width} onChange={(e) => update({ resolution: { ...res, width: Math.max(640, Number(e.target.value)) } })}
@@ -157,20 +204,20 @@ function GameTab() {
         </div>
       </Row>
 
-      <Row icon={<MonitorPlay className="h-4 w-4" />} label="Полноэкранный режим" hint={settings?.fullscreen ? 'Разрешение игнорируется' : 'Оконный режим'}>
+      <Row icon={<MonitorPlay className="h-4 w-4" />} label={t.fullscreen} hint={settings?.fullscreen ? t.fullscreenOn : t.fullscreenOff}>
         <Toggle value={!!settings?.fullscreen} onChange={(v) => update({ fullscreen: v })} />
       </Row>
 
-      <Row icon={<Cpu className="h-4 w-4" />} label="JVM аргументы" stacked>
+      <Row icon={<Cpu className="h-4 w-4" />} label={t.jvm} stacked>
         <div className="flex items-center gap-2">
           <input type="text" value={settings?.jvmArgs ?? ''} onChange={(e) => update({ jvmArgs: e.target.value })}
             className="flex-1 rounded-lg bg-white/[0.04] px-3 py-2 font-mono text-xs ring-1 ring-white/10 focus:outline-none focus:ring-primary" />
           <button onClick={() => update({ jvmArgs: '-XX:+UnlockExperimentalVMOptions -XX:+UseG1GC' })}
-            className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">Сбросить</button>
+            className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">{t.reset}</button>
         </div>
       </Row>
 
-      <Row icon={<MonitorPlay className="h-4 w-4" />} label="Закрывать лаунчер при запуске" hint="Освобождает ОЗУ">
+      <Row icon={<MonitorPlay className="h-4 w-4" />} label={t.closeOnLaunch} hint={t.closeOnLaunchHint}>
         <Toggle value={!!settings?.closeOnLaunch} onChange={(v) => update({ closeOnLaunch: v })} />
       </Row>
     </>
@@ -185,10 +232,11 @@ function LauncherTab() {
   const appVersion = useLauncherStore((s) => s.appVersion);
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState(false);
+  const t = pick(useLang(), TR);
 
   return (
     <>
-      <Row icon={<Languages className="h-4 w-4" />} label="Язык интерфейса">
+      <Row icon={<Languages className="h-4 w-4" />} label={t.language}>
         <select value={settings?.language ?? 'ru'} onChange={(e) => update({ language: e.target.value as 'ru' | 'en' })}
           className="rounded-lg bg-white/[0.04] px-3 py-1.5 text-sm ring-1 ring-white/10 focus:outline-none focus:ring-primary">
           <option value="ru">Русский</option>
@@ -196,27 +244,27 @@ function LauncherTab() {
         </select>
       </Row>
 
-      <Row icon={<RefreshCw className="h-4 w-4" />} label="Авто-обновление" hint="Применится при следующем запуске">
+      <Row icon={<RefreshCw className="h-4 w-4" />} label={t.autoUpdate} hint={t.autoUpdateHint}>
         <Toggle value={settings?.autoUpdate ?? true} onChange={(v) => update({ autoUpdate: v })} />
       </Row>
 
-      <Row icon={<Rocket className="h-4 w-4" />} label="Автозапуск игры" hint="Сразу нажимать ИГРАТЬ при старте">
+      <Row icon={<Rocket className="h-4 w-4" />} label={t.autoLaunch} hint={t.autoLaunchHint}>
         <Toggle value={!!settings?.autoLaunch} onChange={(v) => update({ autoLaunch: v })} />
       </Row>
 
-      <Row icon={<FileText className="h-4 w-4" />} label="Логи" hint="Открыть страницу логов">
+      <Row icon={<FileText className="h-4 w-4" />} label={t.logs} hint={t.logsHint}>
         <button onClick={() => { close(); navigate('/logs'); }}
-          className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">Открыть</button>
+          className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">{t.open}</button>
       </Row>
 
-      <Row icon={<Trash2 className="h-4 w-4" />} label="Сбросить настройки" hint={`Версия лаунчера ${appVersion}`}>
+      <Row icon={<Trash2 className="h-4 w-4" />} label={t.resetSettings} hint={t.version(appVersion)}>
         {confirm ? (
           <div className="flex gap-2">
-            <button onClick={() => { reset(); setConfirm(false); }} className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white">Точно</button>
-            <button onClick={() => setConfirm(false)} className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs ring-1 ring-white/10">Отмена</button>
+            <button onClick={() => { reset(); setConfirm(false); }} className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white">{t.confirm}</button>
+            <button onClick={() => setConfirm(false)} className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs ring-1 ring-white/10">{t.cancel}</button>
           </div>
         ) : (
-          <button onClick={() => setConfirm(true)} className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs text-red-400 ring-1 ring-white/10 hover:bg-white/[0.1]">Сбросить</button>
+          <button onClick={() => setConfirm(true)} className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs text-red-400 ring-1 ring-white/10 hover:bg-white/[0.1]">{t.reset}</button>
         )}
       </Row>
     </>
