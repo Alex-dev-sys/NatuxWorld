@@ -263,9 +263,11 @@ function LauncherTab() {
     <>
       <Row icon={<Languages className="h-4 w-4" />} label={t.language}>
         <select value={settings?.language ?? 'ru'} onChange={(e) => update({ language: e.target.value as 'ru' | 'en' })}
-          className="rounded-lg bg-white/[0.04] px-3 py-1.5 text-sm ring-1 ring-white/10 focus:outline-none focus:ring-primary">
-          <option value="ru">Русский</option>
-          <option value="en">English</option>
+          className="rounded-lg bg-white/[0.04] px-3 py-1.5 text-sm text-white ring-1 ring-white/10 focus:outline-none focus:ring-primary">
+          {/* Native option popups ignore the translucent select bg — give them an
+              explicit dark background so the text isn't white-on-white. */}
+          <option value="ru" className="bg-bg text-white" style={{ backgroundColor: '#0e0e12', color: '#fff' }}>Русский</option>
+          <option value="en" className="bg-bg text-white" style={{ backgroundColor: '#0e0e12', color: '#fff' }}>English</option>
         </select>
       </Row>
 
