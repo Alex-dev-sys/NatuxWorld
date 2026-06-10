@@ -85,7 +85,7 @@ const fallback: NatuxAPI = {
   },
   account: {
     bootstrap: async () => ({ status: 'guest' as const }),
-    register: async () => ({ ok: true as const, data: undefined }),
+    register: async () => ({ ok: false as const, error: { code: 'unavailable', message: 'Недоступно в браузере' } }),
     verify: async () => ({ ok: false as const, error: { code: 'offline', message: 'Недоступно в браузере' } }),
     resend: async () => ({ ok: true as const, data: undefined }),
     login: async () => ({ ok: false as const, error: { code: 'offline', message: 'Недоступно в браузере' } }),

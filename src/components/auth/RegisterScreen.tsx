@@ -18,8 +18,11 @@ export function RegisterScreen({ onBack }: { onBack: () => void }) {
 
   const submit = async () => {
     setBusy(true);
-    await register(username, email, password);
-    setBusy(false);
+    try {
+      await register(username, email, password);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

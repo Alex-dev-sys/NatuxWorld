@@ -141,11 +141,20 @@ function GameTab() {
   const maxMem = Math.floor(systemMemoryMb / 512) * 512;
   const res = settings?.resolution ?? { width: 1280, height: 720 };
   const isPreset = PRESETS.some((p) => p.w === res.width && p.h === res.height);
+  const [javaResult, setJavaResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   const verifyJava = async () => {
     if (!settings?.javaPath) return;
-    const r = await bridge.settings.verifyJava({ path: settings.javaPath });
-    alert(r.ok ? t.javaOk(String(r.version ?? '')) : t.javaErr(String(r.error ?? '')));
+    try {
+      const r = await bridge.settings.verifyJava({ path: settings.javaPath });
+      setJavaResult(
+        r.ok
+          ? { ok: true, text: t.javaOk(String(r.version ?? '')) }
+          : { ok: false, text: t.javaErr(String(r.error ?? '')) },
+      );
+    } catch (e) {
+      setJavaResult({ ok: false, text: t.javaErr(String((e as Error)?.message ?? '')) });
+    }
   };
   const pickJava = async () => {
     const p = await bridge.settings.pickJava();
@@ -170,14 +179,21 @@ function GameTab() {
             ))}
           </div>
           {settings?.javaMode === 'custom' && (
-            <div className="flex items-center gap-2">
-              <input readOnly value={settings?.javaPath ?? ''} placeholder={t.javaPathPh}
-                className="flex-1 rounded-lg bg-white/[0.04] px-3 py-2 font-mono text-xs ring-1 ring-white/10" />
-              <button onClick={pickJava} className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">
-                <FolderOpen className="h-4 w-4" />
-              </button>
-              <button onClick={verifyJava} className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">{t.verify}</button>
-            </div>
+            <>
+              <div className="flex items-center gap-2">
+                <input readOnly value={settings?.javaPath ?? ''} placeholder={t.javaPathPh}
+                  className="flex-1 rounded-lg bg-white/[0.04] px-3 py-2 font-mono text-xs ring-1 ring-white/10" />
+                <button onClick={pickJava} className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">
+                  <FolderOpen className="h-4 w-4" />
+                </button>
+                <button onClick={verifyJava} className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">{t.verify}</button>
+              </div>
+              {javaResult && (
+                <div className={`text-xs ${javaResult.ok ? 'text-success' : 'text-red-400'}`}>
+                  {javaResult.text}
+                </div>
+              )}
+            </>
           )}
         </div>
       </Row>

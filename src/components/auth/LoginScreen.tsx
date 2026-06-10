@@ -13,8 +13,11 @@ export function LoginScreen({ onRegister }: { onRegister: () => void }) {
 
   const submit = async () => {
     setBusy(true);
-    await login(loginField, password);
-    setBusy(false);
+    try {
+      await login(loginField, password);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

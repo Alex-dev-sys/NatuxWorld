@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Check, Copy, LogOut, Pencil, User } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useAccountStore } from '../store/useAccountStore';
+import { isValidUsername } from '../lib/validators';
 
 export function ProfileMenu() {
   // The offline MC profile (uuid, nick) only exists after the first Play; the account
@@ -52,6 +53,9 @@ export function ProfileMenu() {
       setRenaming(false);
       return;
     }
+    // Reject invalid nicks (length / charset) without submitting; keep the input
+    // open so the user can correct it.
+    if (!isValidUsername(trimmed)) return;
     await logout();
     await login(trimmed);
     setRenaming(false);

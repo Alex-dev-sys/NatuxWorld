@@ -18,7 +18,7 @@ export function PlayButton() {
     <div className="flex flex-col gap-1.5">
       <div className="relative flex items-stretch gap-1.5">
         <motion.button
-          onClick={isError ? play : play}
+          onClick={play}
           disabled={isLaunching}
           whileHover={{ scale: isLaunching ? 1 : 1.02 }}
           whileTap={{ scale: isLaunching ? 1 : 0.98 }}

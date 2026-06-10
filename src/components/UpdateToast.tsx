@@ -28,6 +28,9 @@ export function UpdateToast() {
               percent: Math.round(event.percent),
             };
           case 'downloaded':
+            // Re-show the toast for the "ready to install" notification even if the
+            // earlier "available" toast was dismissed this session.
+            setDismissed(false);
             return { phase: 'ready', version: event.version };
           case 'error':
           case 'not-available':

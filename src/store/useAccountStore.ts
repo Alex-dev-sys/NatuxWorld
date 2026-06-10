@@ -27,45 +27,74 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   pendingEmail: null,
 
   bootstrap: async () => {
-    const res = await bridge.account.bootstrap();
-    if (res.status === 'authed') set({ status: 'authed', user: res.user });
-    else set({ status: 'guest', user: null });
+    try {
+      const res = await bridge.account.bootstrap();
+      if (res.status === 'authed') set({ status: 'authed', user: res.user });
+      else set({ status: 'guest', user: null });
+    } catch {
+      set({ status: 'guest', user: null });
+    }
   },
 
   register: async (username, email, password) => {
     set({ error: null });
-    const res = await bridge.account.register({ username, email, password });
-    if (res.ok) { set({ pendingEmail: email }); return true; }
-    set({ error: res.error.message });
-    return false;
+    try {
+      const res = await bridge.account.register({ username, email, password });
+      if (res.ok) { set({ pendingEmail: email }); return true; }
+      set({ error: res.error.message });
+      return false;
+    } catch {
+      set({ error: 'Ошибка сети' });
+      return false;
+    }
   },
 
   verify: async (code) => {
     const email = get().pendingEmail;
     if (!email) return false;
     set({ error: null });
-    const res = await bridge.account.verify({ email, code });
-    if (res.ok) { set({ status: 'authed', user: res.data, pendingEmail: null }); return true; }
-    set({ error: res.error.message });
-    return false;
+    try {
+      const res = await bridge.account.verify({ email, code });
+      if (res.ok) { set({ status: 'authed', user: res.data, pendingEmail: null }); return true; }
+      set({ error: res.error.message });
+      return false;
+    } catch {
+      set({ error: 'Ошибка сети' });
+      return false;
+    }
   },
 
   resend: async () => {
     const email = get().pendingEmail;
-    if (email) await bridge.account.resend({ email });
+    if (!email) return;
+    try {
+      const res = await bridge.account.resend({ email });
+      if (!res.ok) set({ error: res.error.message });
+    } catch {
+      set({ error: 'Ошибка сети' });
+    }
   },
 
   login: async (login, password) => {
     set({ error: null });
-    const res = await bridge.account.login({ login, password });
-    if (res.ok) { set({ status: 'authed', user: res.data }); return true; }
-    if (res.error.code === 'email_unverified') set({ pendingEmail: login.includes('@') ? login : null });
-    set({ error: res.error.message });
-    return false;
+    try {
+      const res = await bridge.account.login({ login, password });
+      if (res.ok) { set({ status: 'authed', user: res.data }); return true; }
+      if (res.error.code === 'email_unverified') set({ pendingEmail: login.includes('@') ? login : null });
+      set({ error: res.error.message });
+      return false;
+    } catch {
+      set({ error: 'Ошибка сети' });
+      return false;
+    }
   },
 
   logout: async () => {
-    await bridge.account.logout();
+    try {
+      await bridge.account.logout();
+    } catch {
+      // ignore — clear local session regardless
+    }
     set({ status: 'guest', user: null, error: null });
   },
 

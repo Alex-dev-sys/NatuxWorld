@@ -27,13 +27,15 @@ export function useStatHistory(status: ServerStatus | null): StatHistory {
     ping: [],
     online: [],
   });
-  const lastPing = useRef<number | null>(null);
+  // Dedupe by poll identity (the status object reference), not the ping value:
+  // useServerStatus hands us a fresh object every successful poll, so each poll
+  // appends one point even when the ping happens to be identical between polls.
+  const lastStatus = useRef<ServerStatus | null>(null);
 
   useEffect(() => {
     if (!status) return;
-    // avoid duplicate appends on re-render: ping changes every poll
-    if (lastPing.current === status.ping && history.players.length > 0) return;
-    lastPing.current = status.ping;
+    if (lastStatus.current === status) return;
+    lastStatus.current = status;
     setHistory((h) => ({
       players: push(h.players, status.players),
       tps: push(h.tps, status.tps),

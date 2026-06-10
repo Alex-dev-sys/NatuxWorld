@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { MailCheck, ArrowLeft } from 'lucide-react';
 import { useAccountStore } from '../../store/useAccountStore';
 import { isValidCode } from '../../lib/validators';
+
+const RESEND_COOLDOWN = 30;
 
 export function VerifyEmailScreen() {
   const verify = useAccountStore((s) => s.verify);
@@ -12,11 +14,38 @@ export function VerifyEmailScreen() {
   const error = useAccountStore((s) => s.error);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
   const submit = async () => {
     setBusy(true);
-    await verify(code);
-    setBusy(false);
+    try {
+      await verify(code);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (cooldown > 0) return;
+    setCooldown(RESEND_COOLDOWN);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setCooldown((c) => {
+        if (c <= 1 && timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    await resend();
   };
 
   return (
@@ -38,8 +67,12 @@ export function VerifyEmailScreen() {
         >
           <MailCheck className="h-4 w-4" /> ПОДТВЕРДИТЬ
         </button>
-        <button onClick={resend} className="text-xs text-muted hover:text-white">
-          Отправить код повторно
+        <button
+          onClick={handleResend}
+          disabled={cooldown > 0}
+          className="text-xs text-muted hover:text-white disabled:opacity-40 disabled:hover:text-muted"
+        >
+          {cooldown > 0 ? `Отправить повторно (${cooldown}с)` : 'Отправить код повторно'}
         </button>
         <button
           onClick={cancelVerify}

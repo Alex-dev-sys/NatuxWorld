@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { LaunchProgress } from '../../electron/services/LauncherService';
 import { bridge } from '../services/electron-bridge';
 import { useAccountStore } from './useAccountStore';
+import { useSettingsStore } from './useSettingsStore';
 
 // Single fixed build + server — no version picking, one PLAY button.
 const FIXED_VERSION = 'forge-1.21.1';
@@ -52,6 +53,8 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
 
     const unsub = bridge.launcher.onProgress((p: LaunchProgress) => {
       const message = p.message || STAGE_LABEL[p.stage] || p.stage;
+      // Terminal stages: stop tracking launch and tear down this listener.
+      const terminal = p.stage === 'idle' || p.stage === 'error';
       set({
         stage: p.stage,
         progress: p.progress,
@@ -59,6 +62,11 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
         errorMessage: p.stage === 'error' ? message : null,
         isLaunching: p.stage !== 'idle' && p.stage !== 'error' && p.stage !== 'running',
       });
+      if (terminal) {
+        const sub = get().unsubProgress;
+        if (sub) sub();
+        set({ unsubProgress: null });
+      }
     });
     set({
       unsubProgress: unsub,
@@ -69,21 +77,40 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
       errorMessage: null,
     });
 
-    const result = await bridge.launcher.play({
-      version: FIXED_VERSION,
-      loader: FIXED_LOADER,
-      username: useAccountStore.getState().user?.username ?? 'Player',
-      memory: 4096,
-      server: SERVER_IP,
-    });
+    try {
+      const result = await bridge.launcher.play({
+        version: FIXED_VERSION,
+        loader: FIXED_LOADER,
+        username: useAccountStore.getState().user?.username ?? 'Player',
+        memory: useSettingsStore.getState().settings?.memory ?? 4096,
+        server: SERVER_IP,
+      });
 
-    if (!result.ok) {
+      if (!result.ok) {
+        set({
+          isLaunching: false,
+          stage: 'error',
+          progressMessage: result.error ?? 'Ошибка запуска',
+          errorMessage: result.error ?? 'Ошибка запуска',
+        });
+      }
+    } catch {
       set({
         isLaunching: false,
         stage: 'error',
-        progressMessage: result.error ?? 'Ошибка запуска',
-        errorMessage: result.error ?? 'Ошибка запуска',
+        progressMessage: 'Ошибка запуска',
+        errorMessage: 'Ошибка запуска',
       });
+    } finally {
+      // Tear the listener down on a failed/errored launch, but keep it alive
+      // while the game is actually running ('running' also clears isLaunching) —
+      // it must survive to receive the later 'idle' game-exit event, which then
+      // tears it down itself in the terminal branch above.
+      if (get().stage !== 'running') {
+        const sub = get().unsubProgress;
+        if (sub) sub();
+        set({ unsubProgress: null });
+      }
     }
   },
 
