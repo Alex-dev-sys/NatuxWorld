@@ -142,6 +142,13 @@ function GameTab() {
   const res = settings?.resolution ?? { width: 1280, height: 720 };
   const isPreset = PRESETS.some((p) => p.w === res.width && p.h === res.height);
   const [javaResult, setJavaResult] = useState<{ ok: boolean; text: string } | null>(null);
+  // Local draft while dragging the RAM slider: keeps the drag buttery-smooth
+  // (no settings write / IPC per pixel) and commits once on pointer release.
+  const [memDraft, setMemDraft] = useState<number | null>(null);
+  const memValue = memDraft ?? Math.min(memory, maxMem);
+  const commitMem = () => {
+    if (memDraft != null) { update({ memory: memDraft }); setMemDraft(null); }
+  };
 
   const verifyJava = async () => {
     if (!settings?.javaPath) return;
@@ -163,9 +170,11 @@ function GameTab() {
 
   return (
     <>
-      <Row icon={<MemoryStick className="h-4 w-4" />} label={t.memory} hint={t.memoryHint((memory / 1024).toFixed(1), (systemMemoryMb / 1024).toFixed(0))}>
-        <input type="range" min={1024} max={maxMem} step={512} value={Math.min(memory, maxMem)}
-          onChange={(e) => update({ memory: Number(e.target.value) })} className="w-56 accent-primary" />
+      <Row icon={<MemoryStick className="h-4 w-4" />} label={t.memory} hint={t.memoryHint((memValue / 1024).toFixed(1), (systemMemoryMb / 1024).toFixed(0))}>
+        <input type="range" min={1024} max={maxMem} step={128} value={memValue}
+          onChange={(e) => setMemDraft(Number(e.target.value))}
+          onPointerUp={commitMem} onPointerLeave={commitMem} onKeyUp={commitMem}
+          className="w-56 accent-primary" />
       </Row>
 
       <Row icon={<Coffee className="h-4 w-4" />} label={t.java} stacked>
