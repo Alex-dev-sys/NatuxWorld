@@ -8,6 +8,7 @@ import { DownloadService } from './DownloadService';
 import type { ArgEntry, Library, VanillaVersion } from './MojangService';
 import {
   getForgeDir,
+  getLibraryPath,
   getMinecraftDir,
   getVersionDir,
   getVersionJsonPath,
@@ -87,6 +88,16 @@ export function installerUrl(mcVersion: string, build: string): string {
   return `${FORGE_MAVEN}/${v}/forge-${v}-installer.jar`;
 }
 
+/**
+ * Path to the patched client jar that the Forge installer's processors generate
+ * locally (its library entry has an empty download url). This jar carries the
+ * deobfuscated `net/minecraft/client/Minecraft.class`, so its presence is the
+ * real proof that an install completed — the version json alone is not.
+ */
+export function forgeClientJarPath(mcVersion: string, build: string): string {
+  return getLibraryPath(`net.minecraftforge:forge:${mcVersion}-${build}:client`);
+}
+
 /** javaw.exe has no stdout pipe — the headless installer needs java.exe for console output. */
 function consoleJava(javaPath: string): string {
   return javaPath.replace(/javaw\.exe$/i, 'java.exe');
@@ -114,10 +125,25 @@ export class ForgeService extends EventEmitter {
 
     const id = forgeVersionId(mcVersion, build);
     const forgeJsonPath = getVersionJsonPath(id);
+    const clientJar = forgeClientJarPath(mcVersion, build);
 
-    // Cached install — reuse if the merged version json already exists.
-    if (!fs.existsSync(forgeJsonPath)) {
+    // A cached install is only trustworthy if BOTH the version json AND the
+    // processor-generated patched client jar are present and intact. The installer
+    // writes the json early but generates the client jar (with Minecraft.class) in a
+    // later processor step; an interrupted/failed first install can leave the json
+    // behind without the jar. Keying the cache on the json alone then permanently
+    // skips reinstall and the launch dies with "Could not find .../Minecraft.class".
+    const cached = fs.existsSync(forgeJsonPath) && (await isValidZip(clientJar));
+    if (!cached) {
+      // Drop a stale json so the installer performs a clean (re)install.
+      await fsp.unlink(forgeJsonPath).catch(() => undefined);
       await this.runInstaller(mcVersion, build, javaPath, onProgress);
+      if (!(await isValidZip(clientJar))) {
+        throw new Error(
+          'Forge установился, но процессоры не создали клиентский JAR. ' +
+            'Удали папку minecraft\\libraries\\net\\minecraftforge и запусти снова.',
+        );
+      }
     } else {
       onProgress({ stage: 'forge-install', progress: 90, message: 'Forge уже установлен' });
     }

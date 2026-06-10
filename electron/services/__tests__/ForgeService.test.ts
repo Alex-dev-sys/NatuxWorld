@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+
+// forgeClientJarPath -> getLibraryPath -> getLibrariesDir reads electron app.getPath.
+vi.mock('electron', () => ({
+  app: { getPath: vi.fn(() => 'C:\\Users\\Test\\AppData\\Roaming\\NATUX WORLD') },
+}));
 import {
   FORGE_VERSIONS,
+  forgeClientJarPath,
   forgeVersionId,
   installerUrl,
   mergeVersions,
@@ -31,6 +37,14 @@ describe('ForgeService URLs + version ids', () => {
 
   it('builds the forge version id', () => {
     expect(forgeVersionId('1.21.6', '56.0.4')).toBe('1.21.6-forge-56.0.4');
+  });
+
+  it('resolves the processor-generated patched client jar path', () => {
+    const p = forgeClientJarPath('1.21.1', '52.1.14');
+    // Maven layout under libraries/, classifier "client" — this jar holds Minecraft.class.
+    expect(p.replace(/\\/g, '/')).toContain(
+      'libraries/net/minecraftforge/forge/1.21.1-52.1.14/forge-1.21.1-52.1.14-client.jar',
+    );
   });
 });
 
