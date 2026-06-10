@@ -4,6 +4,25 @@ import { Check, Copy, LogOut, Pencil, User } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useAccountStore } from '../store/useAccountStore';
 import { isValidUsername } from '../lib/validators';
+import { useLang, pick } from '../i18n';
+
+const ru = {
+  fallbackName: 'Аккаунт',
+  copyUuid: 'Копировать UUID',
+  copied: 'Скопировано',
+  newNickPh: 'Новый ник',
+  changeNick: 'Сменить ник',
+  logout: 'Выйти',
+};
+const en: typeof ru = {
+  fallbackName: 'Account',
+  copyUuid: 'Copy UUID',
+  copied: 'Copied',
+  newNickPh: 'New username',
+  changeNick: 'Change username',
+  logout: 'Log out',
+};
+const TR = { ru, en };
 
 export function ProfileMenu() {
   // The offline MC profile (uuid, nick) only exists after the first Play; the account
@@ -21,6 +40,7 @@ export function ProfileMenu() {
   const [nameDraft, setNameDraft] = useState('');
   const [copied, setCopied] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const t = pick(useLang(), TR);
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -39,7 +59,7 @@ export function ProfileMenu() {
     return () => clearTimeout(t);
   }, [copied]);
 
-  const displayName = accountName ?? user?.username ?? 'Аккаунт';
+  const displayName = accountName ?? user?.username ?? t.fallbackName;
 
   const copyUuid = async () => {
     if (!user) return;
@@ -108,7 +128,7 @@ export function ProfileMenu() {
                   className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-white/80 hover:bg-white/[0.06] hover:text-white"
                 >
                   {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
-                  {copied ? 'Скопировано' : 'Копировать UUID'}
+                  {copied ? t.copied : t.copyUuid}
                 </button>
               )}
 
@@ -122,7 +142,7 @@ export function ProfileMenu() {
                       if (e.key === 'Enter') submitRename();
                       if (e.key === 'Escape') setRenaming(false);
                     }}
-                    placeholder="Новый ник"
+                    placeholder={t.newNickPh}
                     className="flex-1 rounded-md bg-white/[0.05] px-2 py-1 text-xs text-white ring-1 ring-white/10 focus:outline-none focus:ring-primary"
                   />
                   <button
@@ -141,7 +161,7 @@ export function ProfileMenu() {
                   className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-white/80 hover:bg-white/[0.06] hover:text-white"
                 >
                   <Pencil className="h-3.5 w-3.5" />
-                  Сменить ник
+                  {t.changeNick}
                 </button>
               ) : null}
 
@@ -150,7 +170,7 @@ export function ProfileMenu() {
                 className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-white/80 hover:bg-primary/10 hover:text-primary"
               >
                 <LogOut className="h-3.5 w-3.5" />
-                Выйти
+                {t.logout}
               </button>
             </div>
           </motion.div>

@@ -20,6 +20,11 @@ import { useSettingsStore } from './store/useSettingsStore';
 import { AppBackdrop } from './components/AppBackdrop';
 import { useAccountStore } from './store/useAccountStore';
 import { AuthGate } from './components/auth/AuthGate';
+import { useLang, pick } from './i18n';
+
+const ru = { loading: 'Загрузка…' };
+const en: typeof ru = { loading: 'Loading…' };
+const TR = { ru, en };
 
 export default function App() {
   const location = useLocation();
@@ -32,6 +37,7 @@ export default function App() {
   const autoLaunchFired = useRef(false);
   const accountStatus = useAccountStore((s) => s.status);
   const bootstrap = useAccountStore((s) => s.bootstrap);
+  const t = pick(useLang(), TR);
 
   useEffect(() => { bootstrap(); }, [bootstrap]);
 
@@ -53,7 +59,7 @@ export default function App() {
 
   if (accountStatus !== 'authed') {
     return accountStatus === 'checking'
-      ? <div className="grid h-screen w-screen place-items-center bg-bg text-muted">Загрузка…</div>
+      ? <div className="grid h-screen w-screen place-items-center bg-bg text-muted">{t.loading}</div>
       : <AuthGate />;
   }
 

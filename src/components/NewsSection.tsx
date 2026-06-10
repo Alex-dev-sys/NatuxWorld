@@ -6,11 +6,17 @@ import { useNews } from '../hooks/useNews';
 import { NewsCard } from './NewsCard';
 import { NewsModal } from './NewsModal';
 import type { NewsItem } from '../../electron/services/NewsService';
+import { useLang, pick } from '../i18n';
+
+const ru = { latest: 'Последние новости', all: 'Все новости' };
+const en: typeof ru = { latest: 'Latest news', all: 'All news' };
+const TR = { ru, en };
 
 export function NewsSection() {
   const news = useNews();
   const navigate = useNavigate();
   const [active, setActive] = useState<NewsItem | null>(null);
+  const t = pick(useLang(), TR);
 
   return (
     <>
@@ -26,14 +32,14 @@ export function NewsSection() {
               <Newspaper className="h-3.5 w-3.5" />
             </div>
             <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/85">
-              Последние новости
+              {t.latest}
             </span>
           </div>
           <button
             onClick={() => navigate('/news')}
             className="group flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-primary hover:text-primary-glow"
           >
-            Все новости
+            {t.all}
             <ArrowRight className="h-3 w-3 transition group-hover:translate-x-0.5" />
           </button>
         </div>

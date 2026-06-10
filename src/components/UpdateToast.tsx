@@ -3,6 +3,23 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Download, RefreshCw, X } from 'lucide-react';
 import { bridge } from '../services/electron-bridge';
 import type { UpdateEvent } from '../../electron/services/UpdateService';
+import { useLang, pick } from '../i18n';
+
+const ru = {
+  update: 'Обновление',
+  available: (v: string) => `v${v} доступна`,
+  downloading: (v: string) => `Загрузка v${v}…`,
+  ready: (v: string) => `v${v} готова к установке`,
+  install: 'Перезапустить и установить',
+};
+const en: typeof ru = {
+  update: 'Update',
+  available: (v: string) => `v${v} available`,
+  downloading: (v: string) => `Downloading v${v}…`,
+  ready: (v: string) => `v${v} ready to install`,
+  install: 'Restart and install',
+};
+const TR = { ru, en };
 
 type State =
   | { phase: 'idle' }
@@ -13,6 +30,7 @@ type State =
 export function UpdateToast() {
   const [state, setState] = useState<State>({ phase: 'idle' });
   const [dismissed, setDismissed] = useState(false);
+  const t = pick(useLang(), TR);
 
   useEffect(() => {
     return bridge.updater.onUpdate((raw) => {
@@ -65,12 +83,12 @@ export function UpdateToast() {
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
-              Обновление
+              {t.update}
             </div>
             <div className="mt-0.5 text-sm font-semibold text-white">
-              {state.phase === 'available' && `v${state.version} доступна`}
-              {state.phase === 'downloading' && `Загрузка v${state.version}…`}
-              {state.phase === 'ready' && `v${state.version} готова к установке`}
+              {state.phase === 'available' && t.available(state.version)}
+              {state.phase === 'downloading' && t.downloading(state.version)}
+              {state.phase === 'ready' && t.ready(state.version)}
             </div>
             {state.phase === 'downloading' && (
               <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-white/[0.06]">
@@ -87,7 +105,7 @@ export function UpdateToast() {
                 onClick={() => bridge.updater.install()}
                 className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg bg-play-gradient px-3 text-xs font-semibold text-white shadow-glow hover:shadow-glow-strong transition"
               >
-                Перезапустить и установить
+                {t.install}
               </button>
             )}
           </div>

@@ -1,8 +1,18 @@
 import { Play, Loader2, X, AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useLauncherStore } from '../store/useLauncherStore';
+import { useLang, pick } from '../i18n';
+
+const ru = {
+  retry: 'ПОВТОРИТЬ', launching: 'ЗАПУСК...', play: 'ИГРАТЬ', cancelLaunch: 'Отменить запуск',
+};
+const en: typeof ru = {
+  retry: 'RETRY', launching: 'LAUNCHING...', play: 'PLAY', cancelLaunch: 'Cancel launch',
+};
+const TR = { ru, en };
 
 export function PlayButton() {
+  const t = pick(useLang(), TR);
   const isLaunching = useLauncherStore((s) => s.isLaunching);
   const progress = useLauncherStore((s) => s.progress);
   const message = useLauncherStore((s) => s.progressMessage);
@@ -37,7 +47,7 @@ export function PlayButton() {
               <Play className="h-6 w-6 fill-white text-white drop-shadow" />
             )}
             <span className="font-display text-2xl tracking-[0.18em] text-white drop-shadow">
-              {isError ? 'ПОВТОРИТЬ' : isLaunching ? 'ЗАПУСК...' : 'ИГРАТЬ'}
+              {isError ? t.retry : isLaunching ? t.launching : t.play}
             </span>
           </span>
           {isLaunching && (
@@ -57,7 +67,7 @@ export function PlayButton() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
             onClick={cancel}
-            title="Отменить запуск"
+            title={t.cancelLaunch}
             className="grid w-12 place-items-center rounded-2xl bg-white/[0.06] text-white/80 ring-1 ring-white/[0.08] hover:bg-white/[0.1] hover:text-white"
           >
             <X className="h-5 w-5" />

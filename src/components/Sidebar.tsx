@@ -17,14 +17,31 @@ import { PlayButton } from './PlayButton';
 import { useServerStatus } from '../hooks/useServerStatus';
 import { bridge } from '../services/electron-bridge';
 import { cn } from '../utils/cn';
+import { useLang, pick } from '../i18n';
+
+const ru = {
+  navHome: 'Главная', navNews: 'Новости', navStore: 'Донат-магазин',
+  navRules: 'Правила', navSupport: 'Поддержка', navLogs: 'Логи',
+  online: (n: number) => `${n} онлайн`, onServerNow: 'Сейчас на сервере',
+  serverState: 'Состояние сервера: Отличное',
+  community: 'Сообщество', open: 'открыть →',
+};
+const en: typeof ru = {
+  navHome: 'Home', navNews: 'News', navStore: 'Donation store',
+  navRules: 'Rules', navSupport: 'Support', navLogs: 'Logs',
+  online: (n: number) => `${n} online`, onServerNow: 'Online now',
+  serverState: 'Server status: Excellent',
+  community: 'Community', open: 'open →',
+};
+const TR = { ru, en };
 
 const navItems = [
-  { to: '/', icon: Home, label: 'Главная', end: true },
-  { to: '/news', icon: Newspaper, label: 'Новости' },
-  { to: '/store', icon: ShoppingCart, label: 'Донат-магазин' },
-  { to: '/rules', icon: ScrollText, label: 'Правила' },
-  { to: '/support', icon: LifeBuoy, label: 'Поддержка' },
-  { to: '/logs', icon: Terminal, label: 'Логи' },
+  { to: '/', icon: Home, key: 'navHome' as const, end: true },
+  { to: '/news', icon: Newspaper, key: 'navNews' as const },
+  { to: '/store', icon: ShoppingCart, key: 'navStore' as const },
+  { to: '/rules', icon: ScrollText, key: 'navRules' as const },
+  { to: '/support', icon: LifeBuoy, key: 'navSupport' as const },
+  { to: '/logs', icon: Terminal, key: 'navLogs' as const },
 ];
 
 const community = [
@@ -36,6 +53,7 @@ const community = [
 export function Sidebar() {
   const { status } = useServerStatus();
   const navigate = useNavigate();
+  const t = pick(useLang(), TR);
 
   return (
     <aside className="relative flex h-full w-[300px] shrink-0 flex-col gap-4 overflow-y-auto p-4 pt-0">
@@ -76,15 +94,15 @@ export function Sidebar() {
             <span className="absolute h-2 w-2 rounded-full bg-success animate-ping-ring" />
             <span className="relative h-2 w-2 rounded-full bg-success shadow-[0_0_8px_rgba(0,255,127,0.9)]" />
           </span>}
-          value={`${status?.players ?? 142} онлайн`}
-          sub="Сейчас на сервере"
+          value={t.online(status?.players ?? 142)}
+          sub={t.onServerNow}
         />
         <SidebarStat
           icon={<div className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
             <Gauge className="h-3.5 w-3.5" />
           </div>}
           value={`TPS: ${status?.tps?.toFixed(1) ?? '20.0'}`}
-          sub="Состояние сервера: Отличное"
+          sub={t.serverState}
           right={<Activity className="h-3.5 w-3.5 text-success" />}
         />
       </motion.div>
@@ -116,7 +134,7 @@ export function Sidebar() {
               {({ isActive }) => (
                 <>
                   <item.icon className="h-4 w-4" />
-                  <span className="flex-1 font-medium">{item.label}</span>
+                  <span className="flex-1 font-medium">{t[item.key]}</span>
                   {isActive && (
                     <motion.span
                       layoutId="nav-pill"
@@ -132,7 +150,7 @@ export function Sidebar() {
 
       <div className="mt-auto flex flex-col gap-1">
         <div className="px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
-          Сообщество
+          {t.community}
         </div>
         {community.map((c, i) => (
           <motion.button
@@ -147,7 +165,7 @@ export function Sidebar() {
             <c.icon className={cn('h-4 w-4', c.accent)} />
             <span className="flex-1 text-left font-medium">{c.label}</span>
             <span className="text-[10px] text-muted opacity-0 transition group-hover:opacity-100">
-              открыть →
+              {t.open}
             </span>
           </motion.button>
         ))}

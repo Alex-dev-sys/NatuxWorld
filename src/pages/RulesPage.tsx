@@ -1,20 +1,36 @@
 import { motion } from 'framer-motion';
 import { ScrollText } from 'lucide-react';
+import { useLang, pick } from '../i18n';
 
-const rules = [
-  { title: 'Запрещены читы и любые модификации, дающие преимущество', sev: 'Бан навсегда' },
-  { title: 'Запрещено разжигание ненависти и оскорбления', sev: 'Мут / бан' },
-  { title: 'Запрещён рекламный спам в чате', sev: 'Мут 24ч' },
-  { title: 'Разрешён PvP в любых биомах кроме спавна', sev: '—' },
-  { title: 'Гриф приветствуется в режиме анархии', sev: '—' },
-];
+const ru = {
+  title: 'ПРАВИЛА',
+  rules: [
+    { title: 'Запрещены читы и любые модификации, дающие преимущество', sev: 'Бан навсегда' },
+    { title: 'Запрещено разжигание ненависти и оскорбления', sev: 'Мут / бан' },
+    { title: 'Запрещён рекламный спам в чате', sev: 'Мут 24ч' },
+    { title: 'Разрешён PvP в любых биомах кроме спавна', sev: '—' },
+    { title: 'Гриф приветствуется в режиме анархии', sev: '—' },
+  ],
+};
+const en: typeof ru = {
+  title: 'RULES',
+  rules: [
+    { title: 'Cheats and any modifications giving an advantage are forbidden', sev: 'Permanent ban' },
+    { title: 'Hate speech and insults are forbidden', sev: 'Mute / ban' },
+    { title: 'Advertising spam in chat is forbidden', sev: 'Mute 24h' },
+    { title: 'PvP is allowed in any biome except spawn', sev: '—' },
+    { title: 'Griefing is welcome in anarchy mode', sev: '—' },
+  ],
+};
+const TR = { ru, en };
 
 export function RulesPage() {
+  const t = pick(useLang(), TR);
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-4">
-      <h1 className="font-display text-4xl tracking-wide">ПРАВИЛА</h1>
+      <h1 className="font-display text-4xl tracking-wide">{t.title}</h1>
       <div className="flex flex-col gap-2">
-        {rules.map((r, i) => (
+        {t.rules.map((r, i) => (
           <motion.div
             key={i}
             initial={{ opacity: 0, x: -8 }}

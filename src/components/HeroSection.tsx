@@ -1,8 +1,18 @@
 import { motion, useMotionValue, useTransform } from 'framer-motion';
 import { useEffect, type MouseEvent } from 'react';
 import { Swords, Skull, Flame } from 'lucide-react';
+import { useLang, pick } from '../i18n';
+
+const ru = {
+  season: 'Сезон 7 · Анархия', anarchy: 'Анархия', tagline: 'Выживай или умри',
+};
+const en: typeof ru = {
+  season: 'Season 7 · Anarchy', anarchy: 'Anarchy', tagline: 'Survive or die',
+};
+const TR = { ru, en };
 
 export function HeroSection() {
+  const t = pick(useLang(), TR);
   const mx = useMotionValue(0.5);
   const my = useMotionValue(0.5);
   const tx = useTransform(mx, [0, 1], [-14, 14]);
@@ -77,7 +87,7 @@ export function HeroSection() {
             <span className="absolute h-1.5 w-1.5 rounded-full bg-primary animate-ping-ring" />
             <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-glow" />
           </span>
-          Сезон 7 · Анархия
+          {t.season}
         </span>
 
         <h1 className="font-display text-[96px] leading-[0.82] tracking-[0.02em] text-white drop-shadow-[0_8px_32px_rgba(255,0,55,0.55)]">
@@ -86,12 +96,12 @@ export function HeroSection() {
         </h1>
 
         <div className="mt-1 flex items-center gap-2 text-[12px] font-medium uppercase tracking-[0.18em] text-white/85">
-          <Tag icon={<Swords className="h-3 w-3" />}>Анархия</Tag>
+          <Tag icon={<Swords className="h-3 w-3" />}>{t.anarchy}</Tag>
           <Tag icon={<Skull className="h-3 w-3" />}>PvP</Tag>
           <Tag icon={<Flame className="h-3 w-3" />}>mcMMO</Tag>
         </div>
 
-        <p className="text-sm text-white/55">Выживай или умри</p>
+        <p className="text-sm text-white/55">{t.tagline}</p>
       </motion.div>
     </motion.div>
   );

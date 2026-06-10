@@ -5,11 +5,23 @@ import { useIsMaximized } from '../hooks/useElectron';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { Tooltip } from './ui/Tooltip';
 import { ProfileMenu } from './ProfileMenu';
+import { useLang, pick } from '../i18n';
+
+const ru = {
+  copyIp: 'Скопировать IP',
+  settings: 'Настройки',
+};
+const en: typeof ru = {
+  copyIp: 'Copy IP',
+  settings: 'Settings',
+};
+const TR = { ru, en };
 
 export function TitleBar() {
   const isMax = useIsMaximized();
   const openSettings = useSettingsStore((s) => s.open);
   const [ipCopied, setIpCopied] = useState(false);
+  const t = pick(useLang(), TR);
 
   useEffect(() => {
     if (!ipCopied) return;
@@ -31,7 +43,7 @@ export function TitleBar() {
               setIpCopied(true);
             }}
             className="ml-1 text-muted hover:text-white"
-            title="Скопировать IP"
+            title={t.copyIp}
           >
             {ipCopied ? (
               <Check className="h-3 w-3 text-success" />
@@ -45,7 +57,7 @@ export function TitleBar() {
       <div className="titlebar-no-drag flex items-center gap-1.5">
         <ProfileMenu />
 
-        <Tooltip label="Настройки">
+        <Tooltip label={t.settings}>
           <button
             onClick={openSettings}
             className="grid h-8 w-8 place-items-center rounded-lg text-white/70 hover:bg-white/5 hover:text-white"

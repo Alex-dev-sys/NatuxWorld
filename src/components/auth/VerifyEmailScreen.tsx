@@ -3,8 +3,29 @@ import { motion } from 'framer-motion';
 import { MailCheck, ArrowLeft } from 'lucide-react';
 import { useAccountStore } from '../../store/useAccountStore';
 import { isValidCode } from '../../lib/validators';
+import { useLang, pick } from '../../i18n';
 
 const RESEND_COOLDOWN = 30;
+
+const ru = {
+  title: 'ПОДТВЕРЖДЕНИЕ',
+  sentTo: (email: string) => `Код отправлен на ${email}`,
+  codePh: '6-значный код',
+  submit: 'ПОДТВЕРДИТЬ',
+  resend: 'Отправить код повторно',
+  resendCooldown: (s: number) => `Отправить повторно (${s}с)`,
+  changeEmail: 'Изменить email',
+};
+const en: typeof ru = {
+  title: 'VERIFICATION',
+  sentTo: (email: string) => `Code sent to ${email}`,
+  codePh: '6-digit code',
+  submit: 'CONFIRM',
+  resend: 'Resend code',
+  resendCooldown: (s: number) => `Resend (${s}s)`,
+  changeEmail: 'Change email',
+};
+const TR = { ru, en };
 
 export function VerifyEmailScreen() {
   const verify = useAccountStore((s) => s.verify);
@@ -16,6 +37,7 @@ export function VerifyEmailScreen() {
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const t = pick(useLang(), TR);
 
   useEffect(() => {
     return () => {
@@ -50,13 +72,13 @@ export function VerifyEmailScreen() {
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="w-[380px] rounded-2xl glass-strong p-6 shadow-premium">
-      <div className="font-display text-3xl tracking-wide">ПОДТВЕРЖДЕНИЕ</div>
-      <div className="mt-2 text-xs text-muted">Код отправлен на {email}</div>
+      <div className="font-display text-3xl tracking-wide">{t.title}</div>
+      <div className="mt-2 text-xs text-muted">{t.sentTo(email ?? '')}</div>
       <div className="mt-5 flex flex-col gap-3">
         <input
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-          placeholder="6-значный код"
+          placeholder={t.codePh}
           className="rounded-lg bg-white/[0.04] px-3 py-2.5 text-center font-mono text-lg tracking-[0.4em] ring-1 ring-white/10 focus:outline-none focus:ring-primary"
         />
         {error && <div className="text-xs text-primary">{error}</div>}
@@ -65,20 +87,20 @@ export function VerifyEmailScreen() {
           onClick={submit}
           className="mt-1 inline-flex items-center justify-center gap-2 rounded-lg bg-primary py-2.5 font-display tracking-widest text-white shadow-glow disabled:opacity-40"
         >
-          <MailCheck className="h-4 w-4" /> ПОДТВЕРДИТЬ
+          <MailCheck className="h-4 w-4" /> {t.submit}
         </button>
         <button
           onClick={handleResend}
           disabled={cooldown > 0}
           className="text-xs text-muted hover:text-white disabled:opacity-40 disabled:hover:text-muted"
         >
-          {cooldown > 0 ? `Отправить повторно (${cooldown}с)` : 'Отправить код повторно'}
+          {cooldown > 0 ? t.resendCooldown(cooldown) : t.resend}
         </button>
         <button
           onClick={cancelVerify}
           className="inline-flex items-center justify-center gap-1.5 text-xs text-muted hover:text-white"
         >
-          <ArrowLeft className="h-3.5 w-3.5" /> Изменить email
+          <ArrowLeft className="h-3.5 w-3.5" /> {t.changeEmail}
         </button>
       </div>
     </motion.div>

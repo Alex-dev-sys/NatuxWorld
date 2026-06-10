@@ -2,6 +2,28 @@ import { Wifi, Users, Gauge, Server } from 'lucide-react';
 import { StatCard } from './StatCard';
 import { useServerStatus } from '../hooks/useServerStatus';
 import { useStatHistory, seed } from '../hooks/useStatHistory';
+import { useLang, pick } from '../i18n';
+
+const ru = {
+  noData: 'Нет данных',
+  tpsPerfect: 'Идеальная производительность', tpsStable: 'Стабильная работа', tpsDrops: 'Просадки тиков',
+  pingGreat: 'Отличный отклик', pingGood: 'Хороший отклик', pingHigh: 'Высокая задержка',
+  state: 'Состояние', online: 'ОНЛАЙН', offline: 'ОФФЛАЙН',
+  stateOk: 'Сервер работает штатно', stateDown: 'Сервер недоступен',
+  playersOnline: 'Игроков онлайн', slots: (n: number) => `из ${n} слотов`,
+  ping: 'Пинг', ms: 'мс',
+};
+const en: typeof ru = {
+  noData: 'No data',
+  tpsPerfect: 'Perfect performance', tpsStable: 'Stable operation', tpsDrops: 'Tick drops',
+  pingGreat: 'Excellent response', pingGood: 'Good response', pingHigh: 'High latency',
+  state: 'Status', online: 'ONLINE', offline: 'OFFLINE',
+  stateOk: 'Server running normally', stateDown: 'Server unavailable',
+  playersOnline: 'Players online', slots: (n: number) => `of ${n} slots`,
+  ping: 'Ping', ms: 'ms',
+};
+const TR = { ru, en };
+type T = typeof ru;
 
 const GREEN = '#00FF7F';
 const ORANGE = '#FF8A00';
@@ -24,14 +46,14 @@ function loadColor(players: number, max: number): string {
   return ratio >= 0.5 ? RED : ratio >= 0.2 ? ORANGE : GREEN;
 }
 
-function tpsLabel(tps: number | null): string {
-  if (tps === null) return 'Нет данных';
-  return tps >= 18 ? 'Идеальная производительность' : tps >= 15 ? 'Стабильная работа' : 'Просадки тиков';
+function tpsLabel(tps: number | null, t: T): string {
+  if (tps === null) return t.noData;
+  return tps >= 18 ? t.tpsPerfect : tps >= 15 ? t.tpsStable : t.tpsDrops;
 }
 
-function pingLabel(ping: number | null): string {
-  if (!ping) return 'Нет данных';
-  return ping < 80 ? 'Отличный отклик' : ping < 150 ? 'Хороший отклик' : 'Высокая задержка';
+function pingLabel(ping: number | null, t: T): string {
+  if (!ping) return t.noData;
+  return ping < 80 ? t.pingGreat : ping < 150 ? t.pingGood : t.pingHigh;
 }
 
 function Dot({ color }: { color: string }) {
@@ -46,6 +68,7 @@ function Dot({ color }: { color: string }) {
 export function StatsCards() {
   const { status } = useServerStatus();
   const history = useStatHistory(status);
+  const t = pick(useLang(), TR);
 
   const isOnline = status?.online ?? false;
   const tps = status?.tps ?? null;
@@ -62,16 +85,16 @@ export function StatsCards() {
     <div className="grid grid-cols-4 gap-4">
       <StatCard
         icon={<Wifi className="h-5 w-5" />}
-        label="Состояние"
+        label={t.state}
         value={
           isOnline
-            ? <span className="text-[#3DFF99]">ОНЛАЙН</span>
-            : <span className="text-[#FF6B81]">ОФФЛАЙН</span>
+            ? <span className="text-[#3DFF99]">{t.online}</span>
+            : <span className="text-[#FF6B81]">{t.offline}</span>
         }
         hint={
           <>
             <Dot color={stateColor} />
-            {isOnline ? 'Сервер работает штатно' : 'Сервер недоступен'}
+            {isOnline ? t.stateOk : t.stateDown}
           </>
         }
         data={seed(isOnline ? 1 : 0, history.online)}
@@ -80,9 +103,9 @@ export function StatsCards() {
       />
       <StatCard
         icon={<Users className="h-5 w-5" />}
-        label="Игроков онлайн"
+        label={t.playersOnline}
         value={status ? players : '—'}
-        hint={status ? `из ${maxPlayers} слотов` : 'Нет данных'}
+        hint={status ? t.slots(maxPlayers) : t.noData}
         data={seed(players, history.players)}
         color={lColor}
         delay={0.12}
@@ -94,7 +117,7 @@ export function StatsCards() {
         hint={
           <>
             <Dot color={tColor} />
-            {tpsLabel(tps)}
+            {tpsLabel(tps, t)}
           </>
         }
         data={seed(tps ?? 0, history.tps)}
@@ -103,12 +126,12 @@ export function StatsCards() {
       />
       <StatCard
         icon={<Server className="h-5 w-5" />}
-        label="Пинг"
-        value={ping ? <>{ping}<span className="ml-1 text-base text-white/40">мс</span></> : '—'}
+        label={t.ping}
+        value={ping ? <>{ping}<span className="ml-1 text-base text-white/40">{t.ms}</span></> : '—'}
         hint={
           <>
             <Dot color={pColor} />
-            {pingLabel(ping)}
+            {pingLabel(ping, t)}
           </>
         }
         data={seed(ping ?? 0, history.ping)}
