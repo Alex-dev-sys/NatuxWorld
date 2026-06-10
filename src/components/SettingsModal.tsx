@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { X, Cpu, MemoryStick, MonitorPlay, Languages, LogOut, Check } from 'lucide-react';
+import { X, Cpu, MemoryStick, MonitorPlay, Coffee, FolderOpen, Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { bridge } from '../services/electron-bridge';
 import { useSettingsStore } from '../store/useSettingsStore';
 
 export function SettingsModal() {
@@ -79,54 +80,96 @@ export function SettingsModal() {
   );
 }
 
+const PRESETS = [
+  { w: 1280, h: 720 }, { w: 1600, h: 900 }, { w: 1920, h: 1080 },
+];
+
 function GameTab() {
   const settings = useSettingsStore((s) => s.settings);
   const update = useSettingsStore((s) => s.update);
+  const systemMemoryMb = useSettingsStore((s) => s.systemMemoryMb);
   const memory = settings?.memory ?? 4096;
+  const maxMem = Math.floor(systemMemoryMb / 512) * 512;
+  const res = settings?.resolution ?? { width: 1280, height: 720 };
+  const isPreset = PRESETS.some((p) => p.w === res.width && p.h === res.height);
+
+  const verifyJava = async () => {
+    if (!settings?.javaPath) return;
+    const r = await bridge.settings.verifyJava({ path: settings.javaPath });
+    alert(r.ok ? `Java OK: ${r.version}` : `Ошибка: ${r.error}`);
+  };
+  const pickJava = async () => {
+    const p = await bridge.settings.pickJava();
+    if (p) update({ javaPath: p, javaMode: 'custom' });
+  };
 
   return (
     <>
-      <Row icon={<MemoryStick className="h-4 w-4" />} label="Память для игры" hint={`${(memory / 1024).toFixed(1)} GB`}>
-        <input
-          type="range"
-          min={1024}
-          max={16384}
-          step={512}
-          value={memory}
-          onChange={(e) => update({ memory: Number(e.target.value) })}
-          className="w-56 accent-primary"
-        />
+      <Row icon={<MemoryStick className="h-4 w-4" />} label="Память для игры" hint={`${(memory / 1024).toFixed(1)} GB из ${(systemMemoryMb / 1024).toFixed(0)} GB`}>
+        <input type="range" min={1024} max={maxMem} step={512} value={Math.min(memory, maxMem)}
+          onChange={(e) => update({ memory: Number(e.target.value) })} className="w-56 accent-primary" />
       </Row>
-      <Row icon={<MonitorPlay className="h-4 w-4" />} label="Полноэкранный режим" hint="Запускать игру на весь экран">
-        <Toggle
-          value={!!settings?.fullscreen}
-          onChange={(v) => update({ fullscreen: v })}
-        />
+
+      <Row icon={<Coffee className="h-4 w-4" />} label="Java" stacked>
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            {(['bundled', 'custom'] as const).map((m) => (
+              <button key={m} onClick={() => update({ javaMode: m })}
+                className={`rounded-lg px-3 py-1.5 text-xs ring-1 ring-white/10 ${settings?.javaMode === m ? 'bg-primary/15 text-primary' : 'text-muted'}`}>
+                {m === 'bundled' ? 'Встроенный JRE 21' : 'Свой путь'}
+              </button>
+            ))}
+          </div>
+          {settings?.javaMode === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input readOnly value={settings?.javaPath ?? ''} placeholder="Путь к java(w).exe"
+                className="flex-1 rounded-lg bg-white/[0.04] px-3 py-2 font-mono text-xs ring-1 ring-white/10" />
+              <button onClick={pickJava} className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">
+                <FolderOpen className="h-4 w-4" />
+              </button>
+              <button onClick={verifyJava} className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">Проверить</button>
+            </div>
+          )}
+        </div>
       </Row>
-      <Row icon={<LogOut className="h-4 w-4" />} label="Закрывать лаунчер при запуске" hint="Освобождает ОЗУ">
-        <Toggle
-          value={!!settings?.closeOnLaunch}
-          onChange={(v) => update({ closeOnLaunch: v })}
-        />
+
+      <Row icon={<MonitorPlay className="h-4 w-4" />} label="Разрешение окна" stacked>
+        <div className="flex flex-wrap items-center gap-2">
+          {PRESETS.map((p) => (
+            <button key={`${p.w}x${p.h}`} onClick={() => update({ resolution: { width: p.w, height: p.h } })}
+              className={`rounded-lg px-3 py-1.5 text-xs ring-1 ring-white/10 ${res.width === p.w && res.height === p.h ? 'bg-primary/15 text-primary' : 'text-muted'}`}>
+              {p.w}×{p.h}
+            </button>
+          ))}
+          <button onClick={() => update({ resolution: { width: 1366, height: 768 } })}
+            className={`rounded-lg px-3 py-1.5 text-xs ring-1 ring-white/10 ${!isPreset ? 'bg-primary/15 text-primary' : 'text-muted'}`}>Своё</button>
+          {!isPreset && (
+            <div className="flex items-center gap-1">
+              <input type="number" min={640} value={res.width} onChange={(e) => update({ resolution: { ...res, width: Math.max(640, Number(e.target.value)) } })}
+                className="w-20 rounded-lg bg-white/[0.04] px-2 py-1.5 text-xs ring-1 ring-white/10" />
+              <span className="text-muted">×</span>
+              <input type="number" min={480} value={res.height} onChange={(e) => update({ resolution: { ...res, height: Math.max(480, Number(e.target.value)) } })}
+                className="w-20 rounded-lg bg-white/[0.04] px-2 py-1.5 text-xs ring-1 ring-white/10" />
+            </div>
+          )}
+        </div>
       </Row>
+
+      <Row icon={<MonitorPlay className="h-4 w-4" />} label="Полноэкранный режим" hint={settings?.fullscreen ? 'Разрешение игнорируется' : 'Оконный режим'}>
+        <Toggle value={!!settings?.fullscreen} onChange={(v) => update({ fullscreen: v })} />
+      </Row>
+
       <Row icon={<Cpu className="h-4 w-4" />} label="JVM аргументы" stacked>
-        <input
-          type="text"
-          value={settings?.jvmArgs ?? ''}
-          onChange={(e) => update({ jvmArgs: e.target.value })}
-          placeholder="-XX:+UseG1GC"
-          className="w-full rounded-lg bg-white/[0.04] px-3 py-2 font-mono text-xs ring-1 ring-white/10 focus:outline-none focus:ring-primary"
-        />
+        <div className="flex items-center gap-2">
+          <input type="text" value={settings?.jvmArgs ?? ''} onChange={(e) => update({ jvmArgs: e.target.value })}
+            className="flex-1 rounded-lg bg-white/[0.04] px-3 py-2 font-mono text-xs ring-1 ring-white/10 focus:outline-none focus:ring-primary" />
+          <button onClick={() => update({ jvmArgs: '-XX:+UnlockExperimentalVMOptions -XX:+UseG1GC' })}
+            className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">Сбросить</button>
+        </div>
       </Row>
-      <Row icon={<Languages className="h-4 w-4" />} label="Язык интерфейса">
-        <select
-          value={settings?.language ?? 'ru'}
-          onChange={(e) => update({ language: e.target.value as 'ru' | 'en' })}
-          className="rounded-lg bg-white/[0.04] px-3 py-1.5 text-sm ring-1 ring-white/10 focus:outline-none focus:ring-primary"
-        >
-          <option value="ru">Русский</option>
-          <option value="en">English</option>
-        </select>
+
+      <Row icon={<MonitorPlay className="h-4 w-4" />} label="Закрывать лаунчер при запуске" hint="Освобождает ОЗУ">
+        <Toggle value={!!settings?.closeOnLaunch} onChange={(v) => update({ closeOnLaunch: v })} />
       </Row>
     </>
   );
