@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, Copy, LogOut, Pencil, User } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useAccountStore } from '../store/useAccountStore';
 
 export function ProfileMenu() {
   const user = useAuthStore((s) => s.user);
   const login = useAuthStore((s) => s.login);
   const logout = useAuthStore((s) => s.logout);
+  const accountLogout = useAccountStore((s) => s.logout);
+  const accountName = useAccountStore((s) => s.user?.username);
 
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -71,7 +74,7 @@ export function ProfileMenu() {
         className="flex h-8 items-center gap-2 rounded-lg bg-white/[0.04] px-3 text-xs font-medium text-white/85 ring-1 ring-white/[0.06] hover:bg-white/[0.08] hover:text-white transition-colors"
       >
         <User className="h-3.5 w-3.5" />
-        {user.username}
+        {accountName ?? user.username}
       </motion.button>
 
       <AnimatePresence>
@@ -88,7 +91,7 @@ export function ProfileMenu() {
                 <User className="h-4 w-4" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold text-white">{user.username}</div>
+                <div className="truncate text-sm font-semibold text-white">{accountName ?? user.username}</div>
                 <div className="truncate text-[10px] font-mono text-muted">{user.uuid.slice(0, 18)}…</div>
               </div>
             </div>
@@ -136,7 +139,8 @@ export function ProfileMenu() {
               )}
 
               <button
-                onClick={() => {
+                onClick={async () => {
+                  await accountLogout();
                   logout();
                   setOpen(false);
                 }}

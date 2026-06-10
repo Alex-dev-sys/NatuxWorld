@@ -18,6 +18,8 @@ import { useLogStore } from './store/useLogStore';
 import { useAuthStore } from './store/useAuthStore';
 import { useSettingsStore } from './store/useSettingsStore';
 import { AppBackdrop } from './components/AppBackdrop';
+import { useAccountStore } from './store/useAccountStore';
+import { AuthGate } from './components/auth/AuthGate';
 
 export default function App() {
   const location = useLocation();
@@ -28,6 +30,10 @@ export default function App() {
   const settings = useSettingsStore((s) => s.settings);
   const startLogCapture = useLogStore((s) => s.startCapture);
   const autoLaunchFired = useRef(false);
+  const accountStatus = useAccountStore((s) => s.status);
+  const bootstrap = useAccountStore((s) => s.bootstrap);
+
+  useEffect(() => { bootstrap(); }, [bootstrap]);
 
   useEffect(() => {
     refreshUser();
@@ -38,12 +44,18 @@ export default function App() {
   }, [setAppVersion, refreshUser, loadSettings, startLogCapture]);
 
   useEffect(() => {
-    if (!autoLaunchFired.current && settings?.autoLaunch) {
+    if (!autoLaunchFired.current && accountStatus === 'authed' && settings?.autoLaunch) {
       autoLaunchFired.current = true;
       play();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings?.autoLaunch]);
+  }, [settings?.autoLaunch, accountStatus]);
+
+  if (accountStatus !== 'authed') {
+    return accountStatus === 'checking'
+      ? <div className="grid h-screen w-screen place-items-center bg-bg text-muted">Загрузка…</div>
+      : <AuthGate />;
+  }
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden rounded-2xl bg-bg ring-1 ring-white/[0.04]">

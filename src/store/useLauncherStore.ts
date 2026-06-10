@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { LaunchProgress } from '../../electron/services/LauncherService';
 import { bridge } from '../services/electron-bridge';
+import { useAccountStore } from './useAccountStore';
 
 // Single fixed build + server — no version picking, one PLAY button.
 const FIXED_VERSION = 'forge-1.21.1';
@@ -71,7 +72,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
     const result = await bridge.launcher.play({
       version: FIXED_VERSION,
       loader: FIXED_LOADER,
-      username: 'Player',
+      username: useAccountStore.getState().user?.username ?? 'Player',
       memory: 4096,
       server: SERVER_IP,
     });
