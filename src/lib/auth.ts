@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken'
+import bcrypt from 'bcryptjs'
 import nodemailer from 'nodemailer'
 
 export type UserPublic = { id: string; username: string; email: string }

@@ -12,7 +12,7 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@types/pg": "^8.20.0",
-    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
     "jsonwebtoken": "^9.0.3",
     "minecraft-server-util": "^5.4.4",
     "nanoid": "^5.1.11",
@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
+    "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "22.10.2",
     "@types/nodemailer": "^8.0.0",

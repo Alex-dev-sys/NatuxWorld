@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import bcrypt from 'bcrypt'
+import bcrypt from 'bcryptjs'
 import { nanoid } from 'nanoid'
 import { prisma } from '@/lib/db'
 import { rateLimit } from '@/lib/ratelimit'
