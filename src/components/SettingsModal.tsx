@@ -1,8 +1,10 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { X, Cpu, MemoryStick, MonitorPlay, Coffee, FolderOpen, Check } from 'lucide-react';
+import { X, Cpu, MemoryStick, MonitorPlay, Coffee, FolderOpen, Check, Languages, RefreshCw, Rocket, Trash2, FileText } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { bridge } from '../services/electron-bridge';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useLauncherStore } from '../store/useLauncherStore';
 
 export function SettingsModal() {
   const isOpen = useSettingsStore((s) => s.isOpen);
@@ -175,7 +177,51 @@ function GameTab() {
   );
 }
 
-function LauncherTab() { return null; }
+function LauncherTab() {
+  const settings = useSettingsStore((s) => s.settings);
+  const update = useSettingsStore((s) => s.update);
+  const reset = useSettingsStore((s) => s.reset);
+  const close = useSettingsStore((s) => s.close);
+  const appVersion = useLauncherStore((s) => s.appVersion);
+  const navigate = useNavigate();
+  const [confirm, setConfirm] = useState(false);
+
+  return (
+    <>
+      <Row icon={<Languages className="h-4 w-4" />} label="Язык интерфейса">
+        <select value={settings?.language ?? 'ru'} onChange={(e) => update({ language: e.target.value as 'ru' | 'en' })}
+          className="rounded-lg bg-white/[0.04] px-3 py-1.5 text-sm ring-1 ring-white/10 focus:outline-none focus:ring-primary">
+          <option value="ru">Русский</option>
+          <option value="en">English</option>
+        </select>
+      </Row>
+
+      <Row icon={<RefreshCw className="h-4 w-4" />} label="Авто-обновление" hint="Применится при следующем запуске">
+        <Toggle value={settings?.autoUpdate ?? true} onChange={(v) => update({ autoUpdate: v })} />
+      </Row>
+
+      <Row icon={<Rocket className="h-4 w-4" />} label="Автозапуск игры" hint="Сразу нажимать ИГРАТЬ при старте">
+        <Toggle value={!!settings?.autoLaunch} onChange={(v) => update({ autoLaunch: v })} />
+      </Row>
+
+      <Row icon={<FileText className="h-4 w-4" />} label="Логи" hint="Открыть страницу логов">
+        <button onClick={() => { close(); navigate('/logs'); }}
+          className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">Открыть</button>
+      </Row>
+
+      <Row icon={<Trash2 className="h-4 w-4" />} label="Сбросить настройки" hint={`Версия лаунчера ${appVersion}`}>
+        {confirm ? (
+          <div className="flex gap-2">
+            <button onClick={() => { reset(); setConfirm(false); }} className="rounded-lg bg-primary px-3 py-1.5 text-xs text-white">Точно</button>
+            <button onClick={() => setConfirm(false)} className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs ring-1 ring-white/10">Отмена</button>
+          </div>
+        ) : (
+          <button onClick={() => setConfirm(true)} className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs text-red-400 ring-1 ring-white/10 hover:bg-white/[0.1]">Сбросить</button>
+        )}
+      </Row>
+    </>
+  );
+}
 
 function Row({
   icon,
