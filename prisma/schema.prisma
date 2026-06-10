@@ -6,6 +6,17 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id                 String    @id
+  username           String    @unique
+  email              String    @unique
+  passwordHash       String
+  emailVerified      Boolean   @default(false)
+  verifyCode         String?
+  verifyCodeExpires  DateTime?
+  createdAt          DateTime  @default(now())
+}
+
 model Order {
   id                   String    @id @default(uuid())
   publicId             String    @unique @default(uuid())
