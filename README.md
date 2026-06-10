@@ -50,6 +50,26 @@ npm run dev          # Vite + Electron в dev-режиме
 
 ---
 
+## 🍎 Запуск на macOS
+
+Сборка `.dmg` **не подписана** сертификатом Apple (`CSC_IDENTITY_AUTO_DISCOVERY: false`), поэтому при первом запуске Gatekeeper её блокирует. Это ожидаемо — обойти можно так:
+
+1. Скачай `.dmg` из [Releases](https://github.com/Alex-dev-sys/NatuxWorld/releases).
+2. Открой `.dmg` и перетащи **NATUX WORLD** в **Applications**.
+3. Запускай первый раз **не** двойным кликом, а: правый клик (или Ctrl + клик) по иконке → **Открыть** → в диалоге ещё раз **Открыть**.
+
+Если macOS пишет «**приложение повреждено и не может быть открыто**» (частое на Apple Silicon / свежих версиях macOS) — сними карантинный атрибут в Терминале:
+
+```bash
+xattr -cr "/Applications/NATUX WORLD.app"
+```
+
+После этого запускай как обычно. Нужен интернет — при первом нажатии **ИГРАТЬ** лаунчер сам докачает Java 21, Minecraft и Forge.
+
+> ⚠️ Авто-обновления (`electron-updater`) на macOS требуют подписанной сборки — пока она не подписана, обновляйся вручную, скачивая новый `.dmg` из Releases.
+
+---
+
 ## 🧱 Стек
 
 **Electron 33** · **React 19** · **React Router 7** · **TypeScript (strict)** · **TailwindCSS 3** · **Framer Motion** · **Zustand** · **Vitest**
