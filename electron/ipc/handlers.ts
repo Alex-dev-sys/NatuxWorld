@@ -8,6 +8,7 @@ import { AuthService } from '../services/AuthService';
 import { NewsService } from '../services/NewsService';
 import { SettingsService } from '../services/SettingsService';
 import { UpdateService } from '../services/UpdateService';
+import { AccountService, AccountApiError } from '../services/AccountService';
 
 export const launcher = new LauncherService();
 const java = new JavaService();
@@ -15,6 +16,7 @@ const auth = new AuthService();
 const news = new NewsService();
 export const settings = new SettingsService();
 export const updater = new UpdateService();
+export const account = new AccountService();
 
 export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.LAUNCHER.PLAY, (_e, options) => launcher.play(options));
@@ -60,4 +62,48 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.UPDATER.INSTALL, () => updater.installNow());
 
   ipcMain.handle(IPC.SHELL.OPEN_EXTERNAL, (_e, url: string) => shell.openExternal(url));
+
+  ipcMain.handle('account:bootstrap', async () => {
+    const stored = await account.loadStored();
+    if (!stored) return { status: 'guest' as const };
+    try {
+      const user = await account.me(stored.token);
+      await account.saveStored({ token: stored.token, user });
+      return { status: 'authed' as const, user };
+    } catch {
+      await account.clearStored();
+      return { status: 'guest' as const };
+    }
+  });
+
+  const accountWrap = async (fn: () => Promise<unknown>) => {
+    try { return { ok: true as const, data: await fn() }; }
+    catch (e) {
+      const err = e instanceof AccountApiError
+        ? { code: e.code, message: e.message }
+        : { code: 'unknown', message: 'Ошибка' };
+      return { ok: false as const, error: err };
+    }
+  };
+
+  ipcMain.handle('account:register', (_e, p: { username: string; email: string; password: string }) =>
+    accountWrap(() => account.register(p.username, p.email, p.password)));
+
+  ipcMain.handle('account:verify', (_e, p: { email: string; code: string }) =>
+    accountWrap(async () => {
+      const session = await account.verifyEmail(p.email, p.code);
+      await account.saveStored(session);
+      return session.user;
+    }));
+
+  ipcMain.handle('account:resend', (_e, p: { email: string }) => accountWrap(() => account.resendCode(p.email)));
+
+  ipcMain.handle('account:login', (_e, p: { login: string; password: string }) =>
+    accountWrap(async () => {
+      const session = await account.login(p.login, p.password);
+      await account.saveStored(session);
+      return session.user;
+    }));
+
+  ipcMain.handle('account:logout', async () => { await account.clearStored(); return { ok: true as const }; });
 }

@@ -45,4 +45,12 @@ export const IPC = {
   SHELL: {
     OPEN_EXTERNAL: 'shell:openExternal',
   },
+  ACCOUNT: {
+    BOOTSTRAP: 'account:bootstrap',
+    REGISTER: 'account:register',
+    VERIFY: 'account:verify',
+    RESEND: 'account:resend',
+    LOGIN: 'account:login',
+    LOGOUT: 'account:logout',
+  },
 } as const;

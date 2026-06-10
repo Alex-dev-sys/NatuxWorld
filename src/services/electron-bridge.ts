@@ -83,6 +83,14 @@ const fallback: NatuxAPI = {
   app: {
     onReady: noop,
   },
+  account: {
+    bootstrap: async () => ({ status: 'guest' as const }),
+    register: async () => ({ ok: true as const, data: undefined }),
+    verify: async () => ({ ok: false as const, error: { code: 'offline', message: 'Недоступно в браузере' } }),
+    resend: async () => ({ ok: true as const, data: undefined }),
+    login: async () => ({ ok: false as const, error: { code: 'offline', message: 'Недоступно в браузере' } }),
+    logout: async () => ({ ok: true as const }),
+  },
 };
 
 export const bridge: NatuxAPI = typeof window !== 'undefined' && window.natux ? window.natux : fallback;

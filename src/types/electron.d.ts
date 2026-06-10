@@ -9,6 +9,10 @@ import type { User, Credentials } from '../../electron/services/AuthService';
 import type { JavaInstallation } from '../../electron/services/JavaService';
 import type { LauncherSettings } from '../../electron/services/SettingsService';
 import type { UpdateInfo, UpdateEvent } from '../../electron/services/UpdateService';
+import type { AccountUser } from '../../electron/services/AccountService';
+
+export type AccountResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } };
+export type BootstrapResult = { status: 'guest' } | { status: 'authed'; user: AccountUser };
 
 export interface LauncherLog {
   stream: 'stdout' | 'stderr' | 'forge' | string;
@@ -65,6 +69,14 @@ export interface NatuxAPI {
   };
   app: {
     onReady: (cb: (data: { version: string }) => void) => () => void;
+  };
+  account: {
+    bootstrap: () => Promise<BootstrapResult>;
+    register: (p: { username: string; email: string; password: string }) => Promise<AccountResult<void>>;
+    verify: (p: { email: string; code: string }) => Promise<AccountResult<AccountUser>>;
+    resend: (p: { email: string }) => Promise<AccountResult<void>>;
+    login: (p: { login: string; password: string }) => Promise<AccountResult<AccountUser>>;
+    logout: () => Promise<{ ok: true }>;
   };
 }
 

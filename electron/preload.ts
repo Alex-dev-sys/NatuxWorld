@@ -64,6 +64,14 @@ const api = {
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   },
+  account: {
+    bootstrap: () => ipcRenderer.invoke('account:bootstrap'),
+    register: (p: unknown) => ipcRenderer.invoke('account:register', p),
+    verify: (p: unknown) => ipcRenderer.invoke('account:verify', p),
+    resend: (p: unknown) => ipcRenderer.invoke('account:resend', p),
+    login: (p: unknown) => ipcRenderer.invoke('account:login', p),
+    logout: () => ipcRenderer.invoke('account:logout'),
+  },
   app: {
     onReady: (cb: (data: { version: string }) => void) => {
       const listener = (_e: unknown, data: { version: string }) => cb(data);
