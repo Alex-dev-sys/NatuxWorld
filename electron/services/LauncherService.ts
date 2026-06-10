@@ -18,6 +18,7 @@ import { JavaService } from './JavaService';
 import { AuthService } from './AuthService';
 import { ForgeService } from './ForgeService';
 import { MinecraftService, type LaunchHandle } from './MinecraftService';
+import { SettingsService } from './SettingsService';
 import {
   getAssetObjectPath,
   getAssetsDir,
@@ -99,6 +100,7 @@ export class LauncherService extends EventEmitter {
   private readonly auth = new AuthService();
   private readonly forge = new ForgeService();
   private readonly minecraft = new MinecraftService();
+  private readonly settingsSvc = new SettingsService();
 
   // Minecraft is extremely chatty (thousands of lines on boot). Sending each line
   // as its own IPC message floods the renderer and stalls the progress UI. Buffer
@@ -239,6 +241,8 @@ export class LauncherService extends EventEmitter {
     this.report({ stage: 'spawn', progress: 0, message: 'Запуск Minecraft...' });
     await fsp.mkdir(getMinecraftDir(), { recursive: true });
 
+    const cfg = await this.settingsSvc.get();
+
     const handle = this.minecraft.launch({
       version: launchVersion,
       javaPath: java.path,
@@ -247,8 +251,11 @@ export class LauncherService extends EventEmitter {
       nativesDir: getNativesDir(version.id),
       clientJar: getVersionJarPath(version.id),
       user,
-      memory: opts.memory,
+      memory: cfg.memory,
       quickPlayServer: opts.server,
+      width: cfg.resolution.width,
+      height: cfg.resolution.height,
+      fullscreen: cfg.fullscreen,
     });
 
     this.currentProc = handle;

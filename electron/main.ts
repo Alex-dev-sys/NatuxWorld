@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { registerIpcHandlers, updater, launcher } from './ipc/handlers';
+import { registerIpcHandlers, updater, launcher, settings as settingsService } from './ipc/handlers';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -80,8 +80,12 @@ app.whenReady().then(() => {
   if (mainWindow) {
     updater.attach(mainWindow);
     launcher.attach(mainWindow);
-    setTimeout(() => updater.check(), 4000);
-    setInterval(() => updater.check(), 1000 * 60 * 30);
+    settingsService.get().then((s) => {
+      if (s.autoUpdate) {
+        setTimeout(() => updater.check(), 4000);
+        setInterval(() => updater.check(), 1000 * 60 * 30);
+      }
+    });
   }
 
   app.on('activate', () => {

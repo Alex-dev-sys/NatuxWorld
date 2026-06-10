@@ -104,6 +104,9 @@ export interface LaunchInput {
   memory: number;
   /** If set, append --quickPlayMultiplayer so MC joins this server directly. */
   quickPlayServer?: string;
+  width?: number;
+  height?: number;
+  fullscreen?: boolean;
 }
 
 export class MinecraftService {
@@ -140,6 +143,11 @@ export class MinecraftService {
     const gameArgs = resolveGameArguments(input.version, values as unknown as Record<string, string>);
     if (input.quickPlayServer) {
       gameArgs.push('--quickPlayMultiplayer', input.quickPlayServer);
+    }
+    if (input.fullscreen) {
+      gameArgs.push('--fullscreen');
+    } else if (input.width && input.height) {
+      gameArgs.push('--width', String(input.width), '--height', String(input.height));
     }
 
     // The full classpath (esp. with Forge) blows past the OS command-line length limit

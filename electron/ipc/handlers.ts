@@ -13,7 +13,7 @@ export const launcher = new LauncherService();
 const java = new JavaService();
 const auth = new AuthService();
 const news = new NewsService();
-const settings = new SettingsService();
+export const settings = new SettingsService();
 export const updater = new UpdateService();
 
 export function registerIpcHandlers(): void {

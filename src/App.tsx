@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { TitleBar } from './components/TitleBar';
@@ -22,9 +22,12 @@ import { AppBackdrop } from './components/AppBackdrop';
 export default function App() {
   const location = useLocation();
   const setAppVersion = useLauncherStore((s) => s.setAppVersion);
+  const play = useLauncherStore((s) => s.play);
   const refreshUser = useAuthStore((s) => s.refresh);
   const loadSettings = useSettingsStore((s) => s.load);
+  const settings = useSettingsStore((s) => s.settings);
   const startLogCapture = useLogStore((s) => s.startCapture);
+  const autoLaunchFired = useRef(false);
 
   useEffect(() => {
     refreshUser();
@@ -33,6 +36,14 @@ export default function App() {
     bridge.getVersion().then((v) => v && setAppVersion(v));
     return bridge.app.onReady(({ version }) => setAppVersion(version));
   }, [setAppVersion, refreshUser, loadSettings, startLogCapture]);
+
+  useEffect(() => {
+    if (!autoLaunchFired.current && settings?.autoLaunch) {
+      autoLaunchFired.current = true;
+      play();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.autoLaunch]);
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden rounded-2xl bg-bg ring-1 ring-white/[0.04]">
