@@ -93,8 +93,8 @@ export function LogsPage() {
           </div>
         ) : (
           <>
-            {lines.map((l, i) => (
-              <div key={i} className={`whitespace-pre-wrap break-all ${STREAM_COLOR[l.stream] ?? 'text-white/70'}`}>
+            {lines.map((l) => (
+              <div key={l.id} className={`whitespace-pre-wrap break-all ${STREAM_COLOR[l.stream] ?? 'text-white/70'}`}>
                 <span className="select-none text-white/25">[{l.stream}] </span>
                 {l.line}
               </div>

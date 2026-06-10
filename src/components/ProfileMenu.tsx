@@ -4,6 +4,7 @@ import { Check, Copy, LogOut, Pencil, User } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useAccountStore } from '../store/useAccountStore';
 import { isValidUsername } from '../lib/validators';
+import { useCopied } from '../hooks/useCopied';
 import { useLang, pick } from '../i18n';
 
 const ru = {
@@ -38,7 +39,7 @@ export function ProfileMenu() {
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [copied, markCopied] = useCopied();
   const ref = useRef<HTMLDivElement>(null);
   const t = pick(useLang(), TR);
 
@@ -53,18 +54,12 @@ export function ProfileMenu() {
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  useEffect(() => {
-    if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 1600);
-    return () => clearTimeout(t);
-  }, [copied]);
-
   const displayName = accountName ?? user?.username ?? t.fallbackName;
 
   const copyUuid = async () => {
     if (!user) return;
     await navigator.clipboard.writeText(user.uuid);
-    setCopied(true);
+    markCopied();
   };
 
   const submitRename = async () => {

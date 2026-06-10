@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { bridge } from '../services/electron-bridge';
 import { useLauncherStore } from '../store/useLauncherStore';
 import { useLang, pick } from '../i18n';
@@ -22,6 +23,7 @@ const links = [
 
 export function Footer() {
   const version = useLauncherStore((s) => s.appVersion);
+  const navigate = useNavigate();
   const t = pick(useLang(), TR);
   return (
     <footer className="relative flex h-10 shrink-0 items-center justify-between border-t border-white/[0.04] bg-bg/80 px-5 text-[11px] text-muted backdrop-blur-md">
@@ -31,7 +33,7 @@ export function Footer() {
           <button
             key={l.key}
             onClick={() => {
-              if (l.href.startsWith('#')) window.location.hash = l.href.slice(1);
+              if (l.href.startsWith('#')) navigate(l.href.slice(1));
               else bridge.shell.openExternal(l.href);
             }}
             className="hover:text-white transition"

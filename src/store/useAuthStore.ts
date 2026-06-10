@@ -4,14 +4,12 @@ import { bridge } from '../services/electron-bridge';
 interface User {
   username: string;
   uuid: string;
-  accessToken?: string;
   type?: 'offline' | 'microsoft';
   avatar?: string;
 }
 
 interface AuthState {
   user: User | null;
-  isLoading: boolean;
   login: (username: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -19,12 +17,10 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  isLoading: false,
 
   login: async (username) => {
-    set({ isLoading: true });
     const user = await bridge.auth.login({ username, type: 'offline' });
-    set({ user, isLoading: false });
+    set({ user });
   },
 
   logout: async () => {

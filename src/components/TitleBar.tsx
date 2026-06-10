@@ -1,7 +1,7 @@
 import { Minus, Square, X, Settings as SettingsIcon, Copy, Check } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import { bridge } from '../services/electron-bridge';
 import { useIsMaximized } from '../hooks/useElectron';
+import { useCopied } from '../hooks/useCopied';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { Tooltip } from './ui/Tooltip';
 import { ProfileMenu } from './ProfileMenu';
@@ -20,14 +20,8 @@ const TR = { ru, en };
 export function TitleBar() {
   const isMax = useIsMaximized();
   const openSettings = useSettingsStore((s) => s.open);
-  const [ipCopied, setIpCopied] = useState(false);
+  const [ipCopied, markIpCopied] = useCopied();
   const t = pick(useLang(), TR);
-
-  useEffect(() => {
-    if (!ipCopied) return;
-    const t = setTimeout(() => setIpCopied(false), 1600);
-    return () => clearTimeout(t);
-  }, [ipCopied]);
 
   return (
     <div className="titlebar-drag relative flex h-12 w-full items-center justify-between px-3">
@@ -40,7 +34,7 @@ export function TitleBar() {
           <button
             onClick={async () => {
               await navigator.clipboard.writeText('mc.vibestudy.ru');
-              setIpCopied(true);
+              markIpCopied();
             }}
             className="ml-1 text-muted hover:text-white"
             title={t.copyIp}
