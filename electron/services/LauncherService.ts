@@ -93,6 +93,7 @@ export class LauncherService extends EventEmitter {
   private status: LaunchProgress = { stage: 'idle', progress: 0, message: 'Готов к запуску' };
   private currentProc: LaunchHandle | null = null;
   private cancelled = false;
+  private isLaunching = false;
 
   private readonly mojang = new MojangService();
   private readonly download = new DownloadService(8);
@@ -120,7 +121,9 @@ export class LauncherService extends EventEmitter {
     const batch = this.logBuffer;
     this.logBuffer = [];
     this.logTimer = null;
-    if (batch.length) this.window?.webContents.send(CHANNEL_LOG, batch);
+    if (batch.length && this.window && !this.window.isDestroyed()) {
+      this.window.webContents.send(CHANNEL_LOG, batch);
+    }
   }
 
   attach(win: BrowserWindow): void {
@@ -153,6 +156,10 @@ export class LauncherService extends EventEmitter {
   }
 
   async play(opts: PlayOptions): Promise<{ ok: boolean; error?: string }> {
+    if (this.isLaunching || this.currentProc) {
+      return { ok: false, error: 'Запуск уже идёт' };
+    }
+    this.isLaunching = true;
     this.cancelled = false;
     try {
       const parsed = parseVersionId(opts.version);
@@ -162,6 +169,8 @@ export class LauncherService extends EventEmitter {
       const msg = err instanceof Error ? err.message : String(err);
       this.report({ stage: 'error', progress: 0, message: `Ошибка: ${msg}` });
       return { ok: false, error: msg };
+    } finally {
+      this.isLaunching = false;
     }
   }
 
@@ -273,6 +282,14 @@ export class LauncherService extends EventEmitter {
         message: code === 0 || code === null ? 'Игра завершена' : `Игра упала (код ${code})`,
       });
     });
+    handle.on('error', (err: unknown) => {
+      this.currentProc = null;
+      this.report({
+        stage: 'error',
+        progress: 0,
+        message: `Ошибка запуска: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    });
 
     this.report({ stage: 'running', progress: 100, message: `Игра запущена (pid ${handle.pid})` });
   }
@@ -370,7 +387,9 @@ export class LauncherService extends EventEmitter {
 
   private report(p: LaunchProgress): void {
     this.status = p;
-    this.window?.webContents.send(CHANNEL_PROGRESS, p);
+    if (this.window && !this.window.isDestroyed()) {
+      this.window.webContents.send(CHANNEL_PROGRESS, p);
+    }
   }
 
   private throwIfCancelled(): void {

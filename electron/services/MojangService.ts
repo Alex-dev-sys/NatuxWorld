@@ -135,7 +135,12 @@ export class MojangService {
     const cachedPath = getVersionJsonPath(id);
     if (fs.existsSync(cachedPath)) {
       const cached = await fsp.readFile(cachedPath, 'utf-8');
-      return JSON.parse(cached) as VanillaVersion;
+      try {
+        return JSON.parse(cached) as VanillaVersion;
+      } catch {
+        // Corrupt cache (truncated/partial write): drop it and re-fetch below.
+        await fsp.unlink(cachedPath).catch(() => undefined);
+      }
     }
 
     const manifest = (await this.httpGetJson(MANIFEST_URL)) as { versions: ManifestEntry[] };

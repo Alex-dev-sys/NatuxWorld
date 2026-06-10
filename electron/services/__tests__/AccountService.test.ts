@@ -1,7 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 
-vi.mock('electron', () => ({ app: { getPath: () => '/tmp/natux-test' } }));
+vi.mock('electron', () => ({
+  app: { getPath: () => '/tmp/natux-test' },
+  safeStorage: {
+    isEncryptionAvailable: () => true,
+    encryptString: (s: string) => Buffer.from(s, 'utf-8'),
+    decryptString: (b: Buffer) => b.toString('utf-8'),
+  },
+}));
 
 const files: Record<string, string> = {};
 vi.mock('node:fs/promises', () => ({

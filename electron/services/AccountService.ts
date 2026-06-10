@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { app, safeStorage } from 'electron';
 import fsp from 'node:fs/promises';
 import https from 'node:https';
 import path from 'node:path';
@@ -32,8 +32,18 @@ export class AccountService {
   async loadStored(): Promise<StoredSession | null> {
     try {
       const raw = await fsp.readFile(this.file, 'utf-8');
-      const parsed = JSON.parse(raw) as StoredSession;
-      return parsed.token && parsed.user ? parsed : null;
+      const parsed = JSON.parse(raw) as StoredSession & { enc?: boolean };
+      if (!parsed.token || !parsed.user) return null;
+      if (parsed.enc) {
+        try {
+          const token = safeStorage.decryptString(Buffer.from(parsed.token, 'base64'));
+          return { token, user: parsed.user };
+        } catch {
+          // Corrupt/undecryptable token (e.g. OS keychain changed): force re-login.
+          return null;
+        }
+      }
+      return { token: parsed.token, user: parsed.user };
     } catch {
       return null;
     }
@@ -41,7 +51,19 @@ export class AccountService {
 
   async saveStored(session: StoredSession): Promise<void> {
     await fsp.mkdir(path.dirname(this.file), { recursive: true });
-    await fsp.writeFile(this.file, JSON.stringify({ ...session, savedAt: Date.now() }, null, 2), 'utf-8');
+    const savedAt = Date.now();
+    let payload: Record<string, unknown>;
+    if (safeStorage.isEncryptionAvailable()) {
+      payload = {
+        token: safeStorage.encryptString(session.token).toString('base64'),
+        user: session.user,
+        enc: true,
+        savedAt,
+      };
+    } else {
+      payload = { token: session.token, user: session.user, enc: false, savedAt };
+    }
+    await fsp.writeFile(this.file, JSON.stringify(payload, null, 2), 'utf-8');
   }
 
   async clearStored(): Promise<void> {

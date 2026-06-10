@@ -1,5 +1,6 @@
 import { ipcMain, shell, dialog } from 'electron';
 import os from 'node:os';
+import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { IPC } from './channels';
 import { LauncherService } from '../services/LauncherService';
@@ -18,12 +19,35 @@ export const settings = new SettingsService();
 export const updater = new UpdateService();
 export const account = new AccountService();
 
+/** Coerce arbitrary IPC input into a sane integer MiB value for JVM heap flags. */
+function clampMemory(value: unknown): number {
+  return Math.max(512, Math.min(65536, Math.floor(Number(value) || 4096)));
+}
+
 export function registerIpcHandlers(): void {
-  ipcMain.handle(IPC.LAUNCHER.PLAY, (_e, options) => launcher.play(options));
+  ipcMain.handle(IPC.LAUNCHER.PLAY, (_e, options) => {
+    if (!options || typeof options !== 'object') {
+      return { ok: false, error: 'Некорректные параметры запуска' };
+    }
+    const o = options as Record<string, unknown>;
+    const sanitized = {
+      ...o,
+      username: typeof o.username === 'string' ? o.username : 'Player',
+      memory: clampMemory(o.memory),
+    };
+    return launcher.play(sanitized as Parameters<typeof launcher.play>[0]);
+  });
   ipcMain.handle(IPC.LAUNCHER.GET_STATUS, () => launcher.getStatus());
   ipcMain.handle(IPC.LAUNCHER.CANCEL, () => launcher.cancel());
 
-  ipcMain.handle(IPC.AUTH.LOGIN, (_e, creds) => auth.login(creds));
+  ipcMain.handle(IPC.AUTH.LOGIN, (_e, creds) => {
+    const username = typeof creds === 'string'
+      ? creds
+      : creds && typeof creds === 'object' && typeof (creds as { username?: unknown }).username === 'string'
+        ? (creds as { username: string }).username
+        : 'Player';
+    return auth.login(username);
+  });
   ipcMain.handle(IPC.AUTH.LOGOUT, () => auth.logout());
   ipcMain.handle(IPC.AUTH.GET_USER, () => auth.getUser());
 
@@ -36,32 +60,64 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.SERVER.GET_INFO, () => launcher.getServerInfo());
 
   ipcMain.handle(IPC.SETTINGS.GET, () => settings.get());
-  ipcMain.handle(IPC.SETTINGS.SET, (_e, s) => settings.set(s));
+  ipcMain.handle(IPC.SETTINGS.SET, (_e, s) => {
+    if (!s || typeof s !== 'object') return settings.get();
+    const obj = s as Record<string, unknown>;
+    if ('memory' in obj) obj.memory = clampMemory(obj.memory);
+    return settings.set(obj as Parameters<typeof settings.set>[0]);
+  });
   ipcMain.handle(IPC.SETTINGS.GET_SYSTEM_MEMORY, () => Math.floor(os.totalmem() / (1024 * 1024)));
   ipcMain.handle(IPC.SETTINGS.RESET, () => settings.reset());
   ipcMain.handle(IPC.SETTINGS.PICK_JAVA, async () => {
     const r = await dialog.showOpenDialog({ properties: ['openFile'], title: 'Выберите java(w).exe' });
     return r.canceled ? null : r.filePaths[0];
   });
-  ipcMain.handle(IPC.SETTINGS.VERIFY_JAVA, (_e, p: { path: string }) =>
+  ipcMain.handle(IPC.SETTINGS.VERIFY_JAVA, (_e, p: { path?: unknown }) =>
     new Promise<{ ok: boolean; version?: string; error?: string }>((resolve) => {
+      if (!p || typeof p.path !== 'string') {
+        resolve({ ok: false, error: 'Некорректный путь' });
+        return;
+      }
+      const base = path.basename(p.path).toLowerCase();
+      if (!['java', 'javaw', 'java.exe', 'javaw.exe'].includes(base)) {
+        resolve({ ok: false, error: 'Путь должен указывать на java(w)' });
+        return;
+      }
       const proc = spawn(p.path, ['-version']);
       let out = '';
+      let settled = false;
+      const finish = (r: { ok: boolean; version?: string; error?: string }) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(r);
+      };
+      const timer = setTimeout(() => {
+        proc.kill();
+        finish({ ok: false, error: 'Проверка Java зависла (таймаут)' });
+      }, 10000);
       proc.stderr.on('data', (d) => (out += d.toString()));
       proc.on('close', () => {
         if (JavaService.isJava21Plus(out)) {
-          resolve({ ok: true, version: out.match(/version "([^"]+)"/)?.[1] ?? '21+' });
+          finish({ ok: true, version: out.match(/version "([^"]+)"/)?.[1] ?? '21+' });
         } else {
-          resolve({ ok: false, error: 'Не Java 21+ или неверный путь' });
+          finish({ ok: false, error: 'Не Java 21+ или неверный путь' });
         }
       });
-      proc.on('error', () => resolve({ ok: false, error: 'Файл не запускается' }));
+      proc.on('error', () => finish({ ok: false, error: 'Файл не запускается' }));
     }));
 
   ipcMain.handle(IPC.UPDATER.CHECK, () => updater.check());
   ipcMain.handle(IPC.UPDATER.INSTALL, () => updater.installNow());
 
-  ipcMain.handle(IPC.SHELL.OPEN_EXTERNAL, (_e, url: string) => shell.openExternal(url));
+  ipcMain.handle(IPC.SHELL.OPEN_EXTERNAL, (_e, url: string) => {
+    try {
+      const u = new URL(url);
+      if (u.protocol === 'http:' || u.protocol === 'https:') return shell.openExternal(url);
+    } catch {
+      /* ignore invalid url */
+    }
+  });
 
   ipcMain.handle('account:bootstrap', async () => {
     const stored = await account.loadStored();

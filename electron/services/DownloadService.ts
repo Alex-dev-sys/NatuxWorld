@@ -93,58 +93,63 @@ export class DownloadService {
     const hash = createHash('sha1');
     let received = 0;
 
-    await new Promise<void>((resolve, reject) => {
-      const tryGet = (rawUrl: string, redirects = 0) => {
-        if (redirects > MAX_REDIRECTS) return reject(new Error('Too many redirects'));
-        const target = new URL(rawUrl);
-        const client = target.protocol === 'https:' ? https : http;
-        const req = client.get(
-          rawUrl,
-          { headers: { 'User-Agent': 'NatuxWorldLauncher' } },
-          (res) => {
-            if (
-              res.statusCode &&
-              res.statusCode >= 300 &&
-              res.statusCode < 400 &&
-              res.headers.location
-            ) {
-              tryGet(new URL(res.headers.location, rawUrl).toString(), redirects + 1);
-              res.resume();
-              return;
-            }
-            if (res.statusCode !== 200) {
-              reject(new Error(`HTTP ${res.statusCode} for ${rawUrl}`));
-              res.resume();
-              return;
-            }
-            res.on('data', (chunk: Buffer) => {
-              hash.update(chunk);
-              received += chunk.length;
-            });
-            const out = createWriteStream(tmp);
-            pipeline(res, out).then(resolve, reject);
-          },
-        );
-        req.on('error', reject);
-      };
-      tryGet(job.url);
-    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tryGet = (rawUrl: string, redirects = 0) => {
+          if (redirects > MAX_REDIRECTS) return reject(new Error('Too many redirects'));
+          const target = new URL(rawUrl);
+          const client = target.protocol === 'https:' ? https : http;
+          const req = client.get(
+            rawUrl,
+            { headers: { 'User-Agent': 'NatuxWorldLauncher' } },
+            (res) => {
+              if (
+                res.statusCode &&
+                res.statusCode >= 300 &&
+                res.statusCode < 400 &&
+                res.headers.location
+              ) {
+                tryGet(new URL(res.headers.location, rawUrl).toString(), redirects + 1);
+                res.resume();
+                return;
+              }
+              if (res.statusCode !== 200) {
+                reject(new Error(`HTTP ${res.statusCode} for ${rawUrl}`));
+                res.resume();
+                return;
+              }
+              res.on('data', (chunk: Buffer) => {
+                hash.update(chunk);
+                received += chunk.length;
+              });
+              const out = createWriteStream(tmp);
+              pipeline(res, out).then(resolve, reject);
+            },
+          );
+          req.on('error', reject);
+        };
+        tryGet(job.url);
+      });
 
-    // Catch truncated downloads (dropped connection) even when no sha1 is provided.
-    if (job.size && received !== job.size) {
-      await fsp.unlink(tmp).catch(() => undefined);
-      throw new Error(`Size mismatch for ${job.url}: got ${received}, expected ${job.size}`);
-    }
-
-    if (job.sha1) {
-      const got = hash.digest('hex');
-      if (got !== job.sha1.toLowerCase()) {
-        await fsp.unlink(tmp).catch(() => undefined);
-        throw new Error(`SHA1 mismatch for ${job.url}: got ${got}, expected ${job.sha1}`);
+      // Catch truncated downloads (dropped connection) even when no sha1 is provided.
+      if (job.size && received !== job.size) {
+        throw new Error(`Size mismatch for ${job.url}: got ${received}, expected ${job.size}`);
       }
-    }
 
-    await fsp.rename(tmp, job.dest);
-    return received;
+      if (job.sha1) {
+        const got = hash.digest('hex');
+        if (got !== job.sha1.toLowerCase()) {
+          throw new Error(`SHA1 mismatch for ${job.url}: got ${got}, expected ${job.sha1}`);
+        }
+      }
+
+      await fsp.rename(tmp, job.dest);
+      return received;
+    } catch (err) {
+      // Any failure path (stream error, HTTP error, size/sha mismatch) must not leave a
+      // partial .tmp behind for the next retry to trip over.
+      await fsp.unlink(tmp).catch(() => undefined);
+      throw err;
+    }
   }
 }

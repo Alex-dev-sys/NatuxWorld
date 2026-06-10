@@ -86,7 +86,9 @@ export class UpdateService {
   }
 
   private emit(event: UpdateEvent): void {
-    this.window?.webContents.send(CHANNEL, event);
+    if (this.window && !this.window.isDestroyed()) {
+      this.window.webContents.send(CHANNEL, event);
+    }
   }
 }
 

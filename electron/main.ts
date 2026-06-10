@@ -10,6 +10,7 @@ const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist');
 
 let mainWindow: BrowserWindow | null = null;
+let updateCheckInterval: ReturnType<typeof setInterval> | null = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -36,7 +37,12 @@ function createWindow(): void {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    try {
+      const u = new URL(url);
+      if (u.protocol === 'http:' || u.protocol === 'https:') shell.openExternal(url);
+    } catch {
+      /* ignore invalid url */
+    }
     return { action: 'deny' };
   });
 
@@ -82,10 +88,10 @@ app.whenReady().then(() => {
     launcher.attach(mainWindow);
     settingsService.get().then((s) => {
       if (s.autoUpdate) {
-        setTimeout(() => updater.check(), 4000);
-        setInterval(() => updater.check(), 1000 * 60 * 30);
+        setTimeout(() => { updater.check().catch(() => {}); }, 4000);
+        updateCheckInterval = setInterval(() => { updater.check().catch(() => {}); }, 1000 * 60 * 30);
       }
-    });
+    }).catch(() => {});
   }
 
   app.on('activate', () => {
@@ -93,7 +99,18 @@ app.whenReady().then(() => {
   });
 });
 
+app.on('before-quit', () => {
+  if (updateCheckInterval) {
+    clearInterval(updateCheckInterval);
+    updateCheckInterval = null;
+  }
+});
+
 app.on('window-all-closed', () => {
   mainWindow = null;
+  if (updateCheckInterval) {
+    clearInterval(updateCheckInterval);
+    updateCheckInterval = null;
+  }
   if (process.platform !== 'darwin') app.quit();
 });

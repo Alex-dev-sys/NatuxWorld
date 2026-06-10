@@ -128,9 +128,10 @@ export class MinecraftService {
       classpath,
     });
 
+    const memory = Math.max(512, Math.min(65536, Math.floor(Number(input.memory) || 4096)));
     const jvmArgs = [
-      `-Xmx${input.memory}M`,
-      `-Xms${Math.min(input.memory, 1024)}M`,
+      `-Xmx${memory}M`,
+      `-Xms${Math.min(memory, 1024)}M`,
       `-Djava.library.path=${input.nativesDir}`,
       `-Dminecraft.launcher.brand=NATUX_WORLD`,
       `-Dminecraft.launcher.version=1.0.0`,
