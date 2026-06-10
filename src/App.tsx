@@ -61,7 +61,9 @@ export default function App() {
     <div className="relative flex h-screen w-screen flex-col overflow-hidden rounded-2xl bg-bg ring-1 ring-white/[0.04]">
       <AppBackdrop />
 
-      <div className="relative z-10">
+      {/* z-50 so the ProfileMenu dropdown (which overflows down into the main
+          area) paints above the main content stacking context below it. */}
+      <div className="relative z-50">
         <TitleBar />
       </div>
 
