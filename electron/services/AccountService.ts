@@ -1,5 +1,6 @@
 import { app } from 'electron';
 import fsp from 'node:fs/promises';
+import https from 'node:https';
 import path from 'node:path';
 
 export interface AccountUser {
@@ -26,6 +27,7 @@ export class AccountApiError extends Error {
 
 export class AccountService {
   private readonly file = path.join(app.getPath('userData'), 'account.json');
+  private readonly base = 'https://vibestudy.ru/api/auth';
 
   async loadStored(): Promise<StoredSession | null> {
     try {
@@ -48,5 +50,57 @@ export class AccountService {
     } catch {
       /* already gone */
     }
+  }
+
+  private request<T>(method: 'GET' | 'POST', endpoint: string, body?: unknown, token?: string): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const url = `${this.base}${endpoint}`;
+      const payload = body ? JSON.stringify(body) : undefined;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', 'User-Agent': 'NatuxWorldLauncher' };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      if (payload) headers['Content-Length'] = String(Buffer.byteLength(payload));
+
+      const req = https.request(url, { method, headers, timeout: 6000 }, (res) => {
+        let data = '';
+        res.setEncoding('utf-8');
+        res.on('data', (c: string) => (data += c));
+        res.on('end', () => {
+          const status = res.statusCode ?? 0;
+          let json: unknown = {};
+          try { json = data ? JSON.parse(data) : {}; } catch { /* keep {} */ }
+          if (status >= 200 && status < 300) {
+            resolve(json as T);
+          } else {
+            const err = (json as { error?: ApiError }).error;
+            reject(new AccountApiError(err?.code ?? 'unknown', err?.message ?? 'Ошибка сервера', status));
+          }
+        });
+      });
+      req.on('error', () => reject(new AccountApiError('network', 'Нет связи с сервером', 0)));
+      req.on('timeout', () => { req.destroy(); reject(new AccountApiError('timeout', 'Превышено время ожидания', 0)); });
+      if (payload) req.write(payload);
+      req.end();
+    });
+  }
+
+  async register(username: string, email: string, password: string): Promise<void> {
+    await this.request('POST', '/register', { username, email, password });
+  }
+
+  async verifyEmail(email: string, code: string): Promise<StoredSession> {
+    return this.request<StoredSession>('POST', '/verify-email', { email, code });
+  }
+
+  async resendCode(email: string): Promise<void> {
+    await this.request('POST', '/resend-code', { email });
+  }
+
+  async login(login: string, password: string): Promise<StoredSession> {
+    return this.request<StoredSession>('POST', '/login', { login, password });
+  }
+
+  async me(token: string): Promise<AccountUser> {
+    const res = await this.request<{ user: AccountUser }>('GET', '/me', undefined, token);
+    return res.user;
   }
 }

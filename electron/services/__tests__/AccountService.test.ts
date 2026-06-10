@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { EventEmitter } from 'node:events';
 
 vi.mock('electron', () => ({ app: { getPath: () => '/tmp/natux-test' } }));
 
@@ -18,6 +19,47 @@ vi.mock('node:fs/promises', () => ({
 beforeEach(() => {
   for (const k of Object.keys(files)) delete files[k];
   vi.clearAllMocks();
+});
+
+function mockHttps(status: number, body: unknown) {
+  const https = require('node:https');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  vi.spyOn(https, 'request').mockImplementation(((_url: string, _opts: unknown, cb: (res: any) => void) => {
+    const res = new EventEmitter() as EventEmitter & { statusCode: number; setEncoding: () => void };
+    res.statusCode = status;
+    res.setEncoding = () => undefined;
+    const req = new EventEmitter() as EventEmitter & { write: () => void; end: () => void };
+    req.write = () => undefined;
+    req.end = () => {
+      cb(res);
+      res.emit('data', JSON.stringify(body));
+      res.emit('end');
+    };
+    return req;
+  }) as any);
+}
+
+describe('AccountService HTTP', () => {
+  it('login returns token+user on 200', async () => {
+    mockHttps(200, { token: 'jwt1', user: { id: 'u1', username: 'Steve', email: 'a@b.ru' } });
+    const { AccountService } = await import('../AccountService');
+    const res = await new AccountService().login('Steve', 'secret123');
+    expect(res.token).toBe('jwt1');
+    expect(res.user.username).toBe('Steve');
+  });
+
+  it('login throws AccountApiError on 401', async () => {
+    mockHttps(401, { error: { code: 'bad_credentials', message: 'Неверный логин или пароль' } });
+    const { AccountService, AccountApiError } = await import('../AccountService');
+    await expect(new AccountService().login('Steve', 'wrong')).rejects.toBeInstanceOf(AccountApiError);
+  });
+
+  it('me returns user on 200', async () => {
+    mockHttps(200, { user: { id: 'u1', username: 'Steve', email: 'a@b.ru' } });
+    const { AccountService } = await import('../AccountService');
+    const user = await new AccountService().me('jwt1');
+    expect(user.username).toBe('Steve');
+  });
 });
 
 describe('AccountService token storage', () => {
