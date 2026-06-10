@@ -12,8 +12,8 @@
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-80%20passing-00FF7F)
-![Version](https://img.shields.io/badge/version-1.8.3-FF2B4F)
+![Tests](https://img.shields.io/badge/tests-81%20passing-00FF7F)
+![Version](https://img.shields.io/badge/version-1.8.5-FF2B4F)
 
 </div>
 
