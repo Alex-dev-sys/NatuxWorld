@@ -10,6 +10,9 @@ export interface LauncherSettings {
   javaPath?: string;
   jvmArgs: string;
   resolution: { width: number; height: number };
+  javaMode: 'bundled' | 'custom';
+  autoUpdate: boolean;
+  autoLaunch: boolean;
 }
 
 const DEFAULTS: LauncherSettings = {
@@ -19,6 +22,9 @@ const DEFAULTS: LauncherSettings = {
   language: 'ru',
   jvmArgs: '-XX:+UnlockExperimentalVMOptions -XX:+UseG1GC',
   resolution: { width: 1280, height: 720 },
+  javaMode: 'bundled',
+  autoUpdate: true,
+  autoLaunch: false,
 };
 
 export class SettingsService {
@@ -38,5 +44,10 @@ export class SettingsService {
     const next = { ...current, ...patch };
     await fs.writeFile(this.file, JSON.stringify(next, null, 2), 'utf-8');
     return next;
+  }
+
+  async reset(): Promise<LauncherSettings> {
+    await fs.writeFile(this.file, JSON.stringify(DEFAULTS, null, 2), 'utf-8');
+    return DEFAULTS;
   }
 }
