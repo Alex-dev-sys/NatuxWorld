@@ -11,6 +11,18 @@ const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist');
 
 let mainWindow: BrowserWindow | null = null;
 let updateCheckInterval: ReturnType<typeof setInterval> | null = null;
+let lastUpdateCheck = 0;
+
+// Window-focus can fire often; one update check per 15 min is plenty and keeps us
+// from hammering the update feed when the user alt-tabs back and forth.
+const UPDATE_CHECK_THROTTLE_MS = 15 * 60 * 1000;
+
+function runUpdateCheck(): void {
+  const now = Date.now();
+  if (now - lastUpdateCheck < UPDATE_CHECK_THROTTLE_MS) return;
+  lastUpdateCheck = now;
+  updater.check().catch(() => {});
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -153,10 +165,13 @@ app.whenReady().then(() => {
     updater.attach(mainWindow);
     launcher.attach(mainWindow);
     settingsService.get().then((s) => {
-      if (s.autoUpdate) {
-        setTimeout(() => { updater.check().catch(() => {}); }, 4000);
-        updateCheckInterval = setInterval(() => { updater.check().catch(() => {}); }, 1000 * 60 * 30);
-      }
+      if (!s.autoUpdate) return;
+      setTimeout(() => { runUpdateCheck(); }, 4000);
+      updateCheckInterval = setInterval(() => { runUpdateCheck(); }, 1000 * 60 * 30);
+      // Re-check when the launcher regains focus — e.g. after the game closes and the
+      // user returns — so a freshly published build is caught without waiting up to
+      // 30 min for the next interval. runUpdateCheck throttles repeated focus events.
+      mainWindow?.on('focus', () => runUpdateCheck());
     }).catch(() => {});
   }
 

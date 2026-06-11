@@ -82,7 +82,11 @@ export class UpdateService {
 
   installNow(): void {
     if (!app.isPackaged) return;
-    autoUpdater.quitAndInstall(false, true);
+    // Silent install + relaunch: skip the NSIS installer UI so the "Restart and
+    // install" button applies the update reliably instead of popping a window that
+    // can stall. If the user ignores the prompt, autoInstallOnAppQuit still applies
+    // the downloaded update on the next full quit.
+    autoUpdater.quitAndInstall(true, true);
   }
 
   private emit(event: UpdateEvent): void {
