@@ -50,19 +50,16 @@ export class AccountService {
   }
 
   async saveStored(session: StoredSession): Promise<void> {
+    // No OS keychain (e.g. Linux without a secret service) → don't persist the token in
+    // plaintext at all; the session simply lives until the app closes.
+    if (!safeStorage.isEncryptionAvailable()) return;
     await fsp.mkdir(path.dirname(this.file), { recursive: true });
-    const savedAt = Date.now();
-    let payload: Record<string, unknown>;
-    if (safeStorage.isEncryptionAvailable()) {
-      payload = {
-        token: safeStorage.encryptString(session.token).toString('base64'),
-        user: session.user,
-        enc: true,
-        savedAt,
-      };
-    } else {
-      payload = { token: session.token, user: session.user, enc: false, savedAt };
-    }
+    const payload = {
+      token: safeStorage.encryptString(session.token).toString('base64'),
+      user: session.user,
+      enc: true,
+      savedAt: Date.now(),
+    };
     await fsp.writeFile(this.file, JSON.stringify(payload, null, 2), 'utf-8');
   }
 

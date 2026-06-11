@@ -94,6 +94,7 @@ export class LauncherService extends EventEmitter {
   private currentProc: LaunchHandle | null = null;
   private cancelled = false;
   private isLaunching = false;
+  private abort: AbortController | null = null;
 
   private readonly mojang = new MojangService();
   private readonly download = new DownloadService(8);
@@ -148,6 +149,7 @@ export class LauncherService extends EventEmitter {
 
   async cancel(): Promise<void> {
     this.cancelled = true;
+    this.abort?.abort();
     if (this.currentProc) {
       this.currentProc.kill();
       this.currentProc = null;
@@ -161,6 +163,7 @@ export class LauncherService extends EventEmitter {
     }
     this.isLaunching = true;
     this.cancelled = false;
+    this.abort = new AbortController();
     try {
       const parsed = parseVersionId(opts.version);
       await this.runPipeline(parsed.mcVersion, parsed.loader, opts);
@@ -197,7 +200,7 @@ export class LauncherService extends EventEmitter {
         message: `Библиотеки ${pct}%`,
         detail: path.basename(file),
       });
-    });
+    }, this.abort?.signal);
     this.throwIfCancelled();
 
     this.report({ stage: 'libraries', progress: 100, message: 'Загрузка клиента...' });
@@ -211,6 +214,7 @@ export class LauncherService extends EventEmitter {
         },
       ],
       () => undefined,
+      this.abort?.signal,
     );
     this.throwIfCancelled();
 
@@ -220,7 +224,7 @@ export class LauncherService extends EventEmitter {
     await this.download.downloadMany(assetJobs, (done, total) => {
       const pct = total > 0 ? Math.round((done / total) * 100) : 0;
       this.report({ stage: 'assets', progress: pct, message: `Ресурсы ${pct}%` });
-    });
+    }, this.abort?.signal);
     this.throwIfCancelled();
 
     this.report({ stage: 'natives-extract', progress: 0, message: 'Распаковка нативных библиотек...' });
@@ -334,9 +338,7 @@ export class LauncherService extends EventEmitter {
     const nativesDir = getNativesDir(version.id);
     await fsp.mkdir(nativesDir, { recursive: true });
 
-    const nativeLibs = filterByOsRules(version.libraries, os).filter((lib) =>
-      lib.name.endsWith(`:natives-${os === 'osx' ? 'macos' : os}`) || lib.name.includes(`:natives-${os}`),
-    );
+    const nativeLibs = LauncherService.selectNativeLibs(version.libraries, os, process.arch);
 
     for (const lib of nativeLibs) {
       const artifactPath = lib.downloads?.artifact?.path;
@@ -345,6 +347,34 @@ export class LauncherService extends EventEmitter {
       if (!fs.existsSync(jar)) continue;
       await this.extractNonClassEntries(jar, nativesDir);
     }
+  }
+
+  /**
+   * Pick the native jars matching BOTH the current OS and CPU arch. Mojang's rules
+   * carry only os.name (no arch), so `org.lwjgl:lwjgl:3.3.3:natives-macos` (x64) and
+   * `...:natives-macos-arm64` both pass rule filtering on any Mac. Their dylib/dll file
+   * names collide when flattened into the natives dir, so extracting both means the
+   * wrong-arch binary can win and the game dies on load (Apple Silicon hit this).
+   * Base names are x64; `-arm64` / `-x86` suffixes are the other arches; an unsuffixed
+   * variant (e.g. freetype's `natives-macos-patch`) is kept on arm64 only when no
+   * `-arm64` twin exists.
+   */
+  static selectNativeLibs(libraries: Library[], os: ReturnType<typeof platformOsName>, arch: string): Library[] {
+    const token = os === 'osx' ? 'macos' : os;
+    const candidates = filterByOsRules(libraries, os).filter(
+      (lib) => lib.name.includes(`:natives-${token}`) || lib.name.includes(`:natives-${os}`),
+    );
+    const names = new Set(candidates.map((l) => l.name));
+    return candidates.filter((lib) => {
+      const isArm64 = lib.name.endsWith('-arm64');
+      const isX86 = lib.name.endsWith('-x86');
+      if (arch === 'arm64') {
+        if (isArm64) return true;
+        if (isX86) return false;
+        return !names.has(`${lib.name}-arm64`);
+      }
+      return !isArm64 && !isX86;
+    });
   }
 
   private extractNonClassEntries(jar: string, destDir: string): Promise<void> {
@@ -389,8 +419,36 @@ export class LauncherService extends EventEmitter {
     });
   }
 
+  // Thousands of small asset downloads each fire a progress callback. Forwarding every
+  // one over IPC makes the renderer re-render at hundreds of FPS and the whole app lags.
+  // Same-stage updates are throttled to ~10/s; stage changes always go out immediately.
+  private lastSentAt = 0;
+  private pendingReport: ReturnType<typeof setTimeout> | null = null;
+
   private report(p: LaunchProgress): void {
     this.status = p;
+    const stageChanged = this.lastSentStage !== p.stage;
+    const now = Date.now();
+    if (stageChanged || now - this.lastSentAt >= 100) {
+      if (this.pendingReport) {
+        clearTimeout(this.pendingReport);
+        this.pendingReport = null;
+      }
+      this.sendProgress(p);
+    } else if (!this.pendingReport) {
+      // Trailing send so the final value of a burst (e.g. "Ресурсы 100%") isn't dropped.
+      this.pendingReport = setTimeout(() => {
+        this.pendingReport = null;
+        this.sendProgress(this.status);
+      }, 120);
+    }
+  }
+
+  private lastSentStage: Stage | null = null;
+
+  private sendProgress(p: LaunchProgress): void {
+    this.lastSentAt = Date.now();
+    this.lastSentStage = p.stage;
     if (this.window && !this.window.isDestroyed()) {
       this.window.webContents.send(CHANNEL_PROGRESS, p);
     }
@@ -436,10 +494,11 @@ export class LauncherService extends EventEmitter {
 
   async getServerInfo(): Promise<ServerInfo> {
     try {
+      const t0 = Date.now();
       const data = await this.fetchSiteApi<{
         online: boolean; players: { online: number; max: number }; version: string; tps?: number;
       }>('/api/server/status');
-      const status = await this.getServerStatus();
+      const ping = Date.now() - t0;
       return {
         ip: 'mc.vibestudy.ru',
         version: data.version || '1.20.1+',
@@ -447,8 +506,8 @@ export class LauncherService extends EventEmitter {
         map: 'world_anarchy',
         difficulty: 'Hard',
         whitelist: false,
-        tps: data.tps ?? status.tps,
-        ping: status.ping,
+        tps: data.tps ?? 20.0,
+        ping,
       };
     } catch {
       return {

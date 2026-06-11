@@ -57,12 +57,13 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.LAUNCHER.CANCEL, () => launcher.cancel());
 
   ipcMain.handle(IPC.AUTH.LOGIN, (_e, creds) => {
-    const username = typeof creds === 'string'
+    const raw = typeof creds === 'string'
       ? creds
       : creds && typeof creds === 'object' && typeof (creds as { username?: unknown }).username === 'string'
         ? (creds as { username: string }).username
         : 'Player';
-    return auth.login(username);
+    // Same charset rule as launcher:play — auth.json must never hold an unlaunchable nick.
+    return auth.login(sanitizeUsername(raw));
   });
   ipcMain.handle(IPC.AUTH.LOGOUT, () => auth.logout());
   ipcMain.handle(IPC.AUTH.GET_USER, () => auth.getUser());
@@ -80,6 +81,15 @@ export function registerIpcHandlers(): void {
     if (!s || typeof s !== 'object') return settings.get();
     const obj = s as Record<string, unknown>;
     if ('memory' in obj) obj.memory = clampMemory(obj.memory);
+    // Resolution flows into --width/--height game args — force sane integers.
+    if ('resolution' in obj) {
+      const r = (obj.resolution ?? {}) as { width?: unknown; height?: unknown };
+      obj.resolution = {
+        width: Math.max(640, Math.min(7680, Math.floor(Number(r.width) || 1280))),
+        height: Math.max(480, Math.min(4320, Math.floor(Number(r.height) || 720))),
+      };
+    }
+    if ('language' in obj && obj.language !== 'ru' && obj.language !== 'en') delete obj.language;
     return settings.set(obj as Parameters<typeof settings.set>[0]);
   });
   ipcMain.handle(IPC.SETTINGS.GET_SYSTEM_MEMORY, () => Math.floor(os.totalmem() / (1024 * 1024)));

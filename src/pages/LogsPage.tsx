@@ -31,6 +31,11 @@ const en: typeof ru = {
 };
 const TR = { ru, en };
 
+// The store keeps up to 5000 lines for the copy-all report, but rendering them all
+// makes every 150ms log batch re-render thousands of DOM nodes and the app lags hard.
+// Only the visible tail is rendered; copy-all still exports the full buffer.
+const RENDER_TAIL = 400;
+
 export function LogsPage() {
   const t = pick(useLang(), TR);
   const lines = useLogStore((s) => s.lines);
@@ -38,10 +43,14 @@ export function LogsPage() {
   const asText = useLogStore((s) => s.asText);
   const [copied, setCopied] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const visible = lines.length > RENDER_TAIL ? lines.slice(lines.length - RENDER_TAIL) : lines;
 
   useEffect(() => {
-    if (autoScroll) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Instant jump, not scrollIntoView({smooth}) — a smooth-scroll animation restarted
+    // on every batch keeps layout/paint busy 100% of the time while the game logs.
+    const el = scrollRef.current;
+    if (autoScroll && el) el.scrollTop = el.scrollHeight;
   }, [lines, autoScroll]);
 
   const copyAll = async () => {
@@ -86,20 +95,24 @@ export function LogsPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto rounded-2xl bg-black/40 p-4 font-mono text-[12px] leading-relaxed ring-1 ring-white/[0.06]">
+      <div ref={scrollRef} className="flex-1 overflow-auto rounded-2xl bg-black/40 p-4 font-mono text-[12px] leading-relaxed ring-1 ring-white/[0.06]">
         {lines.length === 0 ? (
           <div className="flex h-full items-center justify-center text-muted">
             {t.empty}
           </div>
         ) : (
           <>
-            {lines.map((l) => (
+            {lines.length > RENDER_TAIL && (
+              <div className="pb-2 text-white/30">
+                … показаны последние {RENDER_TAIL} из {lines.length} строк (Копировать всё — полный лог)
+              </div>
+            )}
+            {visible.map((l) => (
               <div key={l.id} className={`whitespace-pre-wrap break-all ${STREAM_COLOR[l.stream] ?? 'text-white/70'}`}>
                 <span className="select-none text-white/25">[{l.stream}] </span>
                 {l.line}
               </div>
             ))}
-            <div ref={bottomRef} />
           </>
         )}
       </div>

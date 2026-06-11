@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import yauzl from 'yauzl';
-import { DownloadService } from './DownloadService';
+import { DownloadService, sha1OfFile } from './DownloadService';
 import type { ArgEntry, Library, VanillaVersion } from './MojangService';
 import {
   getForgeDir,
@@ -34,6 +34,17 @@ export const FORGE_VERSIONS: Record<string, string> = {
   '1.21.6': '56.0.4',
   '1.21.1': '52.1.14',
   '1.20.1': '47.4.20',
+};
+
+/**
+ * Pinned sha1 of each installer jar, taken from the maven-published .sha1 files
+ * (e.g. <installerUrl>.sha1). Maven artifacts are immutable, so these never change.
+ * Gives the installer download the same integrity guarantee as Mojang artifacts.
+ */
+export const FORGE_INSTALLER_SHA1: Record<string, string> = {
+  '1.21.6-56.0.4': 'b87bfa6df88093031f9b3f7b20dc66da41bb2f9b',
+  '1.21.1-52.1.14': '88d7fe47509013e3abe4879553b1395207141420',
+  '1.20.1-47.4.20': '237c5a17d941bfe793ff5780a4f330914d2c9f57',
 };
 
 /** `group:artifact[:classifier]` — identity for de-duplicating libraries across vanilla+forge. */
@@ -162,7 +173,7 @@ export class ForgeService extends EventEmitter {
     const installer = path.join(getForgeDir(mcVersion), `forge-${mcVersion}-${build}-installer.jar`);
 
     onProgress({ stage: 'forge-install', progress: 0, message: 'Загрузка установщика Forge...' });
-    await this.ensureInstaller(installer, installerUrl(mcVersion, build));
+    await this.ensureInstaller(installer, installerUrl(mcVersion, build), FORGE_INSTALLER_SHA1[`${mcVersion}-${build}`]);
 
     // Forge installer refuses to run without a launcher_profiles.json in the target dir.
     const gameDir = getMinecraftDir();
@@ -180,13 +191,18 @@ export class ForgeService extends EventEmitter {
   /**
    * Download the installer, re-fetching if a cached copy is a truncated/corrupt jar
    * (which would otherwise fail at `java -jar` with "central directory not found").
-   * The installer has no published sha1, so we validate it opens as a zip instead.
+   * When a pinned sha1 exists, DownloadService verifies it (and skips re-download of a
+   * valid cached copy); zip validity remains as a fallback for unpinned versions.
    */
-  private async ensureInstaller(installer: string, url: string): Promise<void> {
+  private async ensureInstaller(installer: string, url: string, sha1?: string): Promise<void> {
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      if (fs.existsSync(installer) && (await isValidZip(installer))) return;
+      if (fs.existsSync(installer) && (await isValidZip(installer))) {
+        if (!sha1) return;
+        // Cached file must also match the pinned hash, not just open as a zip.
+        if ((await sha1OfFile(installer)) === sha1.toLowerCase()) return;
+      }
       await fsp.unlink(installer).catch(() => undefined);
-      await this.download.downloadMany([{ url, dest: installer }], () => undefined);
+      await this.download.downloadMany([{ url, dest: installer, sha1 }], () => undefined);
     }
     if (!(await isValidZip(installer))) {
       throw new Error('Установщик Forge скачался повреждённым (битый архив). Проверь соединение и повтори.');

@@ -88,6 +88,29 @@
     background-size: 32px 32px;
   }
 
+  .ember {
+    animation-name: ember-rise;
+    animation-timing-function: ease-out;
+    animation-iteration-count: infinite;
+    opacity: 0;
+    will-change: transform, opacity;
+  }
+
+  @keyframes ember-rise {
+    0% {
+      transform: translateY(0);
+      opacity: 0;
+    }
+    50% {
+      transform: translateY(-130px);
+      opacity: 0.8;
+    }
+    100% {
+      transform: translateY(-240px);
+      opacity: 0;
+    }
+  }
+
   .noise {
     position: absolute;
     inset: 0;

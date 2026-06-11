@@ -58,29 +58,45 @@ export class JavaService extends EventEmitter {
     return arch;
   }
 
+  /** Run `<javaPath> -version` and return the parsed version, or null if it doesn't run / is < 21. */
+  private static probeJava(javaPath: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      const proc = spawn(javaPath, ['-version']);
+      let out = '';
+      let settled = false;
+      const finish = (v: string | null) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(v);
+      };
+      const timer = setTimeout(() => {
+        proc.kill();
+        finish(null);
+      }, 10000);
+      proc.stderr.on('data', (d) => (out += d.toString()));
+      proc.on('close', () => {
+        finish(JavaService.isJava21Plus(out) ? (JavaService.parseVersion(out) ?? '21') : null);
+      });
+      proc.on('error', () => finish(null));
+    });
+  }
+
   async detect(): Promise<JavaInstallation | null> {
     const managed = getJrePath();
     try {
       await fsp.access(managed);
-      return { version: '21', vendor: 'Temurin', path: managed };
+      // A previously interrupted install can leave a binary that exists but doesn't run
+      // (or a wrong-arch one). Probe it instead of trusting the file's presence, so a
+      // broken managed JRE falls through to a clean reinstall rather than a launch crash.
+      const version = await JavaService.probeJava(managed);
+      if (version) return { version, vendor: 'Temurin', path: managed };
     } catch {
       // fall through
     }
 
-    return new Promise((resolve) => {
-      const proc = spawn('java', ['-version']);
-      let out = '';
-      proc.stderr.on('data', (d) => (out += d.toString()));
-      proc.on('close', () => {
-        if (!JavaService.isJava21Plus(out)) {
-          resolve(null);
-          return;
-        }
-        const version = JavaService.parseVersion(out) ?? 'unknown';
-        resolve({ version, vendor: 'system', path: 'java' });
-      });
-      proc.on('error', () => resolve(null));
-    });
+    const version = await JavaService.probeJava('java');
+    return version ? { version, vendor: 'system', path: 'java' } : null;
   }
 
   async install(): Promise<JavaInstallation> {
@@ -88,7 +104,7 @@ export class JavaService extends EventEmitter {
     const arch = JavaService.platformArch(process.arch);
 
     this.emit('progress', { progress: 0, message: 'Запрос метаданных Java...' });
-    const asset = await this.fetchAssetMetadata(os, arch);
+    const asset = await JavaService.withRetries(() => this.fetchAssetMetadata(os, arch));
     const pkg = asset.binaries[0]?.package;
     if (!pkg) throw new Error('Adoptium: no JRE binary returned');
 
@@ -97,10 +113,13 @@ export class JavaService extends EventEmitter {
     const archivePath = path.join(runtimeDir, pkg.name);
 
     this.emit('progress', { progress: 5, message: 'Загрузка JRE 21...' });
-    await this.downloadVerified(pkg.link, archivePath, pkg.checksum);
+    // ~50 MB off GitHub releases — transient resets (ECONNRESET) are routine, so retry.
+    await JavaService.withRetries(() => this.downloadVerified(pkg.link, archivePath, pkg.checksum));
 
     this.emit('progress', { progress: 90, message: 'Распаковка JRE...' });
-    await this.extractZip(archivePath, runtimeDir);
+    // Wipe any half-extracted runtime from a previous failed attempt before extracting.
+    await fsp.rm(path.join(runtimeDir, 'jre-21'), { recursive: true, force: true }).catch(() => undefined);
+    await this.extractArchive(archivePath, runtimeDir);
     await this.normalizeRuntimeDir(runtimeDir);
     await fsp.unlink(archivePath).catch(() => undefined);
 
@@ -108,9 +127,49 @@ export class JavaService extends EventEmitter {
       await fsp.chmod(getJrePath(), 0o755).catch(() => undefined);
     }
 
+    // Fail here with a clear message rather than later with an opaque spawn error.
+    if (!(await JavaService.probeJava(getJrePath()))) {
+      throw new Error('JRE установилась, но не запускается. Удали папку minecraft/runtime и попробуй снова.');
+    }
+
     this.emit('progress', { progress: 100, message: 'Java установлена' });
     const version = asset.version_data?.semver ?? '21';
     return { version, vendor: 'Temurin', path: getJrePath() };
+  }
+
+  /** Retry a flaky network operation with exponential backoff (handles ECONNRESET etc.). */
+  static async withRetries<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+    let lastError: unknown;
+    for (let i = 0; i < attempts; i += 1) {
+      try {
+        return await fn();
+      } catch (err) {
+        lastError = err;
+        if (i < attempts - 1) await new Promise((r) => setTimeout(r, 2 ** i * 1000));
+      }
+    }
+    throw lastError;
+  }
+
+  /**
+   * Adoptium ships .zip only for Windows; mac and linux JREs come as .tar.gz, which
+   * yauzl can't open ("End of central directory record signature not found"). Use the
+   * system tar (always present on mac/linux) for those.
+   */
+  private extractArchive(archive: string, destDir: string): Promise<void> {
+    if (archive.endsWith('.tar.gz') || archive.endsWith('.tgz')) {
+      return new Promise((resolve, reject) => {
+        const proc = spawn('tar', ['-xzf', archive, '-C', destDir]);
+        let err = '';
+        proc.stderr.on('data', (d) => (err += d.toString()));
+        proc.on('error', reject);
+        proc.on('exit', (code) => {
+          if (code === 0) resolve();
+          else reject(new Error(`tar exited with code ${code}: ${err.slice(0, 300)}`));
+        });
+      });
+    }
+    return this.extractZip(archive, destDir);
   }
 
   private fetchAssetMetadata(os: string, arch: string): Promise<AdoptiumAsset> {

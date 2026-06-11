@@ -10,6 +10,10 @@ export function getRuntimeDir(): string {
 }
 
 export function getJrePath(): string {
+  // macOS Temurin archives nest the JRE under Contents/Home (.app bundle layout).
+  if (process.platform === 'darwin') {
+    return path.join(getRuntimeDir(), 'jre-21', 'Contents', 'Home', 'bin', 'java');
+  }
   const exe = process.platform === 'win32' ? 'javaw.exe' : 'java';
   return path.join(getRuntimeDir(), 'jre-21', 'bin', exe);
 }

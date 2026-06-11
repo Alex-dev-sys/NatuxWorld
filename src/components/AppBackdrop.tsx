@@ -1,5 +1,3 @@
-import { motion } from 'framer-motion';
-
 export function AppBackdrop() {
   return (
     <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
@@ -51,27 +49,22 @@ export function AppBackdrop() {
   );
 }
 
+// Pure CSS keyframes instead of framer-motion: 22 JS-driven infinite animations kept the
+// main thread busy every frame for the app's whole lifetime. CSS transform/opacity
+// animations run on the compositor and cost ~nothing.
 function Embers() {
-  const dots = Array.from({ length: 22 }, (_, i) => i);
+  const dots = Array.from({ length: 14 }, (_, i) => i);
   return (
     <div className="absolute inset-0">
       {dots.map((i) => (
-        <motion.span
+        <span
           key={i}
-          className="absolute h-[3px] w-[3px] rounded-full bg-primary/60 shadow-[0_0_8px_rgba(255,0,55,0.9)]"
+          className="ember absolute h-[3px] w-[3px] rounded-full bg-primary/60 shadow-[0_0_8px_rgba(255,0,55,0.9)]"
           style={{
             left: `${(i * 47) % 100}%`,
             top: `${60 + ((i * 31) % 35)}%`,
-          }}
-          animate={{
-            y: [-0, -120 - (i % 7) * 10, -240],
-            opacity: [0, 0.8, 0],
-          }}
-          transition={{
-            duration: 8 + (i % 5),
-            repeat: Infinity,
-            delay: (i % 6) * 0.6,
-            ease: 'easeOut',
+            animationDuration: `${8 + (i % 5)}s`,
+            animationDelay: `${(i % 6) * 0.6}s`,
           }}
         />
       ))}

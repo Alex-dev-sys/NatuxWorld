@@ -55,18 +55,19 @@ export async function runWithConcurrency<T>(
 export class DownloadService {
   constructor(private readonly maxConcurrent: number = 8) {}
 
-  async downloadMany(jobs: DownloadJob[], onProgress: DownloadProgressCb): Promise<void> {
+  async downloadMany(jobs: DownloadJob[], onProgress: DownloadProgressCb, signal?: AbortSignal): Promise<void> {
     const totalBytes = jobs.reduce((acc, j) => acc + (j.size ?? 0), 0);
     let doneBytes = 0;
 
     await runWithConcurrency(jobs, this.maxConcurrent, async (job) => {
-      const reportedBytes = await this.downloadOne(job);
+      if (signal?.aborted) throw new Error('Отменено пользователем');
+      const reportedBytes = await this.downloadOne(job, signal);
       doneBytes += reportedBytes;
       onProgress(doneBytes, totalBytes, job.dest);
     });
   }
 
-  private async downloadOne(job: DownloadJob): Promise<number> {
+  private async downloadOne(job: DownloadJob, signal?: AbortSignal): Promise<number> {
     if (job.sha1 && existsSync(job.dest)) {
       const existing = await sha1OfFile(job.dest);
       if (existing === job.sha1.toLowerCase()) return job.size ?? 0;
@@ -74,10 +75,12 @@ export class DownloadService {
 
     let lastError: unknown = null;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
+      if (signal?.aborted) throw new Error('Отменено пользователем');
       try {
-        const written = await this.fetchToFile(job);
+        const written = await this.fetchToFile(job, signal);
         return written;
       } catch (err) {
+        if (signal?.aborted) throw new Error('Отменено пользователем');
         lastError = err;
         if (attempt < MAX_RETRIES - 1) {
           await new Promise((r) => setTimeout(r, 2 ** attempt * 500));
@@ -87,7 +90,7 @@ export class DownloadService {
     throw lastError ?? new Error(`Download failed: ${job.url}`);
   }
 
-  private async fetchToFile(job: DownloadJob): Promise<number> {
+  private async fetchToFile(job: DownloadJob, signal?: AbortSignal): Promise<number> {
     await fsp.mkdir(path.dirname(job.dest), { recursive: true });
     const tmp = `${job.dest}.tmp`;
     const hash = createHash('sha1');
@@ -112,7 +115,9 @@ export class DownloadService {
           const client = target.protocol === 'https:' ? https : http;
           const req = client.get(
             rawUrl,
-            { headers: { 'User-Agent': 'NatuxWorldLauncher' } },
+            // signal: in-flight request is destroyed immediately when the user cancels,
+            // instead of the cancel waiting for the whole stage to finish downloading.
+            { headers: { 'User-Agent': 'NatuxWorldLauncher' }, signal },
             (res) => {
               if (
                 res.statusCode &&

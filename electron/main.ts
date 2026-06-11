@@ -25,10 +25,12 @@ function createWindow(): void {
     title: 'NATUX WORLD',
     icon: path.join(process.env.APP_ROOT ?? '', 'build', 'icon.png'),
     webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs'),
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      // Preload only touches contextBridge/ipcRenderer, so the renderer can run fully
+      // sandboxed — a compromised page then has no Node access at all.
+      sandbox: true,
     },
   });
 

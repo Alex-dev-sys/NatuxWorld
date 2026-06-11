@@ -16,8 +16,9 @@ export default defineConfig({
           build: {
             rollupOptions: {
               output: {
-                format: 'es',
-                entryFileNames: 'preload.mjs',
+                // Sandboxed preloads can't be ESM — Electron requires CJS there.
+                format: 'cjs',
+                entryFileNames: 'preload.cjs',
               },
             },
           },

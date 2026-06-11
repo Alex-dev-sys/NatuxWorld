@@ -197,8 +197,22 @@ export class MojangService {
     return JSON.parse(await this.httpGetText(url));
   }
 
+  /** GET with retries — transient resets (ECONNRESET) are routine on flaky networks. */
+  private async httpGetText(url: string, attempts = 3): Promise<string> {
+    let lastError: unknown;
+    for (let i = 0; i < attempts; i += 1) {
+      try {
+        return await this.httpGetTextOnce(url);
+      } catch (err) {
+        lastError = err;
+        if (i < attempts - 1) await new Promise((r) => setTimeout(r, 2 ** i * 500));
+      }
+    }
+    throw lastError;
+  }
+
   /** GET a URL and return the raw response body. https-only; refuses non-https redirects. */
-  private httpGetText(url: string): Promise<string> {
+  private httpGetTextOnce(url: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const tryGet = (u: string, redirects = 0) => {
         if (redirects > 5) return reject(new Error('Too many redirects'));
