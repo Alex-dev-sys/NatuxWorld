@@ -11,6 +11,7 @@ const ru = {
   downloading: (v: string) => `Загрузка v${v}…`,
   ready: (v: string) => `v${v} готова к установке`,
   install: 'Перезапустить и установить',
+  download: 'Скачать с сайта',
 };
 const en: typeof ru = {
   update: 'Update',
@@ -18,6 +19,7 @@ const en: typeof ru = {
   downloading: (v: string) => `Downloading v${v}…`,
   ready: (v: string) => `v${v} ready to install`,
   install: 'Restart and install',
+  download: 'Download from site',
 };
 const TR = { ru, en };
 
@@ -25,7 +27,9 @@ type State =
   | { phase: 'idle' }
   | { phase: 'available'; version: string }
   | { phase: 'downloading'; version: string; percent: number }
-  | { phase: 'ready'; version: string };
+  | { phase: 'ready'; version: string }
+  // macOS: unsigned build can't self-install, so we link to the release page.
+  | { phase: 'manual'; version: string; url: string };
 
 export function UpdateToast() {
   const [state, setState] = useState<State>({ phase: 'idle' });
@@ -39,6 +43,9 @@ export function UpdateToast() {
         switch (event.type) {
           case 'available':
             return { phase: 'available', version: event.version };
+          case 'manual':
+            setDismissed(false);
+            return { phase: 'manual', version: event.version, url: event.url };
           case 'progress':
             return {
               phase: 'downloading',
@@ -89,6 +96,7 @@ export function UpdateToast() {
               {state.phase === 'available' && t.available(state.version)}
               {state.phase === 'downloading' && t.downloading(state.version)}
               {state.phase === 'ready' && t.ready(state.version)}
+              {state.phase === 'manual' && t.available(state.version)}
             </div>
             {state.phase === 'downloading' && (
               <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-white/[0.06]">
@@ -106,6 +114,14 @@ export function UpdateToast() {
                 className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg bg-play-gradient px-3 text-xs font-semibold text-white shadow-glow hover:shadow-glow-strong transition"
               >
                 {t.install}
+              </button>
+            )}
+            {state.phase === 'manual' && (
+              <button
+                onClick={() => bridge.shell.openExternal(state.url)}
+                className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg bg-play-gradient px-3 text-xs font-semibold text-white shadow-glow hover:shadow-glow-strong transition"
+              >
+                {t.download}
               </button>
             )}
           </div>
