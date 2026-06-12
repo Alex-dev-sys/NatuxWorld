@@ -13,6 +13,8 @@ export interface LauncherSettings {
   javaMode: 'bundled' | 'custom';
   autoUpdate: boolean;
   autoLaunch: boolean;
+  /** Opt-in: send anonymous crash logs to the backend on launch error / game crash. */
+  crashReports: boolean;
 }
 
 const DEFAULTS: LauncherSettings = {
@@ -25,6 +27,7 @@ const DEFAULTS: LauncherSettings = {
   javaMode: 'bundled',
   autoUpdate: true,
   autoLaunch: false,
+  crashReports: false,
 };
 
 export class SettingsService {

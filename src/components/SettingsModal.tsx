@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { X, Cpu, MemoryStick, MonitorPlay, Coffee, FolderOpen, Check, Languages, RefreshCw, Rocket, Trash2, FileText } from 'lucide-react';
+import { X, Cpu, MemoryStick, MonitorPlay, Coffee, FolderOpen, Check, Languages, RefreshCw, Rocket, Trash2, FileText, Bug } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { bridge } from '../services/electron-bridge';
@@ -25,6 +25,7 @@ const ru = {
   language: 'Язык интерфейса',
   autoUpdate: 'Авто-обновление', autoUpdateHint: 'Применится при следующем запуске',
   autoLaunch: 'Автозапуск игры', autoLaunchHint: 'Сразу нажимать ИГРАТЬ при старте',
+  crashReports: 'Отчёты о крашах', crashReportsHint: 'Анонимно слать логи при вылете — помогает чинить баги',
   logs: 'Логи', logsHint: 'Открыть страницу логов', open: 'Открыть',
   resetSettings: 'Сбросить настройки', version: (v: string) => `Версия лаунчера ${v}`,
   confirm: 'Точно', cancel: 'Отмена',
@@ -44,6 +45,7 @@ const en: typeof ru = {
   language: 'Interface language',
   autoUpdate: 'Auto-update', autoUpdateHint: 'Applied on next start',
   autoLaunch: 'Auto-launch game', autoLaunchHint: 'Press PLAY automatically on start',
+  crashReports: 'Crash reports', crashReportsHint: 'Send anonymous logs on crash — helps fix bugs',
   logs: 'Logs', logsHint: 'Open the logs page', open: 'Open',
   resetSettings: 'Reset settings', version: (v: string) => `Launcher version ${v}`,
   confirm: 'Confirm', cancel: 'Cancel',
@@ -277,6 +279,10 @@ function LauncherTab() {
 
       <Row icon={<Rocket className="h-4 w-4" />} label={t.autoLaunch} hint={t.autoLaunchHint}>
         <Toggle value={!!settings?.autoLaunch} onChange={(v) => update({ autoLaunch: v })} />
+      </Row>
+
+      <Row icon={<Bug className="h-4 w-4" />} label={t.crashReports} hint={t.crashReportsHint}>
+        <Toggle value={!!settings?.crashReports} onChange={(v) => update({ crashReports: v })} />
       </Row>
 
       <Row icon={<FileText className="h-4 w-4" />} label={t.logs} hint={t.logsHint}>

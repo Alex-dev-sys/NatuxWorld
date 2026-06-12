@@ -19,6 +19,7 @@ import { AuthService } from './AuthService';
 import { ForgeService } from './ForgeService';
 import { MinecraftService, type LaunchHandle } from './MinecraftService';
 import { SettingsService } from './SettingsService';
+import { CrashReportService } from './CrashReportService';
 import {
   getAssetObjectPath,
   getAssetsDir,
@@ -103,6 +104,11 @@ export class LauncherService extends EventEmitter {
   private readonly forge = new ForgeService();
   private readonly minecraft = new MinecraftService();
   private readonly settingsSvc = new SettingsService();
+  private readonly crashReporter = new CrashReportService();
+
+  // Rolling tail of recent log lines, retained for opt-in crash reports. Separate from
+  // logBuffer (which is drained on each IPC flush), so a report still has context.
+  private recentLogs: string[] = [];
 
   // Minecraft is extremely chatty (thousands of lines on boot). Sending each line
   // as its own IPC message floods the renderer and stalls the progress UI. Buffer
@@ -113,6 +119,8 @@ export class LauncherService extends EventEmitter {
   private queueLog(line: { stream: string; line: string }): void {
     this.logBuffer.push(line);
     if (this.logBuffer.length > 1000) this.logBuffer.shift();
+    this.recentLogs.push(`[${line.stream}] ${line.line}`);
+    if (this.recentLogs.length > 300) this.recentLogs.shift();
     if (!this.logTimer) {
       this.logTimer = setTimeout(() => this.flushLogs(), 150);
     }
@@ -164,13 +172,24 @@ export class LauncherService extends EventEmitter {
     this.isLaunching = true;
     this.cancelled = false;
     this.abort = new AbortController();
+    this.recentLogs = [];
     try {
       const parsed = parseVersionId(opts.version);
       await this.runPipeline(parsed.mcVersion, parsed.loader, opts);
       return { ok: true };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      const failedStage = this.status.stage; // capture before report() overwrites to 'error'
       this.report({ stage: 'error', progress: 0, message: `Ошибка: ${msg}` });
+      // User-initiated cancel is not a crash — don't report it.
+      if (!this.cancelled) {
+        void this.crashReporter.report({
+          kind: 'launch-error',
+          stage: failedStage,
+          message: msg,
+          logs: this.recentLogs,
+        });
+      }
       return { ok: false, error: msg };
     } finally {
       this.isLaunching = false;
@@ -284,11 +303,22 @@ export class LauncherService extends EventEmitter {
     });
     handle.on('exit', ({ code }: { code: number | null }) => {
       this.currentProc = null;
+      const crashed = code !== 0 && code !== null;
       this.report({
         stage: 'idle',
         progress: 0,
-        message: code === 0 || code === null ? 'Игра завершена' : `Игра упала (код ${code})`,
+        message: crashed ? `Игра упала (код ${code})` : 'Игра завершена',
       });
+      // A non-zero exit that the user didn't trigger via cancel() is a real crash.
+      if (crashed && !this.cancelled) {
+        void this.crashReporter.report({
+          kind: 'game-crash',
+          stage: 'running',
+          exitCode: code ?? undefined,
+          message: `Игра завершилась с кодом ${code}`,
+          logs: this.recentLogs,
+        });
+      }
     });
     handle.on('error', (err: unknown) => {
       this.currentProc = null;

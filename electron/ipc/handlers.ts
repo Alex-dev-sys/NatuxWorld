@@ -90,6 +90,10 @@ export function registerIpcHandlers(): void {
       };
     }
     if ('language' in obj && obj.language !== 'ru' && obj.language !== 'en') delete obj.language;
+    // Consent flags must be strict booleans, never truthy junk from the renderer.
+    for (const key of ['crashReports', 'autoUpdate', 'autoLaunch', 'fullscreen', 'closeOnLaunch']) {
+      if (key in obj) obj[key] = obj[key] === true;
+    }
     return settings.set(obj as Parameters<typeof settings.set>[0]);
   });
   ipcMain.handle(IPC.SETTINGS.GET_SYSTEM_MEMORY, () => Math.floor(os.totalmem() / (1024 * 1024)));
