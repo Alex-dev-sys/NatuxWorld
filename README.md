@@ -12,8 +12,8 @@
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-81%20passing-00FF7F)
-![Version](https://img.shields.io/badge/version-1.8.5-FF2B4F)
+![Tests](https://img.shields.io/badge/tests-89%20passing-00FF7F)
+![Version](https://img.shields.io/badge/version-1.9.2-FF2B4F)
 
 </div>
 
@@ -72,6 +72,20 @@ xattr -cr "/Applications/NATUX WORLD.app"
 </details>
 
 > ⚠️ Авто-обновления (`electron-updater`) на macOS требуют подписанной сборки — пока она не подписана, обновляйся вручную, скачивая новый `.dmg` из Releases.
+
+---
+
+## 🪟 Запуск на Windows
+
+Установщик `.exe` **не подписан** code-signing сертификатом, поэтому при запуске Microsoft Defender SmartScreen показывает синее окно **«Система Windows защитила ваш компьютер»**. Это не вирус и не ошибка — так Windows реагирует на любой неподписанный установщик от нового издателя.
+
+1. Скачай `NATUX WORLD-Setup-*.exe` из [Releases](https://github.com/Alex-dev-sys/NatuxWorld/releases).
+2. Запусти. В окне SmartScreen нажми **«Подробнее»**, затем появившуюся кнопку **«Выполнить в любом случае»**.
+3. Установка идёт **без прав администратора** (per-user), UAC не спрашивает пароль.
+
+> 💡 Хочешь убедиться, что скачал настоящий файл, а не подделку? Проверь контрольную сумму — см. [docs/INSTALL.md](docs/INSTALL.md#проверка-целостности). К каждому релизу прикладывается `SHA256SUMS-windows.txt`.
+
+Полный гайд по установке (Windows + macOS, с обходом предупреждений и проверкой целостности) — **[docs/INSTALL.md](docs/INSTALL.md)**.
 
 ---
 

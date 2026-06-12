@@ -110,6 +110,20 @@ jobs:
           git tag ${{ steps.ver.outputs.tag }}
           git push origin ${{ steps.ver.outputs.tag }}
 
+      # Publish SHA256 sums so users can verify the unsigned installer is genuine
+      # (the install guide tells them to compare against this file).
+      - name: Publish checksums
+        if: steps.ver.outputs.release == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $lines = Get-ChildItem release -Filter *.exe | ForEach-Object {
+            (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() + "  " + $_.Name
+          }
+          $lines | Out-File -Encoding ascii SHA256SUMS-windows.txt
+          gh release upload ${{ steps.ver.outputs.tag }} SHA256SUMS-windows.txt --clobber
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -165,6 +179,17 @@ jobs:
         run: npx electron-builder --mac --x64 --arm64 --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # The git tag + release were created by the Windows job (needs: build), so the
+      # release exists here; attach the dmg checksums for integrity verification.
+      - name: Publish checksums
+        if: needs.build.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd release
+          shasum -a 256 *.dmg > SHA256SUMS-macos.txt
+          gh release upload "v${{ needs.build.outputs.version }}" SHA256SUMS-macos.txt --clobber
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
