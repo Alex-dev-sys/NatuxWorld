@@ -57,7 +57,7 @@ export function Sidebar() {
 
   return (
     <aside className="relative flex h-full w-[300px] shrink-0 flex-col gap-4 overflow-y-auto p-4 pt-0">
-      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 bg-red-radial opacity-50 blur-2xl" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 bg-red-radial opacity-50" />
 
       <motion.button
         onClick={() => navigate('/')}

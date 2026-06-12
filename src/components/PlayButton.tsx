@@ -35,7 +35,7 @@ export function PlayButton() {
           transition={{ type: 'spring', stiffness: 320, damping: 22 }}
           className="group relative flex-1 overflow-hidden rounded-2xl bg-play-gradient p-[1px] shadow-glow"
         >
-          <span className="pointer-events-none absolute inset-0 animate-pulse-glow rounded-2xl" />
+          <span className="pulse-glow-soft pointer-events-none absolute inset-0 rounded-2xl" />
           <span className="relative flex h-[68px] w-full items-center justify-center gap-3 rounded-[15px] bg-gradient-to-b from-primary to-primary-glow">
             <span className="absolute inset-0 rounded-[15px] bg-[radial-gradient(120%_120%_at_50%_0%,rgba(255,255,255,0.25)_0%,transparent_50%)]" />
             <span className="absolute inset-x-0 top-0 h-px bg-white/40" />

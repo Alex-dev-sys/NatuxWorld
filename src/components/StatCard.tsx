@@ -29,7 +29,7 @@ export function StatCard({ icon, label, value, hint, data, color, delay = 0, tre
       transition={{ delay, duration: 0.5, ease: [0.22, 0.8, 0.36, 1] }}
       whileHover={{ y: -6 }}
       style={{ ['--c' as string]: color }}
-      className="group relative h-[168px] overflow-hidden rounded-[24px] p-[1px] transition-all duration-500"
+      className="group relative h-[168px] overflow-hidden rounded-[24px] p-[1px]"
     >
       {/* gradient hairline border */}
       <div
@@ -39,17 +39,19 @@ export function StatCard({ icon, label, value, hint, data, color, delay = 0, tre
         }}
       />
 
-      {/* card body */}
-      <div className="relative h-full w-full overflow-hidden rounded-[23px] bg-[#0b0b0d]/90 backdrop-blur-xl">
-        {/* ambient corner light */}
+      {/* card body — solid bg, no backdrop-filter: blurring the animated backdrop
+          beneath 4 cards re-renders the blur every frame on weak GPUs */}
+      <div className="relative h-full w-full overflow-hidden rounded-[23px] bg-[#0b0b0d]/95">
+        {/* ambient corner light: pre-soft radial gradient instead of filter:blur —
+            same look, zero per-frame filter cost; hover animates opacity only */}
         <div
-          className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full opacity-25 blur-3xl transition-all duration-500 group-hover:opacity-60 group-hover:blur-2xl"
-          style={{ background: color }}
+          className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 opacity-30 transition-opacity duration-500 group-hover:opacity-60"
+          style={{ background: `radial-gradient(circle, ${color}66, transparent 65%)` }}
         />
-        {/* internal bottom glow (replaces the old bright bar) */}
+        {/* internal bottom glow */}
         <div
-          className="pointer-events-none absolute inset-x-0 -bottom-16 h-32 opacity-30 blur-2xl transition-opacity duration-500 group-hover:opacity-50"
-          style={{ background: `radial-gradient(60% 100% at 50% 100%, ${color}, transparent 70%)` }}
+          className="pointer-events-none absolute inset-x-0 -bottom-16 h-32 opacity-30 transition-opacity duration-500 group-hover:opacity-50"
+          style={{ background: `radial-gradient(60% 100% at 50% 100%, ${color}88, transparent 70%)` }}
         />
 
         {/* thin glowing top accent */}
@@ -73,7 +75,7 @@ export function StatCard({ icon, label, value, hint, data, color, delay = 0, tre
             </div>
             {computedTrend !== 0 && (
               <div
-                className="flex items-center gap-0.5 rounded-lg px-2 py-1 text-[10px] font-bold tabular-nums backdrop-blur-sm"
+                className="flex items-center gap-0.5 rounded-lg px-2 py-1 text-[10px] font-bold tabular-nums"
                 style={{
                   color: up ? '#3DFF99' : '#FF6B81',
                   background: up ? 'rgba(0,255,127,0.10)' : 'rgba(255,107,129,0.10)',

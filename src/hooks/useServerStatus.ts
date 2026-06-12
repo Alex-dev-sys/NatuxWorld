@@ -1,35 +1,38 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import { create } from 'zustand';
 import { bridge } from '../services/electron-bridge';
 import type { ServerStatus, ServerInfo } from '../../electron/services/LauncherService';
 
-export function useServerStatus(refreshMs = 30000): { status: ServerStatus | null; info: ServerInfo | null } {
-  const [status, setStatus] = useState<ServerStatus | null>(null);
-  const [info, setInfo] = useState<ServerInfo | null>(null);
+interface ServerStatusState {
+  status: ServerStatus | null;
+  info: ServerInfo | null;
+}
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const [s, i] = await Promise.all([bridge.server.getStatus(), bridge.server.getInfo()]);
-        if (!cancelled) {
-          setStatus(s);
-          setInfo(i);
-        }
-      } catch {
-        // Server unreachable: surface an offline status instead of letting the
-        // rejection bubble up as an unhandled promise rejection every poll.
-        if (!cancelled) {
-          setStatus({ online: false, players: 0, maxPlayers: 0, ping: 0, tps: 0 });
-        }
-      }
-    };
-    load();
-    const id = setInterval(load, refreshMs);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [refreshMs]);
+// Single shared store + one global poller. Sidebar, StatsCards and ServerInfo all use
+// this hook; per-component intervals meant 3 components × 2 HTTP requests every 30s.
+const useServerStatusStore = create<ServerStatusState>(() => ({ status: null, info: null }));
 
-  return { status, info };
+let pollerStarted = false;
+
+async function poll(): Promise<void> {
+  try {
+    const [status, info] = await Promise.all([bridge.server.getStatus(), bridge.server.getInfo()]);
+    useServerStatusStore.setState({ status, info });
+  } catch {
+    // Server unreachable: surface an offline status instead of letting the
+    // rejection bubble up as an unhandled promise rejection every poll.
+    useServerStatusStore.setState({ status: { online: false, players: 0, maxPlayers: 0, ping: 0, tps: 0 } });
+  }
+}
+
+function ensurePoller(refreshMs: number): void {
+  if (pollerStarted) return;
+  pollerStarted = true;
+  poll();
+  setInterval(poll, refreshMs);
+}
+
+export function useServerStatus(refreshMs = 30000): ServerStatusState {
+  useEffect(() => ensurePoller(refreshMs), [refreshMs]);
+  return useServerStatusStore();
 }

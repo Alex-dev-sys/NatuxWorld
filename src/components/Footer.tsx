@@ -26,7 +26,7 @@ export function Footer() {
   const navigate = useNavigate();
   const t = pick(useLang(), TR);
   return (
-    <footer className="relative flex h-10 shrink-0 items-center justify-between border-t border-white/[0.04] bg-bg/80 px-5 text-[11px] text-muted backdrop-blur-md">
+    <footer className="relative flex h-10 shrink-0 items-center justify-between border-t border-white/[0.04] bg-bg/90 px-5 text-[11px] text-muted">
       <span>{t.tagline}</span>
       <div className="flex items-center gap-5">
         {links.map((l) => (

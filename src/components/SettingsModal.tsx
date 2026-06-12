@@ -76,7 +76,7 @@ export function SettingsModal() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="absolute inset-0 z-[60] grid place-items-center bg-black/70 backdrop-blur-md"
+          className="absolute inset-0 z-[60] grid place-items-center bg-black/80"
           onClick={close}
         >
           <motion.div

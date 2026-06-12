@@ -10,7 +10,7 @@ export function NewsModal({ item, onClose }: { item: NewsItem | null; onClose: (
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="absolute inset-0 z-50 grid place-items-center bg-black/70 backdrop-blur-md"
+          className="absolute inset-0 z-50 grid place-items-center bg-black/80"
           onClick={onClose}
         >
           <motion.div
