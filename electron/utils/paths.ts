@@ -71,6 +71,10 @@ export function getAuthPath(): string {
   return path.join(getMinecraftDir(), 'auth.json');
 }
 
+export function getAuthlibPath(): string {
+  return path.join(getRuntimeDir(), 'authlib-injector.jar');
+}
+
 export function getLogsDir(): string {
   return path.join(app.getPath('userData'), 'logs');
 }

@@ -122,4 +122,10 @@ export class AccountService {
     const res = await this.request<{ user: AccountUser }>('GET', '/me', undefined, token);
     return res.user;
   }
+
+  async gameSession(token: string): Promise<{ accessToken: string; clientToken: string; uuid: string; username: string }> {
+    return this.request<{ accessToken: string; clientToken: string; uuid: string; username: string }>(
+      'POST', '/game-session', undefined, token,
+    );
+  }
 }

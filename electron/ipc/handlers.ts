@@ -40,8 +40,7 @@ function sanitizeServer(value: unknown): string | undefined {
 }
 
 export function registerIpcHandlers(): void {
-  // Username is always taken from the verified account session stored by main-process.
-  // The renderer may send any username — it is silently overridden for identity purposes.
+  // Username and game credentials come from the verified account session — never from the renderer.
   ipcMain.handle(IPC.LAUNCHER.PLAY, async (_e, options) => {
     if (!options || typeof options !== 'object') {
       return { ok: false, error: 'Некорректные параметры запуска' };
@@ -49,12 +48,26 @@ export function registerIpcHandlers(): void {
     const session = await account.loadStored();
     if (!session) return { ok: false, error: 'Требуется вход в аккаунт' };
 
+    // Obtain a real Yggdrasil game token — required for online-mode=true.
+    let gameToken: { accessToken: string; uuid: string } | undefined;
+    try {
+      const gs = await account.gameSession(session.token);
+      gameToken = { accessToken: gs.accessToken, uuid: gs.uuid };
+    } catch (err) {
+      if (err instanceof AccountApiError && err.status === 401) {
+        await account.clearStored();
+        return { ok: false, error: 'Сессия истекла, войдите заново' };
+      }
+      return { ok: false, error: 'Не удалось получить игровой токен. Проверьте подключение к интернету.' };
+    }
+
     const o = options as Record<string, unknown>;
     const sanitized = {
       ...o,
       username: sanitizeUsername(session.user.username),
       server: sanitizeServer(o.server),
       memory: clampMemory(o.memory),
+      _gameToken: gameToken,
     };
     return launcher.play(sanitized as Parameters<typeof launcher.play>[0]);
   });

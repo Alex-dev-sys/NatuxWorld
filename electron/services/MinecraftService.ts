@@ -107,6 +107,8 @@ export interface LaunchInput {
   width?: number;
   height?: number;
   fullscreen?: boolean;
+  /** Full path to authlib-injector.jar — if set, prepended as -javaagent before heap flags. */
+  authlibJarPath?: string;
 }
 
 export class MinecraftService {
@@ -133,6 +135,8 @@ export class MinecraftService {
 
     const memory = Math.max(512, Math.min(65536, Math.floor(Number(input.memory) || 4096)));
     const jvmArgs = [
+      // authlib-injector must be the first JVM arg so it patches Mojang auth before anything else runs.
+      ...(input.authlibJarPath ? [`-javaagent:${input.authlibJarPath}=https://vibestudy.ru/api/yggdrasil`] : []),
       `-Xmx${memory}M`,
       `-Xms${Math.min(memory, 1024)}M`,
       `-Djava.library.path=${input.nativesDir}`,

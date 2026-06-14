@@ -23,9 +23,11 @@ import { CrashReportService } from './CrashReportService';
 import {
   getAssetObjectPath,
   getAssetsDir,
+  getAuthlibPath,
   getLibrariesDir,
   getMinecraftDir,
   getNativesDir,
+  getRuntimeDir,
   getVersionJarPath,
 } from '../utils/paths';
 
@@ -74,6 +76,8 @@ export interface PlayOptions {
   memory: number;
   /** When set, the game connects straight to this server on launch (quick play). */
   server?: string;
+  /** Injected by handlers.ts — real Yggdrasil credentials from /api/auth/game-session. */
+  _gameToken?: { accessToken: string; uuid: string };
 }
 
 export function parseVersionId(id: string): { loader: string; mcVersion: string } {
@@ -271,6 +275,25 @@ export class LauncherService extends EventEmitter {
     // doesn't match (e.g. an old 'Player' identity from before login existed).
     // Always refresh auth file from opts.username (guaranteed by handlers.ts to be from verified session).
     const user = await this.auth.login(opts.username);
+    // Override with real Yggdrasil credentials when available (online-mode=true path).
+    if (opts._gameToken) {
+      user.accessToken = opts._gameToken.accessToken;
+      user.uuid = opts._gameToken.uuid;
+    }
+    this.throwIfCancelled();
+
+    // Ensure authlib-injector is present (pinned v1.2.7, sha1 verified).
+    const authlibPath = getAuthlibPath();
+    if (!fs.existsSync(authlibPath)) {
+      await fsp.mkdir(getRuntimeDir(), { recursive: true });
+      this.report({ stage: 'spawn', progress: 0, message: 'Загрузка authlib-injector...' });
+      await this.download.downloadMany([{
+        url: 'https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.7/authlib-injector-1.2.7.jar',
+        dest: authlibPath,
+        sha1: '9a401b2cdb97bf49e5c447dcfb0325979168b672',
+        size: 344477,
+      }], () => {}, this.abort?.signal);
+    }
     this.throwIfCancelled();
 
     this.report({ stage: 'spawn', progress: 0, message: 'Запуск Minecraft...' });
@@ -295,6 +318,7 @@ export class LauncherService extends EventEmitter {
       width: cfg.resolution.width,
       height: cfg.resolution.height,
       fullscreen: cfg.fullscreen,
+      authlibJarPath: authlibPath,
     });
 
     this.currentProc = handle;
