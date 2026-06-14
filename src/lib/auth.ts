@@ -34,7 +34,7 @@ export async function sendVerificationEmail(email: string, code: string): Promis
   const transport = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT ?? 587),
-    secure: Number(process.env.SMTP_PORT) === 465,
+    secure: true,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
   })
   await transport.sendMail({
@@ -48,4 +48,14 @@ export async function sendVerificationEmail(email: string, code: string): Promis
 
 export function apiError(code: string, message: string, status: number) {
   return Response.json({ error: { code, message } }, { status })
+}
+
+export async function logLoginEvent(opts: {
+  userId?: string
+  ip: string
+  userAgent: string
+  kind: 'login' | 'verify' | 'register' | 'fail'
+}): Promise<void> {
+  const { prisma } = await import('@/lib/db')
+  await prisma.loginEvent.create({ data: opts }).catch(() => {})
 }

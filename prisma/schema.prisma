@@ -28,6 +28,18 @@ model Coupon {
   active      Boolean   @default(true)
 }
 
+model LoginEvent {
+  id        String   @id @default(uuid())
+  userId    String?
+  ip        String
+  userAgent String   @default("")
+  kind      String   // login | verify | register | fail
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
 model Order {
   id                   String    @id @default(uuid())
   publicId             String    @unique @default(uuid())

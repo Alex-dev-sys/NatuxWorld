@@ -32,11 +32,28 @@ nano .env
 Заполни обязательно:
 - `POSTGRES_PASSWORD` — любой случайный пароль для БД
 - `ADMIN_PASSWORD` — пароль для входа в /admin
-- `ADMIN_SECRET` — случайная строка ≥32 символов
+- `ADMIN_SECRET` — случайная строка ≥32 символов (`openssl rand -hex 32`)
+- `JWT_SECRET` — случайная строка ≥32 символов (`openssl rand -hex 32`)
 - `RCON_PASSWORD` — пароль RCON из server.properties Minecraft
-- `YOOMONEY_WALLET` — номер кошелька YooMoney (если используешь)
-- `YOOMONEY_SECRET` — секрет уведомлений из настроек YooMoney
-- `PAYMENT_PROVIDER` — `yoomoney` или `mock`
+- `PAYMENT_PROVIDER` — `mock`, `yookassa`, `cryptobot` или `multi`
+
+### Настройка SMTP (отправка кодов подтверждения)
+
+**Яндекс Почта (рекомендуется):**
+1. Создай почту вида `noreply@yourdomain.ru` или используй существующую `@yandex.ru`
+2. В настройках аккаунта → «Безопасность» включи **«Пароли приложений»**
+3. Создай пароль для приложения, вставь в `SMTP_PASS`
+4. Параметры: `SMTP_HOST=smtp.yandex.ru`, `SMTP_PORT=465`
+
+**Gmail:**
+1. Включи двухфакторную аутентификацию в аккаунте Google
+2. «Управление аккаунтом» → «Безопасность» → «Пароли приложений» → создай пароль
+3. Параметры: `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`
+
+**Resend (лучший вариант для продакшена, бесплатный план 3000 писем/мес):**
+1. Зарегистрируйся на [resend.com](https://resend.com), добавь и подтверди домен
+2. Создай API-ключ в разделе API Keys
+3. Параметры: `SMTP_HOST=smtp.resend.com`, `SMTP_PORT=465`, `SMTP_USER=resend`, `SMTP_PASS=<api_key>`
 
 ## 4. SSL-сертификат (Let's Encrypt)
 
