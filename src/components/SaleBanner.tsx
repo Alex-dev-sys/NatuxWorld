@@ -3,46 +3,79 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 
-function getEndOfDay(): Date {
-  const d = new Date()
-  d.setHours(23, 59, 59, 0)
-  return d
+const SALE_CODE = process.env.NEXT_PUBLIC_SALE_CODE ?? 'SUMMER25'
+const SALE_DISCOUNT = process.env.NEXT_PUBLIC_SALE_DISCOUNT ?? '−25%'
+const DISMISS_KEY = `sale-dismissed:${SALE_CODE}`
+
+function getSaleEnd(): number | null {
+  const raw = process.env.NEXT_PUBLIC_SALE_END
+  if (!raw) return null
+  const ts = Date.parse(raw)
+  if (Number.isNaN(ts)) return null
+  return ts
 }
 
 function pad(n: number) {
   return String(n).padStart(2, '0')
 }
 
+function formatTimeLeft(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000)
+  const days = Math.floor(totalSeconds / 86400)
+  const h = Math.floor((totalSeconds % 86400) / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  const s = totalSeconds % 60
+  const clock = `${pad(h)}:${pad(m)}:${pad(s)}`
+  return days > 0 ? `${days}д ${clock}` : clock
+}
+
 export default function SaleBanner() {
-  const [timeLeft, setTimeLeft] = useState({ h: 0, m: 0, s: 0 })
-  const [visible, setVisible] = useState(true)
+  const [mounted, setMounted] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
+  const [msLeft, setMsLeft] = useState(0)
   const [copied, setCopied] = useState(false)
 
-  function copyPromo() {
-    navigator.clipboard.writeText('SUMMER25').then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
   useEffect(() => {
-    const target = getEndOfDay()
+    setMounted(true)
 
-    const tick = () => {
-      const diff = Math.max(0, target.getTime() - Date.now())
-      setTimeLeft({
-        h: Math.floor(diff / 3600000),
-        m: Math.floor((diff % 3600000) / 60000),
-        s: Math.floor((diff % 60000) / 1000),
-      })
+    try {
+      if (localStorage.getItem(DISMISS_KEY)) {
+        setDismissed(true)
+        return
+      }
+    } catch {
+      // localStorage unavailable — show the banner anyway
     }
+
+    const end = getSaleEnd()
+    if (end === null) return
+
+    const tick = () => setMsLeft(Math.max(0, end - Date.now()))
 
     tick()
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
   }, [])
 
-  if (!visible) return null
+  function dismiss() {
+    setDismissed(true)
+    try {
+      localStorage.setItem(DISMISS_KEY, '1')
+    } catch {
+      // ignore — banner stays hidden for this session
+    }
+  }
+
+  function copyPromo() {
+    navigator.clipboard.writeText(SALE_CODE).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  // No fake urgency: render nothing until mounted (hydration safety),
+  // when dismissed, or when there is no valid future sale end
+  if (!mounted || dismissed || msLeft <= 0) return null
 
   return (
     <div className="relative bg-[#0d0000] border-b border-[#3A1017] overflow-hidden">
@@ -84,13 +117,13 @@ export default function SaleBanner() {
             style={{ fontFamily: '"JetBrains Mono", monospace', clipPath: 'polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px))' }}
             title="Нажми чтобы скопировать"
           >
-            {copied ? '✓ СКОПИРОВАНО' : 'SUMMER25'}
+            {copied ? '✓ СКОПИРОВАНО' : SALE_CODE}
           </button>
           <span
             className="text-[10px] text-site-accent tracking-wider"
             style={{ fontFamily: '"JetBrains Mono", monospace' }}
           >
-            −25%
+            {SALE_DISCOUNT}
           </span>
         </div>
 
@@ -108,7 +141,7 @@ export default function SaleBanner() {
             className="text-[13px] text-white font-bold tabular-nums tracking-wider"
             style={{ fontFamily: '"JetBrains Mono", monospace' }}
           >
-            {pad(timeLeft.h)}:{pad(timeLeft.m)}:{pad(timeLeft.s)}
+            {formatTimeLeft(msLeft)}
           </span>
         </div>
 
@@ -126,7 +159,7 @@ export default function SaleBanner() {
 
       {/* Close button */}
       <button
-        onClick={() => setVisible(false)}
+        onClick={dismiss}
         className="absolute right-3 top-1/2 -translate-y-1/2 text-[#3A1017] hover:text-site-accent transition-colors text-base leading-none p-1"
         aria-label="Закрыть"
       >

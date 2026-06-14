@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { timingSafeEqual } from 'crypto'
-import { makeSessionToken } from '@/lib/adminAuth'
+import { createSessionToken, ADMIN_SESSION_TTL_SECONDS } from '@/lib/adminSession'
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
@@ -23,8 +23,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Неверный пароль' }, { status: 401 })
   }
 
-  // Session token = HMAC(ADMIN_SECRET, constant) — не раскрывает сам секрет
-  const sessionToken = makeSessionToken(adminSecret)
+  // Подписанный токен с истечением срока — не раскрывает сам секрет
+  const sessionToken = await createSessionToken(adminSecret, ADMIN_SESSION_TTL_SECONDS)
 
   const res = NextResponse.json({ ok: true })
   res.cookies.set('admin_session', sessionToken, {

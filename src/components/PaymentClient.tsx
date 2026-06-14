@@ -62,7 +62,7 @@ function CardVisual({ number, name, expiry, cvv, flipped }: {
         {/* ── Front ── */}
         <div style={{
           position: 'absolute', inset: 0, backfaceVisibility: 'hidden', borderRadius: 18,
-          background: 'linear-gradient(135deg, #1a0808 0%, #2d0a14 45%, #0e0e0e 100%)',
+          background: 'linear-gradient(135deg, #1a0808 0%, #2d0a14 45%, #140a0b 100%)',
           border: '1px solid #3A1017', padding: '22px 26px',
           display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
           boxShadow: '0 24px 60px rgba(255,43,79,0.18)',
@@ -109,7 +109,7 @@ function CardVisual({ number, name, expiry, cvv, flipped }: {
         {/* ── Back ── */}
         <div style={{
           position: 'absolute', inset: 0, backfaceVisibility: 'hidden', borderRadius: 18,
-          background: 'linear-gradient(135deg, #0e0e0e 0%, #1a0808 100%)',
+          background: 'linear-gradient(135deg, #140a0b 0%, #1a0808 100%)',
           border: '1px solid #3A1017', transform: 'rotateY(180deg)', overflow: 'hidden',
         }}>
           <div style={{ height: 50, background: '#000', margin: '30px 0 20px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }} />
@@ -218,7 +218,7 @@ function YMoneyPanel({ order, loading, setLoading, setError }: {
           { n: '02', text: 'Оплати картой или кошельком ЮMoney' },
           { n: '03', text: 'Ранг выдастся автоматически через 1-2 мин' },
         ].map(s => (
-          <div key={s.n} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '8px 12px', backgroundColor: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: 8 }}>
+          <div key={s.n} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '8px 12px', backgroundColor: '#0c0708', border: '1px solid #1a0e0f', borderRadius: 8 }}>
             <span style={{ fontFamily: '"Bebas Neue", sans-serif', fontSize: 16, color: '#3A1017', flexShrink: 0, lineHeight: 1.2 }}>{s.n}</span>
             <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 11, color: '#888', lineHeight: 1.5 }}>{s.text}</span>
           </div>
@@ -284,7 +284,7 @@ function SuccessScreen({ productName, username }: { productName: string; usernam
         ПЛАТЁЖ ПОДТВЕРЖДЁН
       </div>
 
-      <div style={{ backgroundColor: '#0e0e0e', border: '1px solid #22c55e30', borderRadius: 10, padding: '16px 20px', marginBottom: 20, textAlign: 'left' }}>
+      <div style={{ backgroundColor: '#140a0b', border: '1px solid #22c55e30', borderRadius: 10, padding: '16px 20px', marginBottom: 20, textAlign: 'left' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {[
             { label: 'РАНГ', value: productName, color: '#FF2B4F' },
@@ -372,7 +372,7 @@ export default function PaymentClient({ order }: { order: Order }) {
   const inp = (focused: boolean): React.CSSProperties => ({
     width: '100%', padding: '13px 16px', boxSizing: 'border-box',
     border: `1px solid ${focused ? '#FF2B4F' : '#2a1010'}`,
-    background: '#0a0a0a', color: '#F2F2F2', fontSize: 14, outline: 'none',
+    background: '#0c0708', color: '#F2F2F2', fontSize: 14, outline: 'none',
     fontFamily: '"JetBrains Mono", monospace',
     transition: 'border-color 0.15s',
     borderRadius: 8,
@@ -425,7 +425,7 @@ export default function PaymentClient({ order }: { order: Order }) {
 
             {/* Rank card */}
             <div style={{
-              backgroundColor: '#0e0e0e', border: '1px solid #3A1017',
+              backgroundColor: '#140a0b', border: '1px solid #3A1017',
               borderRadius: 14, padding: '22px 24px',
               clipPath: 'polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%)',
               position: 'relative', overflow: 'hidden',
@@ -499,7 +499,7 @@ export default function PaymentClient({ order }: { order: Order }) {
                 { icon: '↩', label: 'Гарантия' },
               ].map(b => (
                 <div key={b.label} style={{
-                  backgroundColor: '#0e0e0e', border: '1px solid #2a1010',
+                  backgroundColor: '#140a0b', border: '1px solid #2a1010',
                   borderRadius: 8, padding: '10px 8px', textAlign: 'center',
                 }}>
                   <div style={{ fontSize: 18, marginBottom: 4 }}>{b.icon}</div>
@@ -511,7 +511,7 @@ export default function PaymentClient({ order }: { order: Order }) {
 
           {/* ═══ RIGHT — payment form ═══ */}
           <div style={{
-            backgroundColor: '#0e0e0e', border: '1px solid #3A1017',
+            backgroundColor: '#140a0b', border: '1px solid #3A1017',
             borderRadius: 14, padding: '24px',
             position: 'relative', overflow: 'hidden',
           }}>
@@ -537,7 +537,7 @@ export default function PaymentClient({ order }: { order: Order }) {
                         fontFamily: '"JetBrains Mono", monospace', fontSize: 9,
                         letterSpacing: '0.2em', textTransform: 'uppercase',
                         border: `1px solid ${method === m.id ? '#FF2B4F' : '#2a1010'}`,
-                        background: method === m.id ? 'rgba(255,43,79,0.1)' : '#0a0a0a',
+                        background: method === m.id ? 'rgba(255,43,79,0.1)' : '#0c0708',
                         color: method === m.id ? '#FF2B4F' : '#555',
                         borderRadius: 8, transition: 'all 0.15s',
                         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,

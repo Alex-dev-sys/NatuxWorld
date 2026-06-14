@@ -12,6 +12,14 @@ function getStore() {
 export function rateLimit(key: string, limit: number, windowMs: number): boolean {
   const now = Date.now()
   const store = getStore()
+
+  // Lazy sweep: evict expired entries so the map doesn't grow unbounded
+  if (store.size > 10_000) {
+    for (const [k, v] of store) {
+      if (v.resetAt < now) store.delete(k)
+    }
+  }
+
   const entry = store.get(key)
 
   if (!entry || now > entry.resetAt) {

@@ -1,6 +1,10 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import RankEmblem from './RankEmblem'
+import RankAura from './RankAura'
+import RankFrame from './RankFrame'
+import { PremiumCard, useCountUp } from './PremiumFX'
 import { useRouter } from 'next/navigation'
 import type { Product, Duration, ProductVariant, Coupon } from '@/lib/types'
 
@@ -14,56 +18,23 @@ function validateUsername(nick: string): string | null {
   return null
 }
 
-// ─── recent purchases ticker ──────────────────────────────────────────────────
+// Тёмный/светлый текст в зависимости от яркости фона (контраст на кнопке).
+function readableText(hex: string): string {
+  const n = parseInt(hex.slice(1), 16)
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return lum > 0.6 ? '#0A0608' : '#ffffff'
+}
 
-const RECENT: { nick: string; rank: string; duration: string }[] = [
-  { nick: 'DarkSword228', rank: 'Elite', duration: 'навсегда' },
-  { nick: 'xX_Notch_Xx', rank: 'Hero', duration: '30 дней' },
-  { nick: 'PvPmaster99', rank: 'Squid', duration: '90 дней' },
-  { nick: 'IronForge', rank: 'Head', duration: 'навсегда' },
-  { nick: 'StarlightGG', rank: 'Aspid', duration: '30 дней' },
-  { nick: 'ZombieSlayer', rank: 'Guard', duration: 'навсегда' },
-  { nick: 'NightRaider', rank: 'Elite', duration: '90 дней' },
-  { nick: 'CreeperKing', rank: 'Hero', duration: 'навсегда' },
-  { nick: 'DiamondBlade', rank: 'Squid', duration: '30 дней' },
-  { nick: 'VoidWalker', rank: 'Aspid', duration: 'навсегда' },
-]
-
-function RecentPurchasesTicker() {
-  const [idx, setIdx] = useState(0)
-  const [visible, setVisible] = useState(true)
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setVisible(false)
-      setTimeout(() => {
-        setIdx(i => (i + 1) % RECENT.length)
-        setVisible(true)
-      }, 400)
-    }, 4000)
-    return () => clearInterval(interval)
-  }, [])
-
-  const item = RECENT[idx]
-  const ago = Math.floor(Math.random() * 12) + 1
-
-  return (
-    <div className="flex items-center gap-2 text-xs text-site-muted overflow-hidden">
-      <span className="w-1.5 h-1.5 rounded-full bg-site-success flex-shrink-0 animate-pulse" />
-      <span
-        className="transition-opacity duration-300 whitespace-nowrap"
-        style={{ opacity: visible ? 1 : 0 }}
-      >
-        <span className="text-site-text font-mono">{item.nick}</span>
-        {' купил '}
-        <span className="text-site-accent font-semibold">{item.rank}</span>
-        {' '}
-        <span>{item.duration}</span>
-        {' — '}
-        <span>{ago} мин. назад</span>
-      </span>
-    </div>
-  )
+// Осветлить/затемнить hex-цвет (f<0 темнее, f>0 светлее).
+function shade(hex: string, f: number): string {
+  const n = parseInt(hex.slice(1), 16)
+  const ch = (v: number) => {
+    const m = f < 0 ? v * (1 + f) : v + (255 - v) * f
+    return Math.round(Math.min(255, Math.max(0, m)))
+  }
+  const r = ch((n >> 16) & 255), g = ch((n >> 8) & 255), b = ch(n & 255)
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`
 }
 
 // ─── rank carousel ────────────────────────────────────────────────────────────
@@ -86,19 +57,15 @@ function RankCarousel({ products, selectedId, onSelect }: {
   }, [selectedId])
 
   return (
-    <div style={{ backgroundColor: '#0e0e0e', borderRadius: '0 0 12px 12px' }}>
+    <div style={{ backgroundColor: '#140a0b' }}>
       <style>{`
         @keyframes orb-pulse {
-          0%, 100% { box-shadow: 0 0 10px var(--c), 0 0 20px var(--c-50); transform: scale(1); }
-          50%       { box-shadow: 0 0 18px var(--c), 0 0 40px var(--c-50), 0 0 60px var(--c-30); transform: scale(1.08); }
+          0%, 100% { filter: drop-shadow(0 0 4px var(--c)); transform: scale(1); }
+          50%       { filter: drop-shadow(0 0 10px var(--c)) drop-shadow(0 0 22px var(--c-50)); transform: scale(1.08); }
         }
         @keyframes card-float {
           0%, 100% { transform: translateY(0px); }
           50%       { transform: translateY(-4px); }
-        }
-        @keyframes ring-spin {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
         }
         @keyframes badge-pulse {
           0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
@@ -124,7 +91,8 @@ function RankCarousel({ products, selectedId, onSelect }: {
           style={{
             flexShrink: 0, width: 36, height: 56,
             background: 'linear-gradient(135deg, #1a0b0b, #120808)',
-            border: '1px solid #3A1017', borderRadius: 10,
+            border: '1px solid #3A1017',
+            clipPath: 'polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px))',
             color: '#666', fontSize: 20, cursor: 'pointer',
             transition: 'all 0.2s ease',
           }}
@@ -159,7 +127,8 @@ function RankCarousel({ products, selectedId, onSelect }: {
                       position: 'absolute', top: -10, left: '50%', transform: 'translateX(-50%)',
                       zIndex: 10, backgroundColor: p.color, color: '#000',
                       fontSize: 8, fontWeight: 800, padding: '2px 7px',
-                      borderRadius: 20, whiteSpace: 'nowrap', letterSpacing: '0.05em',
+                      clipPath: 'polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px))',
+                      whiteSpace: 'nowrap', letterSpacing: '0.05em',
                       boxShadow: `0 2px 8px ${p.color}80`,
                     }}
                   >
@@ -167,14 +136,8 @@ function RankCarousel({ products, selectedId, onSelect }: {
                   </span>
                 )}
 
-                {/* spinning ring behind active card */}
-                {active && (
-                  <div style={{
-                    position: 'absolute', inset: -3, borderRadius: 16, zIndex: 0,
-                    background: `conic-gradient(${p.color}60 0deg, transparent 120deg, ${p.color}30 240deg, transparent 360deg)`,
-                    animation: 'ring-spin 4s linear infinite',
-                  }} />
-                )}
+                {/* премиальное обрамление активной карточки */}
+                {active && <RankFrame rank={p.id} color={p.color} />}
 
                 <button
                   data-active={active}
@@ -188,13 +151,13 @@ function RankCarousel({ products, selectedId, onSelect }: {
                     display: 'flex', flexDirection: 'column',
                     alignItems: 'center', justifyContent: 'center',
                     gap: 10, padding: '14px 8px 10px',
-                    borderRadius: 14,
+                    clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px))',
                     border: active
                       ? `1.5px solid ${p.color}`
                       : isHov ? `1px solid ${p.color}60` : '1px solid #2a1010',
                     background: active
-                      ? `linear-gradient(160deg, ${p.color}22 0%, #0e0e0e 100%)`
-                      : isHov ? `linear-gradient(160deg, ${p.color}0f 0%, #0e0e0e 100%)` : '#141414',
+                      ? `linear-gradient(160deg, ${p.color}22 0%, #140a0b 100%)`
+                      : isHov ? `linear-gradient(160deg, ${p.color}0f 0%, #140a0b 100%)` : '#1a0e0f',
                     boxShadow: active
                       ? `0 0 24px ${p.color}40, inset 0 1px 0 ${p.color}30`
                       : isHov ? `0 0 12px ${p.color}20` : 'none',
@@ -216,30 +179,25 @@ function RankCarousel({ products, selectedId, onSelect }: {
                     />
                   )}
 
-                  {/* orb */}
+                  {/* герб ранга */}
                   <div
                     className={active ? 'rank-orb-active' : ''}
                     style={{
                       ['--c' as string]: p.color,
                       ['--c-50' as string]: `${p.color}50`,
                       ['--c-30' as string]: `${p.color}30`,
-                      width: 40, height: 40, borderRadius: '50%',
-                      background: `radial-gradient(circle at 35% 35%, ${p.color}ee, ${p.color}88)`,
-                      boxShadow: active
-                        ? `0 0 14px ${p.color}, 0 0 28px ${p.color}60`
-                        : isHov ? `0 0 10px ${p.color}80` : `0 0 6px ${p.color}40`,
                       flexShrink: 0,
-                      transition: 'box-shadow 0.2s ease',
                       position: 'relative',
+                      width: 52, height: 52,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      filter: active
+                        ? `drop-shadow(0 0 8px ${p.color})`
+                        : isHov ? `drop-shadow(0 0 6px ${p.color}80)` : `drop-shadow(0 0 3px ${p.color}40)`,
+                      transition: 'filter 0.2s ease',
                     }}
                   >
-                    {/* inner highlight */}
-                    <div style={{
-                      position: 'absolute', top: '18%', left: '22%',
-                      width: '35%', height: '25%', borderRadius: '50%',
-                      background: 'rgba(255,255,255,0.45)',
-                      filter: 'blur(2px)',
-                    }} />
+                    {(active || isHov) && <RankAura rank={p.id} size={44} />}
+                    <RankEmblem rank={p.id} color={p.color} size={44} />
                   </div>
 
                   {/* name */}
@@ -275,7 +233,8 @@ function RankCarousel({ products, selectedId, onSelect }: {
           style={{
             flexShrink: 0, width: 36, height: 56,
             background: 'linear-gradient(135deg, #1a0b0b, #120808)',
-            border: '1px solid #3A1017', borderRadius: 10,
+            border: '1px solid #3A1017',
+            clipPath: 'polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px))',
             color: '#666', fontSize: 20, cursor: 'pointer',
             transition: 'all 0.2s ease',
           }}
@@ -307,38 +266,29 @@ function RankCarousel({ products, selectedId, onSelect }: {
 
 // ─── duration button ──────────────────────────────────────────────────────────
 
-function DurationButton({ variant, active, saving, onClick }: {
+function DurationButton({ variant, active, saving, color, onClick }: {
   variant: ProductVariant
   active: boolean
   saving?: number
+  color: string
   onClick: () => void
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex-1 py-2.5 px-2 rounded border text-sm transition-all relative ${
-        active
-          ? 'border-site-accent bg-site-secondary text-site-accent'
-          : 'border-site-border bg-site-block text-site-muted hover:border-site-accent/40 hover:text-site-text'
-      }`}
+      className="flex-1 py-2.5 px-2 text-sm transition-all relative"
+      style={{
+        clipPath: 'polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px))',
+        border: `1px solid ${active ? color : '#2a1010'}`,
+        background: active ? `linear-gradient(160deg, ${color}22 0%, #130a0b 100%)` : '#111',
+        boxShadow: active ? `0 0 14px ${color}33, inset 0 0 12px ${color}10` : 'none',
+      }}
+      onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.borderColor = `${color}66` }}
+      onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.borderColor = '#2a1010' }}
     >
-      {saving && saving > 0 ? (
-        <div className="absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap" style={{
-          background: 'linear-gradient(135deg, #28a745, #20c055)',
-          color: '#fff',
-          fontSize: 9,
-          fontWeight: 700,
-          padding: '1px 5px',
-          borderRadius: 20,
-          letterSpacing: 0.3,
-          boxShadow: '0 2px 6px rgba(53,199,89,0.35)',
-        }}>
-          −{saving}₽
-        </div>
-      ) : null}
       <div className="text-center leading-snug">
-        <div className="font-medium">{variant.durationLabel}</div>
-        <div className={`text-xs mt-0.5 font-bold ${active ? 'text-site-accent' : 'text-site-muted'}`}>
+        <div className="font-medium" style={{ color: active ? '#fff' : '#aaa' }}>{variant.durationLabel}</div>
+        <div className="text-xs mt-0.5 font-bold" style={{ color: active ? color : '#888' }}>
           {variant.price} ₽
         </div>
       </div>
@@ -347,6 +297,10 @@ function DurationButton({ variant, active, saving, onClick }: {
 }
 
 // ─── promo code ───────────────────────────────────────────────────────────────
+
+// Активная акция (из env) — подсказка под полем ввода.
+const SALE_CODE = process.env.NEXT_PUBLIC_SALE_CODE ?? ''
+const SALE_DISCOUNT = process.env.NEXT_PUBLIC_SALE_DISCOUNT ?? ''
 
 function PromoCodeField({ onApply, onRemove, applied }: {
   onApply: (c: Coupon) => void
@@ -357,12 +311,13 @@ function PromoCodeField({ onApply, onRemove, applied }: {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const check = async () => {
-    if (!value.trim()) return
+  const check = async (codeArg?: string) => {
+    const code = (codeArg ?? value).trim()
+    if (!code) return
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/coupons/validate?code=${encodeURIComponent(value.trim())}`)
+      const res = await fetch(`/api/coupons/validate?code=${encodeURIComponent(code)}`)
       const data = await res.json()
       if (!res.ok) {
         setError(data.error ?? 'Неверный промокод')
@@ -403,7 +358,7 @@ function PromoCodeField({ onApply, onRemove, applied }: {
           className="flex-1 bg-site-bg border border-site-border focus:border-site-accent rounded px-3 py-2 text-site-text text-sm placeholder-site-muted/40 focus:outline-none transition-colors uppercase"
         />
         <button
-          onClick={check}
+          onClick={() => check()}
           disabled={loading || !value.trim()}
           className="px-4 py-2 border border-site-border hover:border-site-accent text-site-muted hover:text-site-text rounded text-sm transition-colors disabled:opacity-40"
         >
@@ -411,6 +366,27 @@ function PromoCodeField({ onApply, onRemove, applied }: {
         </button>
       </div>
       {error && <p className="mt-1 text-site-danger text-xs">{error}</p>}
+      {/* подсказка с активным промокодом — клик подставляет и применяет */}
+      {SALE_CODE && !error && (
+        <button
+          type="button"
+          onClick={() => { setValue(SALE_CODE); check(SALE_CODE) }}
+          disabled={loading}
+          className="group mt-1.5 flex items-center gap-1.5 text-left disabled:opacity-50"
+          title="Нажми, чтобы применить промокод"
+        >
+          <span className="text-[11px] text-site-muted tracking-wide">
+            Активный промокод:
+          </span>
+          <span className="text-[11px] font-bold text-site-accent tracking-[0.15em] group-hover:underline underline-offset-2">
+            {SALE_CODE}
+          </span>
+          {SALE_DISCOUNT && (
+            <span className="text-[10px] font-bold text-site-success">{SALE_DISCOUNT}</span>
+          )}
+          <span className="text-[9px] text-site-muted/60 group-hover:text-site-accent transition-colors">— нажми, чтобы применить</span>
+        </button>
+      )}
     </div>
   )
 }
@@ -516,21 +492,24 @@ export default function ShopClient({ products }: { products: Product[] }) {
     }
   }
 
+  // Премиальный «одометр» — числа плавно прокручиваются при смене ранга/срока.
+  const displayPrice = useCountUp(discountedPrice)
+  const displayBase = useCountUp(basePrice)
+
   if (!product || !variant) return null
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
 
-      {/* Header + ticker */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h1 className="font-pixel text-xs md:text-sm text-site-accent">МАГАЗИН ПРИВИЛЕГИЙ</h1>
-        <RecentPurchasesTicker />
       </div>
 
       {/* ── Rank carousel ── */}
-      <div className="border border-site-border rounded-xl mb-6 overflow-hidden" style={{ backgroundColor: '#0e0e0e' }}>
+      <div className="border border-site-border mb-6 overflow-hidden" style={{ backgroundColor: '#140a0b', clipPath: 'polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px))' }}>
         <div className="flex items-center gap-3 px-6 pt-4 pb-0">
-          <div style={{ width: 3, height: 14, backgroundColor: '#FF2B4F', borderRadius: 2, flexShrink: 0 }} />
+          <div style={{ width: 3, height: 14, backgroundColor: '#FF2B4F', flexShrink: 0 }} />
           <p
             className="text-[10px] uppercase tracking-[0.4em]"
             style={{ color: '#666', fontFamily: '"JetBrains Mono", monospace' }}
@@ -546,189 +525,238 @@ export default function ShopClient({ products }: { products: Product[] }) {
         />
       </div>
 
-      {/* ── Rank details ── */}
-      <div className="bg-site-block border border-site-border rounded-lg p-4 sm:p-6 relative overflow-hidden">
+      {/* ── Rank details (досье ранга) ── */}
+      <PremiumCard
+        color={product.color}
+        tilt={0}
+        className="relative overflow-hidden crt-grain p-5 sm:p-7"
+        style={{
+          background: `linear-gradient(165deg, ${product.color}12 0%, #0b0b0b 42%)`,
+          border: `1px solid ${product.color}33`,
+          clipPath: 'polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px))',
+          boxShadow: `0 0 50px -14px ${product.color}66, inset 0 1px 0 ${product.color}22`,
+        }}
+      >
+        {/* верхняя акцентная кромка */}
+        <div
+          className="absolute top-0 left-0 right-0"
+          style={{ height: 2, background: `linear-gradient(90deg, transparent, ${product.color}, transparent)` }}
+        />
+        {/* угловые скобки */}
+        <div className="absolute top-2.5 left-2.5 w-4 h-4 pointer-events-none" style={{ borderLeft: `2px solid ${product.color}66`, borderTop: `2px solid ${product.color}66` }} />
+        <div className="absolute bottom-2.5 right-2.5 w-4 h-4 pointer-events-none" style={{ borderRight: `2px solid ${product.color}66`, borderBottom: `2px solid ${product.color}66` }} />
+        {/* код допуска */}
+        <div
+          className="absolute top-3 right-5 text-[9px] tracking-[0.3em] hidden sm:block"
+          style={{ fontFamily: '"JetBrains Mono", monospace', color: `${product.color}aa` }}
+        >
+          ДОПУСК {String(product.order).padStart(2, '0')} / 15
+        </div>
 
-            {/* Popular glow strip */}
-            {product.popular && (
-              <div
-                className="absolute top-0 left-0 right-0 h-0.5"
-                style={{ background: `linear-gradient(90deg, transparent, ${product.color}, transparent)` }}
-              />
-            )}
-
-            {/* Rank name */}
-            <div className="flex items-center gap-3 mb-1">
-              <div
-                className="w-4 h-4 rounded-full"
-                style={{ backgroundColor: product.color, boxShadow: `0 0 14px ${product.color}` }}
-              />
-              <h2
-                className="font-pixel text-sm md:text-base"
-                style={{ color: product.color }}
+        {/* Шапка ранга */}
+        <div className="flex items-center gap-3 mb-2 relative">
+          <div style={{ filter: `drop-shadow(0 0 12px ${product.color}99)`, flexShrink: 0, position: 'relative' }}>
+            <RankAura rank={product.id} size={44} />
+            <RankEmblem rank={product.id} color={product.color} size={44} />
+          </div>
+          <div className="flex flex-col">
+            <h2
+              className="font-display text-3xl md:text-4xl leading-none"
+              style={{ fontFamily: '"Bebas Neue", sans-serif', color: product.color, letterSpacing: '0.06em', textShadow: `0 0 24px ${product.color}55` }}
+            >
+              {product.name}
+            </h2>
+            {product.badge && (
+              <span
+                className="mt-1.5 self-start text-[9px] font-bold px-2 py-0.5 uppercase tracking-wider"
+                style={{
+                  backgroundColor: product.color,
+                  color: readableText(product.color),
+                  clipPath: 'polygon(0 0, calc(100% - 5px) 0, 100% 5px, 100% 100%, 5px 100%, 0 calc(100% - 5px))',
+                }}
               >
-                {product.name}
-              </h2>
-              {product.badge && (
+                {product.badge}
+              </span>
+            )}
+          </div>
+        </div>
+        <p className="text-site-muted text-sm mb-6 leading-relaxed">{product.description}</p>
+
+        {/* Срок допуска */}
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <div style={{ width: 3, height: 12, background: product.color }} />
+            <p className="text-[10px] uppercase tracking-[0.35em]" style={{ fontFamily: '"JetBrains Mono", monospace', color: `${product.color}cc` }}>
+              Срок допуска
+            </p>
+          </div>
+          <div className="flex gap-2">
+            {product.variants.map(v => (
+              <DurationButton
+                key={v.duration}
+                variant={v}
+                color={product.color}
+                active={v.duration === selectedDuration}
+                saving={getSaving(v)}
+                onClick={() => setSelectedDuration(v.duration)}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Привилегии */}
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <div style={{ width: 3, height: 12, background: product.color }} />
+            <p className="text-[10px] uppercase tracking-[0.35em]" style={{ fontFamily: '"JetBrains Mono", monospace', color: `${product.color}cc` }}>
+              Привилегии — {product.perks.length}
+            </p>
+          </div>
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-0.5">
+            {product.perks.map(perk => (
+              <li key={perk} className="flex items-start gap-2.5 text-sm leading-snug py-1 group">
                 <span
-                  className="px-2 py-0.5 text-[10px] font-bold rounded"
-                  style={{ backgroundColor: product.color, color: '#000' }}
+                  className="flex-shrink-0"
+                  style={{ marginTop: 6, width: 5, height: 5, background: product.color, transform: 'rotate(45deg)', boxShadow: `0 0 5px ${product.color}99` }}
+                />
+                <span className="text-site-muted group-hover:text-site-text transition-colors">{perk}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Minecraft ник */}
+        <div className="mb-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div style={{ width: 3, height: 12, background: product.color }} />
+            <p className="text-[10px] uppercase tracking-[0.35em]" style={{ fontFamily: '"JetBrains Mono", monospace', color: `${product.color}cc` }}>
+              Minecraft ник
+            </p>
+          </div>
+          <input
+            type="text"
+            value={username}
+            onChange={e => handleUsernameChange(e.target.value)}
+            onBlur={e => { setUsernameError(validateUsername(username)); e.currentTarget.style.borderColor = usernameError ? '#FF3B30' : '#2a1010' }}
+            onFocus={e => { if (!usernameError) e.currentTarget.style.borderColor = product.color }}
+            placeholder="Введите ник (например: Notch)"
+            maxLength={16}
+            className="w-full bg-site-bg px-4 py-3 text-site-text placeholder-site-muted/40 focus:outline-none transition-colors"
+            style={{
+              border: `1px solid ${usernameError ? '#FF3B30' : '#2a1010'}`,
+              clipPath: 'polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px))',
+            }}
+          />
+          {usernameError
+            ? <p className="mt-1 text-site-danger text-xs">{usernameError}</p>
+            : <p className="mt-1 text-site-muted text-xs">Проверь ник — после оплаты изменить нельзя</p>
+          }
+        </div>
+
+        {/* Промокод */}
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-2">
+            <div style={{ width: 3, height: 12, background: product.color }} />
+            <p className="text-[10px] uppercase tracking-[0.35em]" style={{ fontFamily: '"JetBrains Mono", monospace', color: `${product.color}cc` }}>
+              Промокод
+            </p>
+          </div>
+          <PromoCodeField
+            applied={coupon}
+            onApply={setCoupon}
+            onRemove={() => setCoupon(null)}
+          />
+        </div>
+
+        {/* Цена + покупка */}
+        <div className="flex flex-col gap-4 pt-5" style={{ borderTop: `1px solid ${product.color}26` }}>
+
+          {/* Способ оплаты */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-site-muted text-xs uppercase tracking-wider">Оплата:</span>
+            {([
+              { id: 'card', label: 'Карта / СБП' },
+              { id: 'TON', label: 'TON' },
+              { id: 'USDT', label: 'USDT' },
+            ] as const).map(m => {
+              const on = paymentMethod === m.id
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setPaymentMethod(m.id)}
+                  className="px-3 py-1 text-xs font-bold transition-all"
+                  style={{
+                    clipPath: 'polygon(0 0, calc(100% - 5px) 0, 100% 5px, 100% 100%, 5px 100%, 0 calc(100% - 5px))',
+                    border: `1px solid ${on ? product.color : '#2a1010'}`,
+                    background: on ? `${product.color}22` : 'transparent',
+                    color: on ? product.color : '#888',
+                  }}
                 >
-                  {product.badge}
-                </span>
+                  {m.label}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.3em] mb-1" style={{ fontFamily: '"JetBrains Mono", monospace', color: '#888' }}>К оплате</p>
+              {coupon ? (
+                <div className="flex items-baseline gap-2">
+                  <span className="font-display text-4xl type-data" style={{ fontFamily: '"Bebas Neue", sans-serif', color: '#fff', letterSpacing: '0.02em' }}>{displayPrice} ₽</span>
+                  <span className="text-site-muted text-sm line-through type-data">{displayBase} ₽</span>
+                  <span className="text-site-success text-xs font-semibold">
+                    −{coupon.type === 'percent' ? `${coupon.value}%` : `${basePrice - discountedPrice}₽`}
+                  </span>
+                </div>
+              ) : (
+                <span className="font-display text-4xl type-data" style={{ fontFamily: '"Bebas Neue", sans-serif', color: '#fff', letterSpacing: '0.02em' }}>{displayBase} ₽</span>
+              )}
+              {paymentMethod !== 'card' && cryptoAmount && (
+                <p className="text-site-muted text-xs mt-1">≈ {cryptoAmount} {paymentMethod}</p>
+              )}
+              {paymentMethod === 'card' && (
+                <p className="text-site-muted text-xs mt-1">Карта · СБП</p>
               )}
             </div>
-            <p className="text-site-muted text-sm mb-6 leading-relaxed">{product.description}</p>
 
-            {/* Duration */}
-            <div className="mb-6">
-              <p className="text-site-muted text-xs uppercase tracking-wider mb-3">Срок действия</p>
-              <div className="flex gap-2">
-                {product.variants.map(v => (
-                  <DurationButton
-                    key={v.duration}
-                    variant={v}
-                    active={v.duration === selectedDuration}
-                    saving={getSaving(v)}
-                    onClick={() => setSelectedDuration(v.duration)}
-                  />
-                ))}
-              </div>
-            </div>
+            <button
+              onClick={handleBuy}
+              disabled={loading || !username}
+              className="group holo-sheen relative w-full sm:w-auto px-9 py-3.5 font-bold transition-all flex items-center justify-center gap-2 overflow-hidden"
+              style={{
+                clipPath: 'polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px))',
+                fontFamily: '"Bebas Neue", sans-serif', letterSpacing: '0.16em', fontSize: 17,
+                background: (!username || loading) ? '#1a0e0f' : `linear-gradient(135deg, ${shade(product.color, 0.12)}, ${shade(product.color, -0.28)})`,
+                color: (!username || loading) ? '#666' : readableText(product.color),
+                cursor: (!username || loading) ? 'not-allowed' : 'pointer',
+                boxShadow: (!username || loading) ? 'none' : `0 0 26px -4px ${product.color}aa`,
+              }}
+            >
+              {loading ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Создаём заказ...
+                </>
+              ) : (
+                <>
+                  <span className="relative z-10">Получить допуск →</span>
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                </>
+              )}
+            </button>
+          </div>
+        </div>
 
-            {/* Perks */}
-            <div className="mb-6">
-              <p className="text-site-muted text-xs uppercase tracking-wider mb-3">
-                Возможности — {product.perks.length} привилегий
-              </p>
-              <ul className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
-                {product.perks.map(perk => (
-                  <li key={perk} className="flex items-start gap-2 text-sm text-site-text leading-snug">
-                    <svg
-                      className="w-3.5 h-3.5 text-site-success mt-0.5 flex-shrink-0"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                    </svg>
-                    <span className="text-site-muted">{perk}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Username */}
-            <div className="mb-4">
-              <p className="text-site-muted text-xs uppercase tracking-wider mb-2">Minecraft ник</p>
-              <input
-                type="text"
-                value={username}
-                onChange={e => handleUsernameChange(e.target.value)}
-                onBlur={() => setUsernameError(validateUsername(username))}
-                placeholder="Введите ник (например: Notch)"
-                maxLength={16}
-                className={`w-full bg-site-bg border rounded px-4 py-3 text-site-text placeholder-site-muted/40 focus:outline-none transition-colors ${
-                  usernameError
-                    ? 'border-site-danger'
-                    : 'border-site-border focus:border-site-accent'
-                }`}
-              />
-              {usernameError
-                ? <p className="mt-1 text-site-danger text-xs">{usernameError}</p>
-                : <p className="mt-1 text-site-muted text-xs">Проверь ник — после оплаты изменить нельзя</p>
-              }
-            </div>
-
-            {/* Promo code */}
-            <div className="mb-6">
-              <p className="text-site-muted text-xs uppercase tracking-wider mb-2">Промокод</p>
-              <PromoCodeField
-                applied={coupon}
-                onApply={setCoupon}
-                onRemove={() => setCoupon(null)}
-              />
-            </div>
-
-            {/* Price + buy */}
-            <div className="flex flex-col gap-4 pt-4 border-t border-site-border">
-
-              {/* Payment method selector */}
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-site-muted text-xs">Оплата:</span>
-                {([
-                  { id: 'card', label: '💳 Карта / СБП' },
-                  { id: 'TON', label: '💎 TON' },
-                  { id: 'USDT', label: '💵 USDT' },
-                ] as const).map(m => (
-                  <button
-                    key={m.id}
-                    onClick={() => setPaymentMethod(m.id)}
-                    className={`px-3 py-1 rounded text-xs font-bold border transition-all ${
-                      paymentMethod === m.id
-                        ? 'bg-site-accent border-site-accent text-white'
-                        : 'border-site-border text-site-muted hover:border-site-accent'
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <p className="text-site-muted text-xs mb-1">К оплате</p>
-                {coupon ? (
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-bold text-site-text">{discountedPrice} ₽</span>
-                    <span className="text-site-muted text-sm line-through">{basePrice} ₽</span>
-                    <span className="text-site-success text-xs font-semibold">
-                      −{coupon.type === 'percent' ? `${coupon.value}%` : `${basePrice - discountedPrice}₽`}
-                    </span>
-                  </div>
-                ) : (
-                  <span className="text-2xl font-bold text-site-text">{basePrice} ₽</span>
-                )}
-                {/* Crypto conversion hint */}
-                {paymentMethod !== 'card' && cryptoAmount && (
-                  <p className="text-site-muted text-xs mt-1">
-                    ≈ {cryptoAmount} {paymentMethod}
-                  </p>
-                )}
-                {paymentMethod === 'card' && (
-                  <p className="text-site-muted text-xs mt-1">💳 Карта · СБП</p>
-                )}
-              </div>
-
-              <button
-                onClick={handleBuy}
-                disabled={loading || !username}
-                className={`w-full sm:w-auto px-8 py-3 rounded font-bold text-sm transition-all flex items-center justify-center gap-2 ${
-                  !username || loading
-                    ? 'bg-site-border text-site-muted cursor-not-allowed'
-                    : 'bg-site-accent hover:bg-red-600 text-white glow-red'
-                }`}
-              >
-                {loading ? (
-                  <>
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Создаём заказ...
-                  </>
-                ) : 'Перейти к оплате →'}
-              </button>
-              </div>
-            </div>
-
-            {orderError && (
-              <div className="mt-4 p-3 bg-site-danger/10 border border-site-danger/30 rounded text-site-danger text-sm">
-                {orderError}
-              </div>
-            )}
-      </div>
+        {orderError && (
+          <div className="mt-4 p-3 bg-site-danger/10 border border-site-danger/30 text-site-danger text-sm">
+            {orderError}
+          </div>
+        )}
+      </PremiumCard>
     </div>
   )
 }
-

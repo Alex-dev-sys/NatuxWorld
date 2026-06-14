@@ -7,10 +7,23 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = { title: 'Оплата' }
 
 export default async function PayPage({ params }: { params: { id: string } }) {
+  if ((process.env.PAYMENT_PROVIDER ?? 'mock') !== 'mock') notFound()
+
   const order = await getOrder(params.id)
   if (!order) notFound()
   if (!['created', 'waiting_payment'].includes(order.status)) {
     redirect(`/order/${order.publicId}`)
   }
-  return <PaymentClient order={order} />
+  return (
+    <>
+      <div
+        className="bg-[#0d0000] border border-site-accent text-site-accent text-center px-4 py-3 mx-auto mt-4 max-w-md rounded"
+        style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 12 }}
+        role="alert"
+      >
+        ТЕСТОВЫЙ РЕЖИМ — оплата не настоящая. Не вводите данные реальной карты.
+      </div>
+      <PaymentClient order={order} />
+    </>
+  )
 }

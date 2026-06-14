@@ -17,6 +17,17 @@ model User {
   createdAt          DateTime  @default(now())
 }
 
+model Coupon {
+  code        String    @id
+  type        String
+  value       Int
+  description String    @default("")
+  maxUses     Int?
+  usedCount   Int       @default(0)
+  expiresAt   DateTime?
+  active      Boolean   @default(true)
+}
+
 model Order {
   id                   String    @id @default(uuid())
   publicId             String    @unique @default(uuid())

@@ -1,3 +1,4 @@
+import { randomInt } from 'crypto'
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
 import nodemailer from 'nodemailer'
@@ -22,7 +23,7 @@ export function verifyToken(token: string): string {
 }
 
 export function generateCode(): string {
-  return String(Math.floor(100000 + Math.random() * 900000))
+  return String(randomInt(100000, 1000000))
 }
 
 export function codeExpiry(): Date {

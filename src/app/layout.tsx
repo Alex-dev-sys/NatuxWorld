@@ -1,12 +1,16 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import Header from '@/components/Header'
 import Footer from '@/components/Footer'
-import SaleBanner from '@/components/SaleBanner'
 import PageTransition from '@/components/PageTransition'
 import { ToastProvider } from '@/components/Toast'
 
+export const viewport: Viewport = {
+  themeColor: '#070707',
+}
+
 export const metadata: Metadata = {
+  metadataBase: new URL(`https://${process.env.NEXT_PUBLIC_SITE_DOMAIN ?? 'vibestudy.ru'}`),
   title: {
     default: 'NATUX WORLD — Minecraft Server',
     template: '%s — NATUX WORLD',
@@ -38,7 +42,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="bg-site-bg text-site-text min-h-screen flex flex-col font-mono-code">
         <ToastProvider>
-          <SaleBanner />
           <Header />
           <main className="flex-1"><PageTransition>{children}</PageTransition></main>
           <Footer />

@@ -1,8 +1,7 @@
 // src/app/api/payments/cryptobot/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { getOrder, getAllOrders, updateOrder, getOrderByPaymentId } from '@/lib/store'
-import { products } from '@/lib/products'
-import { buildCommands, executeRcon, DURATION_DAYS } from '@/lib/rcon'
+import { getOrder, getOrderById, getOrderByPaymentId, claimOrderForDelivery } from '@/lib/store'
+import { fulfillOrder } from '@/lib/fulfillment'
 import { verifyWebhook } from '@/lib/cryptobot'
 
 interface CryptoBotUpdate {
@@ -58,50 +57,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No payload' }, { status: 400 })
   }
 
-  let order = await getOrder(publicId)
-  if (!order) {
-    order = (await getAllOrders()).find(o => o.id === publicId)
-  }
+  const order = (await getOrder(publicId)) ?? (await getOrderById(publicId))
   if (!order) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
 
-  if (order.status === 'delivered') {
+  // Атомарный захват: при конкурентных ретраях RCON выполнится только один раз.
+  const claimed = await claimOrderForDelivery(order.publicId, paymentId)
+  if (!claimed) {
     return NextResponse.json({ message: 'Already processed' })
   }
 
-  let updated = await updateOrder(order.publicId, {
-    status: 'delivery_pending',
-    paidAt: new Date().toISOString(),
-    paymentId,
-  })
-
-  if (!updated) {
-    return NextResponse.json({ error: 'Update failed' }, { status: 500 })
-  }
-
-  const product = products.find(p => p.id === order!.productId)
-  const variant = product?.variants.find(v => v.duration === order!.variantDuration)
-
-  const commands = variant
-    ? buildCommands(variant.commands, {
-        username: order.username,
-        rank: order.productId,
-        duration: order.variantDurationLabel,
-        durationDays: DURATION_DAYS[order.variantDuration] ?? '?',
-        orderId: order.id,
-        price: order.price,
-      })
-    : []
-
-  const result = await executeRcon(commands)
-
-  updated = await updateOrder(
-    order.publicId,
-    result.success
-      ? { status: 'delivered', deliveredAt: new Date().toISOString(), rconCommands: result.commands }
-      : { status: 'delivery_failed', deliveryError: result.error, rconCommands: result.commands }
-  )
-
+  const updated = await fulfillOrder(claimed)
   return NextResponse.json({ message: 'OK', order: updated })
 }

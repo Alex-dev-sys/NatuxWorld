@@ -1,5 +1,6 @@
 // src/lib/store.ts
 import { prisma } from './db'
+import { redeemCoupon } from './couponStore'
 import type { Order, OrderStatus, Duration } from './types'
 
 function mapOrder(row: {
@@ -85,6 +86,27 @@ export async function saveOrder(order: Order): Promise<void> {
       rconCommands: order.rconCommands ?? [],
     },
   })
+}
+
+// Атомарный «захват» заказа на выдачу: переводит created/waiting_payment в
+// delivery_pending одним updateMany. Конкурентные вебхуки получат count === 0
+// и не выполнят RCON повторно.
+export async function claimOrderForDelivery(
+  publicId: string,
+  paymentId: string
+): Promise<Order | null> {
+  const { count } = await prisma.order.updateMany({
+    where: { publicId, status: { in: ['created', 'waiting_payment'] } },
+    data: { status: 'delivery_pending', paidAt: new Date(), paymentId },
+  })
+  if (count === 0) return null
+  const order = (await getOrder(publicId)) ?? null
+  // Лимит купона списываем по факту оплаты. Если код исчерпался между
+  // созданием заказа и оплатой, заказ всё равно выдаётся — деньги получены.
+  if (order?.couponCode) {
+    await redeemCoupon(order.couponCode).catch(() => false)
+  }
+  return order
 }
 
 export async function updateOrder(

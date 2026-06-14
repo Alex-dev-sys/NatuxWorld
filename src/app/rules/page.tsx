@@ -139,7 +139,7 @@ export default function RulesPage() {
       <div style={{
         display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 28,
         padding: '10px 16px',
-        backgroundColor: '#0e0e0e', border: '1px solid #3A1017', borderRadius: 8,
+        backgroundColor: '#140a0b', border: '1px solid #3A1017', borderRadius: 8,
       }}>
         {(['ok', 'ban', 'warn', 'neutral'] as RuleItem['type'][]).map(t => (
           <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -160,7 +160,7 @@ export default function RulesPage() {
           <div
             key={section.code}
             style={{
-              backgroundColor: '#0e0e0e', border: '1px solid #3A1017',
+              backgroundColor: '#140a0b', border: '1px solid #3A1017',
               borderRadius: 12, overflow: 'hidden',
               clipPath: 'polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%)',
             }}

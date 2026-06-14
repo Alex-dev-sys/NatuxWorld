@@ -37,6 +37,9 @@ export interface Coupon {
   value: number
   description: string
   maxUses?: number
+  usedCount?: number
+  expiresAt?: string
+  active?: boolean
 }
 
 export interface Order {

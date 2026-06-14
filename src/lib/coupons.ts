@@ -1,20 +1,7 @@
+// src/lib/coupons.ts
+// Только чистые функции без обращений к БД — юнит-тесты импортируют этот
+// файл напрямую. Поиск/списание промокодов — в couponStore.ts.
 import type { Coupon } from './types'
-
-// Mock coupons (replace with DB in production)
-const coupons: Coupon[] = [
-  { code: 'NATUX10', type: 'percent', value: 10, description: 'Скидка 10%' },
-  { code: 'NATUX20', type: 'percent', value: 20, description: 'Скидка 20%' },
-  { code: 'LAUNCH', type: 'percent', value: 15, description: 'Скидка к запуску сервера 15%' },
-  { code: 'VIP30', type: 'percent', value: 30, description: 'VIP-скидка 30%' },
-  { code: 'CRYPTO', type: 'percent', value: 5, description: 'Скидка 5% за оплату криптой' },
-  // Бесплатные коды для друзей — ранг выдаётся без оплаты
-  { code: 'FRIEND2024', type: 'free', value: 0, description: 'Бесплатный ранг для друга' },
-  { code: 'SADDLE', type: 'free', value: 0, description: 'Бесплатный ранг' },
-]
-
-export function validateCoupon(code: string): Coupon | null {
-  return coupons.find(c => c.code.toUpperCase() === code.trim().toUpperCase()) ?? null
-}
 
 export function applyDiscount(price: number, coupon: Coupon): number {
   if (coupon.type === 'free') return 0

@@ -2,14 +2,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { products } from '@/lib/products'
 import { saveOrder, updateOrder } from '@/lib/store'
-import { validateCoupon, applyDiscount, isFree } from '@/lib/coupons'
-import { executeRcon, buildCommands, DURATION_DAYS } from '@/lib/rcon'
+import { applyDiscount, isFree } from '@/lib/coupons'
+import { validateCoupon, redeemCoupon } from '@/lib/couponStore'
+import { fulfillOrder } from '@/lib/fulfillment'
 import { rateLimit } from '@/lib/ratelimit'
 import { createInvoice, type CryptoAsset } from '@/lib/cryptobot'
 import { createPayment } from '@/lib/yookassa'
-import type { Order, Duration } from '@/lib/types'
+import type { Coupon, Order, Duration } from '@/lib/types'
 
 const NICK_RE = /^[a-zA-Z0-9_]{3,16}$/
+const DURATIONS: Duration[] = ['30d', '90d', 'forever']
 
 function siteOrigin(): string {
   const domain = process.env.NEXT_PUBLIC_SITE_DOMAIN ?? 'localhost:3000'
@@ -83,24 +85,49 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  if (!DURATIONS.includes(duration as Duration)) {
+    return NextResponse.json({ error: 'Некорректная длительность' }, { status: 400 })
+  }
+  const orderDuration = duration as Duration
+
   const product = products.find(p => p.id === productId && p.active)
   if (!product) {
     return NextResponse.json({ error: 'Товар не найден' }, { status: 404 })
   }
 
-  const variant = product.variants.find(v => v.duration === duration)
+  const variant = product.variants.find(v => v.duration === orderDuration)
   if (!variant) {
     return NextResponse.json({ error: 'Вариант не найден' }, { status: 404 })
   }
 
+  // Промокод валидируем один раз и ДО создания заказа: несуществующий код —
+  // это ошибка, а не молчаливое списание полной цены.
+  let coupon: Coupon | null = null
   let finalPrice = variant.price
-  let appliedCoupon: string | undefined
 
   if (couponCode) {
-    const coupon = validateCoupon(couponCode)
-    if (coupon) {
-      finalPrice = applyDiscount(variant.price, coupon)
-      appliedCoupon = coupon.code
+    coupon = await validateCoupon(couponCode)
+    if (!coupon) {
+      return NextResponse.json({ error: 'Промокод не найден или истёк' }, { status: 400 })
+    }
+    finalPrice = applyDiscount(variant.price, coupon)
+  }
+
+  // Строгий лимит на бесплатные активации проверяем ДО сохранения заказа,
+  // чтобы не плодить заказы-сироты.
+  if (coupon && isFree(coupon)) {
+    if (!rateLimit(`free:${ip}`, 2, 60 * 60_000)) {
+      return NextResponse.json({ error: 'Лимит бесплатных активаций превышен' }, { status: 429 })
+    }
+  }
+
+  // Бесплатный код списываем сразу (выдача мгновенная). Платные купоны
+  // списываются в момент оплаты (claimOrderForDelivery), чтобы брошенные
+  // неоплаченные заказы не выжигали maxUses.
+  if (coupon && isFree(coupon)) {
+    const redeemed = await redeemCoupon(coupon.code)
+    if (!redeemed) {
+      return NextResponse.json({ error: 'Промокод больше не действует' }, { status: 400 })
     }
   }
 
@@ -109,11 +136,11 @@ export async function POST(req: NextRequest) {
     publicId: crypto.randomUUID(),
     productId: product.id,
     productName: product.name,
-    variantDuration: duration as Duration,
+    variantDuration: orderDuration,
     variantDurationLabel: variant.durationLabel,
     price: finalPrice,
-    originalPrice: appliedCoupon ? variant.price : undefined,
-    couponCode: appliedCoupon,
+    originalPrice: coupon ? variant.price : undefined,
+    couponCode: coupon?.code,
     username: username.trim(),
     status: 'waiting_payment',
     createdAt: new Date().toISOString(),
@@ -122,34 +149,20 @@ export async function POST(req: NextRequest) {
   await saveOrder(order)
 
   // Бесплатный промокод — пропускаем оплату и сразу выдаём ранг
-  if (couponCode) {
-    const coupon = validateCoupon(couponCode)
-    if (coupon && isFree(coupon)) {
-      // Строгий лимит: 2 бесплатных ранга в час с одного IP
-      if (!rateLimit(`free:${ip}`, 2, 60 * 60_000)) {
-        return NextResponse.json({ error: 'Лимит бесплатных активаций превышен' }, { status: 429 })
-      }
-      const commands = buildCommands(variant.commands, {
-        username: order.username,
-        rank: product.name,
-        duration: variant.durationLabel,
-        durationDays: DURATION_DAYS[variant.duration as Duration],
-        orderId: order.publicId,
-        price: 0,
-      })
-      const result = await executeRcon(commands)
-      await updateOrder(order.publicId, {
-        status: result.success ? 'delivered' : 'delivery_failed',
-        paidAt: new Date().toISOString(),
-        deliveredAt: result.success ? new Date().toISOString() : undefined,
-        deliveryError: result.error,
-        rconCommands: commands,
-      })
-      return NextResponse.json(
-        { publicId: order.publicId, paymentUrl: `${siteOrigin()}/order/${order.publicId}` },
-        { status: 201 }
-      )
+  if (coupon && isFree(coupon)) {
+    const paid = await updateOrder(order.publicId, {
+      status: 'delivery_pending',
+      paidAt: new Date().toISOString(),
+      paymentId: `free_${order.publicId}`,
+    })
+    if (!paid) {
+      return NextResponse.json({ error: 'Ошибка обновления заказа' }, { status: 500 })
     }
+    await fulfillOrder(paid)
+    return NextResponse.json(
+      { publicId: order.publicId, paymentUrl: `${siteOrigin()}/order/${order.publicId}` },
+      { status: 201 }
+    )
   }
 
   const provider = process.env.PAYMENT_PROVIDER ?? 'mock'

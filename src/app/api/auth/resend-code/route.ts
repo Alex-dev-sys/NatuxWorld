@@ -6,6 +6,10 @@ import { generateCode, codeExpiry, sendVerificationEmail, apiError } from '@/lib
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for') ?? 'unknown'
 
+  if (!rateLimit(`resend-ip:${ip}`, 5, 60_000)) {
+    return apiError('rate_limited', 'Слишком много попыток, подождите', 429)
+  }
+
   let body: unknown
   try { body = await req.json() } catch { return apiError('not_found', 'Аккаунт не найден', 404) }
   const { email } = body as Record<string, string>

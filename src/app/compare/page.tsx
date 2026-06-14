@@ -1,5 +1,7 @@
 import { products } from '@/lib/products'
+import RankInsignia from '@/components/RankInsignia'
 import Link from 'next/link'
+import CompareHeaderRow from '@/components/three/CompareHeaderRow'
 
 export const metadata = {
   title: 'Сравнение рангов — NATUX WORLD',
@@ -18,96 +20,180 @@ const KEY_PERKS = [
   { label: 'Discord-канал', fn: (p: string[]) => p.some(x => x.includes('Discord')) ? '✓' : '—' },
 ]
 
+const TH_BASE = 'px-3 py-3 text-center min-w-[96px]'
+const STICKY_LABEL = 'sticky left-0 z-10 px-4 py-2.5 text-left min-w-[150px]'
+
+function CellValue({ val }: { val: string }) {
+  if (val === '✓') {
+    return <span style={{ color: '#35C759', fontFamily: '"JetBrains Mono", monospace', fontWeight: 700 }}>✓</span>
+  }
+  if (val === '—') {
+    return <span style={{ color: '#3A1017', fontFamily: '"JetBrains Mono", monospace' }}>—</span>
+  }
+  return <span style={{ color: '#fff', fontFamily: '"JetBrains Mono", monospace', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{val}</span>
+}
+
 export default function ComparePage() {
   const sorted = products.filter(p => p.active).sort((a, b) => a.order - b.order)
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-10">
-      <h1 className="font-pixel text-xs md:text-sm text-site-accent text-center mb-2">
-        СРАВНЕНИЕ РАНГОВ
-      </h1>
-      <p className="text-site-muted text-sm text-center mb-8">
-        Все {sorted.length} ранга в одной таблице
-      </p>
+    <div className="cmp-root max-w-7xl mx-auto px-4 py-12">
+      <style>{`
+        .cmp-table { border-collapse: separate; border-spacing: 0; }
+        .cmp-table tbody tr { transition: background 0.14s ease; }
+        .cmp-table tbody tr:hover td { background: #160a0c !important; }
+        .cmp-buy { transition: all 0.16s ease; }
+        .cmp-buy:hover { filter: brightness(1.12); box-shadow: 0 0 14px -2px var(--cmp-glow); }
+      `}</style>
 
-      <div className="overflow-x-auto rounded-lg border border-site-border">
-        <table className="w-full text-xs md:text-sm border-collapse">
+      {/* Header */}
+      <div className="mb-7 animate-fade-in-up">
+        <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 10, color: '#FF2B4F', letterSpacing: '0.4em', marginBottom: 10 }}>
+          {'// СПЕЦИФИКАЦИЯ ДОПУСКОВ'}
+        </div>
+        <div className="flex items-center gap-3 mb-2">
+          <div style={{ width: 3, height: 30, backgroundColor: '#FF2B4F' }} className="glow-red" />
+          <h1 style={{
+            fontFamily: '"Bebas Neue", sans-serif',
+            fontSize: 'clamp(38px, 8vw, 68px)',
+            letterSpacing: '0.06em',
+            lineHeight: 0.95,
+            color: '#fff',
+          }}>
+            СРАВНЕНИЕ РАНГОВ
+          </h1>
+        </div>
+        <p style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 11, color: '#888', letterSpacing: '0.25em', textTransform: 'uppercase', marginLeft: 15 }}>
+          {'>'} ВСЕ {sorted.length} РАНГА В ОДНОЙ МАТРИЦЕ ДОПУСКОВ
+        </p>
+      </div>
+
+      {/* Spec matrix */}
+      <div className="scanline clip-angle" style={{ border: '1px solid #3A1017', overflowX: 'auto', background: '#130a0b' }}>
+        <table className="cmp-table w-full">
           <thead>
-            <tr className="border-b border-site-border">
-              <th className="text-left px-4 py-3 text-site-muted uppercase tracking-wider font-medium bg-site-block sticky left-0 z-10 min-w-[140px]">
-                Параметр
+            {/* 3D voxel bust row — one spinning emblem per rank column */}
+            <tr>
+              <th
+                className={STICKY_LABEL}
+                style={{ background: '#0a0405', padding: '0 0 4px', verticalAlign: 'bottom' }}
+                aria-hidden="true"
+              />
+              <CompareHeaderRow ranks={sorted.map(p => ({ id: p.id, color: p.color }))} />
+            </tr>
+            <tr>
+              <th className={STICKY_LABEL} style={{ background: '#0a0405', borderBottom: '1px solid #3A1017' }}>
+                <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 9, color: '#7a3540', letterSpacing: '0.3em', textTransform: 'uppercase' }}>
+                  ПАРАМЕТР
+                </span>
               </th>
               {sorted.map(p => (
-                <th key={p.id} className="px-3 py-3 text-center bg-site-block min-w-[90px]">
-                  <div className="flex flex-col items-center gap-1">
+                <th key={p.id} className={TH_BASE} style={{ background: '#0a0405', borderBottom: `2px solid ${p.color}`, borderLeft: '1px solid #160808' }}>
+                  <div className="flex flex-col items-center gap-1.5">
+                    <RankInsignia rank={p.id} size={26} />
+                    <span style={{ fontFamily: '"Bebas Neue", sans-serif', fontSize: 15, letterSpacing: '0.05em', color: p.color }}>
+                      {p.name}
+                    </span>
                     {p.badge && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: p.color, color: '#000' }}>
+                      <span style={{
+                        fontFamily: '"JetBrains Mono", monospace', fontSize: 7,
+                        letterSpacing: '0.18em', padding: '2px 6px',
+                        color: p.color, border: `1px solid ${p.color}66`,
+                      }}>
                         {p.badge}
                       </span>
                     )}
-                    <span className="font-pixel text-[10px]" style={{ color: p.color }}>{p.name}</span>
                   </div>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {/* Prices row */}
-            <tr className="border-b border-site-border/50">
-              <td className="px-4 py-3 text-site-muted bg-site-block sticky left-0 font-medium">
-                Цена / мес
+            {/* Price / month */}
+            <tr>
+              <td className={STICKY_LABEL} style={{ background: '#0c0607', borderBottom: '1px solid #160808' }}>
+                <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 11, color: '#B8B8B8', letterSpacing: '0.08em' }}>{'// ЦЕНА / МЕС'}</span>
               </td>
               {sorted.map(p => (
-                <td key={p.id} className="px-3 py-3 text-center text-site-text font-semibold">
-                  {p.variants[0].price}₽
+                <td key={p.id} className="px-3 py-3 text-center" style={{ borderBottom: '1px solid #160808', borderLeft: '1px solid #160808' }}>
+                  <span style={{ fontFamily: '"Bebas Neue", sans-serif', fontSize: 22, color: '#fff', letterSpacing: '0.03em', fontVariantNumeric: 'tabular-nums' }}>
+                    {p.variants[0].price}
+                  </span>
+                  <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 10, color: '#666' }}>₽</span>
                 </td>
               ))}
             </tr>
-            <tr className="border-b border-site-border/50 bg-site-secondary/20">
-              <td className="px-4 py-3 text-site-muted bg-site-block sticky left-0 font-medium">
-                Навсегда
+
+            {/* Forever */}
+            <tr>
+              <td className={STICKY_LABEL} style={{ background: '#0c0607', borderBottom: '1px solid #160808' }}>
+                <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 11, color: '#B8B8B8', letterSpacing: '0.08em' }}>{'// НАВСЕГДА'}</span>
               </td>
               {sorted.map(p => (
-                <td key={p.id} className="px-3 py-3 text-center text-site-accent font-bold">
-                  {p.variants[2].price}₽
+                <td key={p.id} className="px-3 py-3 text-center" style={{ borderBottom: '1px solid #160808', borderLeft: '1px solid #160808', background: 'rgba(255,43,79,0.04)' }}>
+                  <span style={{ fontFamily: '"Bebas Neue", sans-serif', fontSize: 22, color: '#FF2B4F', letterSpacing: '0.03em', fontVariantNumeric: 'tabular-nums' }} className="text-glow-red">
+                    {p.variants[2].price}
+                  </span>
+                  <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 10, color: '#7a3540' }}>₽</span>
                 </td>
               ))}
             </tr>
 
             {/* Feature rows */}
             {KEY_PERKS.map((perk, i) => (
-              <tr key={perk.label} className={`border-b border-site-border/30 ${i % 2 === 0 ? '' : 'bg-site-secondary/10'}`}>
-                <td className="px-4 py-2.5 text-site-muted bg-site-block sticky left-0">{perk.label}</td>
-                {sorted.map(p => {
-                  const val = perk.fn(p.perks)
-                  return (
-                    <td key={p.id} className="px-3 py-2.5 text-center">
-                      <span className={val === '✓' ? 'text-site-success' : val === '—' ? 'text-site-border' : 'text-site-text'}>
-                        {val}
-                      </span>
-                    </td>
-                  )
-                })}
+              <tr key={perk.label}>
+                <td className={STICKY_LABEL} style={{ background: i % 2 === 0 ? '#130a0b' : '#0b0506', borderBottom: '1px solid #120606' }}>
+                  <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 11, color: '#B8B8B8', letterSpacing: '0.05em' }}>{perk.label}</span>
+                </td>
+                {sorted.map(p => (
+                  <td key={p.id} className="px-3 py-2.5 text-center" style={{
+                    borderBottom: '1px solid #120606',
+                    borderLeft: '1px solid #120606',
+                    background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.012)',
+                  }}>
+                    <CellValue val={perk.fn(p.perks)} />
+                  </td>
+                ))}
               </tr>
             ))}
 
             {/* Buy row */}
             <tr>
-              <td className="px-4 py-3 bg-site-block sticky left-0" />
+              <td className={STICKY_LABEL} style={{ background: '#0a0405' }} />
               {sorted.map(p => (
-                <td key={p.id} className="px-3 py-3 text-center">
+                <td key={p.id} className="px-3 py-4 text-center" style={{ borderLeft: '1px solid #160808', background: '#0a0405' }}>
                   <Link
                     href="/shop"
-                    className="inline-block px-3 py-1.5 text-xs font-semibold rounded transition-colors hover:opacity-80"
-                    style={{ backgroundColor: p.color, color: '#000' }}
+                    className="cmp-buy clip-angle-sm inline-block"
+                    style={{
+                      ['--cmp-glow' as string]: p.color,
+                      padding: '8px 16px',
+                      fontFamily: '"JetBrains Mono", monospace',
+                      fontSize: 9,
+                      letterSpacing: '0.22em',
+                      textTransform: 'uppercase',
+                      color: p.color,
+                      border: `1px solid ${p.color}88`,
+                      background: `${p.color}14`,
+                    }}
                   >
-                    Купить
+                    {'>'} КУПИТЬ
                   </Link>
                 </td>
               ))}
             </tr>
           </tbody>
         </table>
+      </div>
+
+      {/* Footer note */}
+      <div style={{ marginTop: 16 }}>
+        <span style={{
+          fontFamily: '"JetBrains Mono", monospace', fontSize: 9,
+          color: '#7a3540', letterSpacing: '0.3em', textTransform: 'uppercase',
+        }}>
+          {'// ✓ ДОСТУП ОТКРЫТ · — ДОСТУП ЗАКРЫТ'}
+        </span>
       </div>
     </div>
   )

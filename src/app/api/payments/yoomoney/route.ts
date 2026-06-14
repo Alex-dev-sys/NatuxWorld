@@ -1,9 +1,8 @@
 // src/app/api/payments/yoomoney/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { createHash } from 'crypto'
-import { getOrder, getAllOrders, updateOrder, getOrderByPaymentId } from '@/lib/store'
-import { products } from '@/lib/products'
-import { buildCommands, executeRcon, DURATION_DAYS } from '@/lib/rcon'
+import { createHash, timingSafeEqual } from 'node:crypto'
+import { getOrder, getOrderById, getOrderByPaymentId, claimOrderForDelivery } from '@/lib/store'
+import { fulfillOrder } from '@/lib/fulfillment'
 
 function verifySha1(params: Record<string, string>, secret: string): boolean {
   const str = [
@@ -17,8 +16,11 @@ function verifySha1(params: Record<string, string>, secret: string): boolean {
     secret,
     params.label ?? '',
   ].join('&')
-  const hash = createHash('sha1').update(str).digest('hex')
-  return hash === params.sha1_hash
+  const expected = createHash('sha1').update(str).digest()
+  const provided = Buffer.from(params.sha1_hash ?? '', 'hex')
+  // timingSafeEqual требует одинаковую длину; сравнение константно по времени.
+  if (provided.length !== expected.length) return false
+  return timingSafeEqual(expected, provided)
 }
 
 export async function POST(req: NextRequest) {
@@ -33,13 +35,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
   }
 
+  // Защищённые (codepro) и непринятые платежи — деньги фактически не получены.
+  if (params.codepro === 'true' || params.unaccepted === 'true') {
+    return NextResponse.json({ error: 'Payment not received (protected/unaccepted)' }, { status: 400 })
+  }
+
   const operationId = params.operation_id
   if (!operationId) {
     return NextResponse.json({ error: 'No operation_id' }, { status: 400 })
   }
 
   // Idempotency by paymentId
-  const existingByPaymentId = await getOrderByPaymentId(`ymoney_${operationId}`)
+  const paymentId = `ymoney_${operationId}`
+  const existingByPaymentId = await getOrderByPaymentId(paymentId)
   if (existingByPaymentId && existingByPaymentId.status === 'delivered') {
     return NextResponse.json({ message: 'Already processed' })
   }
@@ -49,16 +57,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No label' }, { status: 400 })
   }
 
-  let order = await getOrder(label)
-  if (!order) {
-    order = (await getAllOrders()).find(o => o.id === label)
-  }
+  const order = (await getOrder(label)) ?? (await getOrderById(label))
   if (!order) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
-  }
-
-  if (order.status === 'delivered') {
-    return NextResponse.json({ message: 'Already processed' })
   }
 
   const paidAmount = parseFloat(params.amount ?? '0')
@@ -66,38 +67,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Insufficient amount' }, { status: 400 })
   }
 
-  let updated = await updateOrder(order.publicId, {
-    status: 'delivery_pending',
-    paidAt: new Date().toISOString(),
-    paymentId: `ymoney_${operationId}`,
-  })
-
-  if (!updated) {
-    return NextResponse.json({ error: 'Update failed' }, { status: 500 })
+  // Атомарный захват: при конкурентных ретраях RCON выполнится только один раз.
+  const claimed = await claimOrderForDelivery(order.publicId, paymentId)
+  if (!claimed) {
+    return NextResponse.json({ message: 'Already processed' })
   }
 
-  const product = products.find(p => p.id === order!.productId)
-  const variant = product?.variants.find(v => v.duration === order!.variantDuration)
-
-  const commands = variant
-    ? buildCommands(variant.commands, {
-        username: order.username,
-        rank: order.productId,
-        duration: order.variantDurationLabel,
-        durationDays: DURATION_DAYS[order.variantDuration] ?? '?',
-        orderId: order.id,
-        price: order.price,
-      })
-    : []
-
-  const result = await executeRcon(commands)
-
-  updated = await updateOrder(
-    order.publicId,
-    result.success
-      ? { status: 'delivered', deliveredAt: new Date().toISOString(), rconCommands: result.commands }
-      : { status: 'delivery_failed', deliveryError: result.error, rconCommands: result.commands }
-  )
-
+  const updated = await fulfillOrder(claimed)
   return NextResponse.json({ message: 'OK', order: updated })
 }

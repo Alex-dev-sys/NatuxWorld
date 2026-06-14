@@ -26,25 +26,35 @@ function ToastItem({ item, onRemove }: { item: ToastItem; onRemove: () => void }
     return () => clearTimeout(t)
   }, [onRemove])
 
-  const styles: Record<ToastType, string> = {
-    success: 'bg-site-success text-black',
-    error: 'bg-site-danger text-white',
-    warning: 'bg-yellow-500 text-black',
-    info: 'bg-site-block border border-site-border text-site-text',
+  const colors: Record<ToastType, string> = {
+    success: '#35C759',
+    error: '#FF3B30',
+    warning: '#eab308',
+    info: '#3A1017',
   }
 
-  const icons: Record<ToastType, string> = {
-    success: '✓',
-    error: '✕',
-    warning: '⚠',
-    info: 'ℹ',
+  const markers: Record<ToastType, string> = {
+    success: '[ OK ]',
+    error: '[ ОШИБКА ]',
+    warning: '[ ВНИМАНИЕ ]',
+    info: '[ INFO ]',
   }
+
+  const color = colors[item.type]
 
   return (
     <div
-      className={`flex items-start gap-2 px-4 py-3 rounded-lg shadow-xl text-sm font-medium max-w-sm animate-slide-in-right ${styles[item.type]}`}
+      className="clip-angle-sm flex items-start gap-2 px-4 py-3 max-w-sm animate-slide-in-right"
+      style={{
+        fontFamily: '"JetBrains Mono", monospace',
+        fontSize: 12,
+        background: '#130a0b',
+        border: `1px solid ${color}`,
+        borderLeft: `3px solid ${color}`,
+        color: '#F2F2F2',
+      }}
     >
-      <span className="flex-shrink-0 font-bold">{icons[item.type]}</span>
+      <span className="flex-shrink-0 font-bold tracking-wider" style={{ color }}>{markers[item.type]}</span>
       <span className="flex-1">{item.message}</span>
       <button onClick={onRemove} className="flex-shrink-0 opacity-60 hover:opacity-100 ml-2">×</button>
     </div>
