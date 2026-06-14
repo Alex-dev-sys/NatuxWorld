@@ -1,0 +1,29 @@
+import { NextRequest } from 'next/server'
+import { prisma } from '@/lib/db'
+import { verifyToken, apiError } from '@/lib/auth'
+import { offlineUuid, randomToken } from '@/lib/yggdrasil'
+
+export const dynamic = 'force-dynamic'
+
+export async function POST(req: NextRequest) {
+  const authHeader = req.headers.get('authorization') ?? ''
+  const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
+  if (!bearer) return apiError('unauthorized', 'Требуется JWT токен', 401)
+
+  let userId: string
+  try { userId = verifyToken(bearer) } catch { return apiError('token_invalid', 'Сессия истекла', 401) }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } })
+  if (!user || !user.emailVerified) return apiError('unauthorized', 'Аккаунт не верифицирован', 403)
+
+  const accessToken = randomToken()
+  const clientToken = randomToken()
+  await prisma.gameToken.create({ data: { accessToken, clientToken, userId: user.id } })
+
+  return Response.json({
+    accessToken,
+    clientToken,
+    uuid: offlineUuid(user.username),
+    username: user.username,
+  })
+}

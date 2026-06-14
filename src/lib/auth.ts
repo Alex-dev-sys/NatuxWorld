@@ -54,7 +54,7 @@ export async function logLoginEvent(opts: {
   userId?: string
   ip: string
   userAgent: string
-  kind: 'login' | 'verify' | 'register' | 'fail'
+  kind: 'login' | 'verify' | 'register' | 'fail' | 'join'
 }): Promise<void> {
   const { prisma } = await import('@/lib/db')
   await prisma.loginEvent.create({ data: opts }).catch(() => {})

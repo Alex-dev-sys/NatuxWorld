@@ -28,6 +28,17 @@ model Coupon {
   active      Boolean   @default(true)
 }
 
+model GameToken {
+  accessToken String   @id
+  clientToken String
+  userId      String
+  serverId    String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([serverId])
+}
+
 model LoginEvent {
   id        String   @id @default(uuid())
   userId    String?
