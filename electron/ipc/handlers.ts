@@ -40,14 +40,19 @@ function sanitizeServer(value: unknown): string | undefined {
 }
 
 export function registerIpcHandlers(): void {
-  ipcMain.handle(IPC.LAUNCHER.PLAY, (_e, options) => {
+  // Username is always taken from the verified account session stored by main-process.
+  // The renderer may send any username — it is silently overridden for identity purposes.
+  ipcMain.handle(IPC.LAUNCHER.PLAY, async (_e, options) => {
     if (!options || typeof options !== 'object') {
       return { ok: false, error: 'Некорректные параметры запуска' };
     }
+    const session = await account.loadStored();
+    if (!session) return { ok: false, error: 'Требуется вход в аккаунт' };
+
     const o = options as Record<string, unknown>;
     const sanitized = {
       ...o,
-      username: sanitizeUsername(o.username),
+      username: sanitizeUsername(session.user.username),
       server: sanitizeServer(o.server),
       memory: clampMemory(o.memory),
     };
