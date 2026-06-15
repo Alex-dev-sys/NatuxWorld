@@ -83,6 +83,7 @@ export interface NatuxAPI {
     twoFactorSetup: () => Promise<AccountResult<{ otpauthUri: string; qr: string }>>;
     twoFactorEnable: (p: { code: string }) => Promise<AccountResult<{ ok: boolean; backupCodes: string[] }>>;
     logout: () => Promise<{ ok: true }>;
+    logoutGlobal: () => Promise<{ ok: true }>;
   };
 }
 

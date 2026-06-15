@@ -21,6 +21,8 @@ interface AccountState {
   submitTwoFactor: (code: string) => Promise<boolean>;
   cancelTwoFactor: () => void;
   logout: () => Promise<void>;
+  /** Revoke every session on every device (bumps tokenVersion server-side). */
+  logoutGlobal: () => Promise<void>;
   clearError: () => void;
   /** Abandon the email-verification step and return to the login/register form. */
   cancelVerify: () => void;
@@ -131,6 +133,15 @@ export const useAccountStore = create<AccountState>((set, get) => ({
       await bridge.account.logout();
     } catch {
       // ignore — clear local session regardless
+    }
+    set({ status: 'guest', user: null, error: null });
+  },
+
+  logoutGlobal: async () => {
+    try {
+      await bridge.account.logoutGlobal();
+    } catch {
+      // ignore — local session cleared regardless
     }
     set({ status: 'guest', user: null, error: null });
   },

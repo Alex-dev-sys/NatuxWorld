@@ -16,7 +16,8 @@ const ru = {
   changeNick: 'Сменить ник',
   security: 'Двухфакторка (2FA)',
   securityOn: '2FA включена',
-  logout: 'Выйти',
+  logout: 'Выйти (это устройство)',
+  logoutGlobal: 'Выйти со всех устройств',
 };
 const en: typeof ru = {
   fallbackName: 'Account',
@@ -26,7 +27,8 @@ const en: typeof ru = {
   changeNick: 'Change username',
   security: 'Two-factor (2FA)',
   securityOn: '2FA enabled',
-  logout: 'Log out',
+  logout: 'Log out (this device)',
+  logoutGlobal: 'Log out everywhere',
 };
 const TR = { ru, en };
 
@@ -38,6 +40,7 @@ export function ProfileMenu() {
   const login = useAuthStore((s) => s.login);
   const logout = useAuthStore((s) => s.logout);
   const accountLogout = useAccountStore((s) => s.logout);
+  const accountLogoutGlobal = useAccountStore((s) => s.logoutGlobal);
   const accountName = useAccountStore((s) => s.user?.username);
   const accountEmail = useAccountStore((s) => s.user?.email);
   const twoFactorEnabled = useAccountStore((s) => s.user?.twoFactorEnabled);
@@ -86,6 +89,12 @@ export function ProfileMenu() {
 
   const handleLogout = async () => {
     await accountLogout();
+    await logout();
+    setOpen(false);
+  };
+
+  const handleLogoutGlobal = async () => {
+    await accountLogoutGlobal();
     await logout();
     setOpen(false);
   };
@@ -186,10 +195,18 @@ export function ProfileMenu() {
 
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-white/80 hover:bg-primary/10 hover:text-primary"
+                className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-white/80 hover:bg-white/[0.06] hover:text-white"
               >
                 <LogOut className="h-3.5 w-3.5" />
                 {t.logout}
+              </button>
+
+              <button
+                onClick={handleLogoutGlobal}
+                className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-white/80 hover:bg-primary/10 hover:text-primary"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                {t.logoutGlobal}
               </button>
             </div>
           </motion.div>
