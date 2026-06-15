@@ -54,6 +54,25 @@ model LoginEvent {
   @@index([createdAt])
 }
 
+model GameEvent {
+  id        String   @id @default(uuid())
+  userId    String?
+  username  String
+  kind      String   // command | block_break | block_place | chat | join | quit | death | kill
+  message   String   @default("")
+  world     String   @default("")
+  x         Float?
+  y         Float?
+  z         Float?
+  extra     String   @default("") // block type, victim name, etc.
+  createdAt DateTime @default(now())
+
+  @@index([username])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([kind])
+}
+
 model CrashReport {
   id        String   @id @default(uuid())
   kind      String

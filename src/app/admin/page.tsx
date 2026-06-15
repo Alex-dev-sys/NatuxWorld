@@ -19,10 +19,16 @@ interface AdminUser {
   createdAt: string
   orders: number; lastLogin: { at: string; ip: string } | null
 }
+interface GameEventRow {
+  id: string; username: string; kind: string; message: string
+  world: string; x: number | null; y: number | null; z: number | null
+  extra: string; createdAt: string
+}
 interface UserDetail extends Omit<AdminUser, 'orders' | 'lastLogin'> {
   orders: OrderSummary[]
   logins: LoginEventRow[]
   tokens: { accessToken: string; hasServerId: boolean; createdAt: string }[]
+  gameEvents: GameEventRow[]
 }
 interface OrderSummary {
   id: string; publicId: string; productName: string; variantDurationLabel: string
@@ -58,6 +64,30 @@ interface LiveEvent {
   data?: Record<string, unknown>
 }
 
+// ── Product list (mirrors products.ts) ────────────────────────────────────────
+const PRODUCTS = [
+  { id: 'baron', name: 'Baron' },
+  { id: 'knight', name: 'Knight' },
+  { id: 'guard', name: 'Guard' },
+  { id: 'ranger', name: 'Ranger' },
+  { id: 'hero', name: 'Hero' },
+  { id: 'shadow', name: 'Shadow' },
+  { id: 'aspid', name: 'Aspid' },
+  { id: 'warlord', name: 'Warlord' },
+  { id: 'squid', name: 'Squid' },
+  { id: 'phantom', name: 'Phantom' },
+  { id: 'head', name: 'Head' },
+  { id: 'demon', name: 'Demon' },
+  { id: 'elite', name: 'Elite' },
+  { id: 'king', name: 'King' },
+  { id: 'god', name: 'God' },
+]
+const DURATIONS = [
+  { id: '30d', label: '30 дней' },
+  { id: '90d', label: '90 дней' },
+  { id: 'forever', label: 'Навсегда' },
+]
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const fmtDate = (s: string) => new Date(s).toLocaleString('ru-RU', {
   day: '2-digit', month: '2-digit', year: '2-digit',
@@ -71,9 +101,19 @@ const KIND_BADGE: Record<string, string> = {
   register: 'text-yellow-400 bg-yellow-400/10',
   verify: 'text-purple-400 bg-purple-400/10',
 }
+const GAME_KIND_STYLE: Record<string, string> = {
+  command: 'text-yellow-300 bg-yellow-400/10',
+  chat: 'text-blue-300 bg-blue-400/10',
+  block_break: 'text-orange-400 bg-orange-400/10',
+  block_place: 'text-green-300 bg-green-400/10',
+  join: 'text-green-400 bg-green-400/10',
+  quit: 'text-site-muted bg-site-border/20',
+  death: 'text-red-400 bg-red-400/10',
+  kill: 'text-purple-400 bg-purple-400/10',
+}
 const ORDER_STATUS_LABEL: Record<string, string> = {
   created: 'Создан', waiting_payment: 'Ожидает', paid: 'Оплачен',
-  delivery_pending: 'Выдача…', delivered: 'Выдан',
+  delivery_pending: 'Выдача...', delivered: 'Выдан',
   delivery_failed: 'Ошибка', cancelled: 'Отменён', refunded: 'Возврат',
 }
 const ORDER_STATUS_COLOR: Record<string, string> = {
@@ -81,7 +121,7 @@ const ORDER_STATUS_COLOR: Record<string, string> = {
   waiting_payment: 'text-yellow-400', delivery_pending: 'text-yellow-400',
 }
 
-// ── Sub-components ─────────────────────────────────────────────────────────────
+// ── Base components ────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, color = 'text-site-text' }: { label: string; value: string | number; sub?: string; color?: string }) {
   return (
     <div className="bg-site-block border border-site-border rounded-lg p-4">
@@ -105,7 +145,7 @@ function Table({ cols, children, empty }: { cols: string[]; children: React.Reac
           </thead>
           <tbody>{isEmpty ? null : children}</tbody>
         </table>
-        {isEmpty && <div className="py-12 text-center text-site-muted text-sm">{empty ?? 'Нет данных'}</div>}
+        {isEmpty && <div className="py-8 text-center text-site-muted text-sm">{empty ?? 'Нет данных'}</div>}
       </div>
     </div>
   )
@@ -115,23 +155,23 @@ function Tr({ children }: { children: React.ReactNode }) {
   return <tr className="border-b border-site-border/40 hover:bg-white/[0.02] transition-colors">{children}</tr>
 }
 function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-4 py-3 ${className}`}>{children}</td>
+  return <td className={`px-4 py-2.5 ${className}`}>{children}</td>
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', h)
+    return () => document.removeEventListener('keydown', h)
   }, [onClose])
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 px-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div className="relative bg-site-bg border border-site-border rounded-xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl"
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 px-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div className="relative bg-site-bg border border-site-border rounded-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
         onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-site-border">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-site-border shrink-0">
           <h2 className="font-pixel text-sm text-site-text">{title}</h2>
-          <button onClick={onClose} className="text-site-muted hover:text-site-text transition-colors text-xl leading-none">x</button>
+          <button onClick={onClose} className="text-site-muted hover:text-site-text transition-colors text-lg leading-none px-2">x</button>
         </div>
         <div className="overflow-y-auto flex-1">{children}</div>
       </div>
@@ -140,6 +180,8 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 // ── User Detail Modal ──────────────────────────────────────────────────────────
+type UserTab = 'info' | 'game' | 'orders' | 'activity'
+
 function UserModal({ userId, onClose, onUpdate }: { userId: string; onClose: () => void; onUpdate: (u: Partial<AdminUser>) => void }) {
   const { toast } = useToast()
   const [user, setUser] = useState<UserDetail | null>(null)
@@ -147,6 +189,12 @@ function UserModal({ userId, onClose, onUpdate }: { userId: string; onClose: () 
   const [acting, setActing] = useState<string | null>(null)
   const [banReason, setBanReason] = useState('')
   const [showBanForm, setShowBanForm] = useState(false)
+  const [uTab, setUTab] = useState<UserTab>('info')
+  const [gameKind, setGameKind] = useState('all')
+  const [rankProduct, setRankProduct] = useState('baron')
+  const [rankDuration, setRankDuration] = useState('30d')
+  const [givingRank, setGivingRank] = useState(false)
+  const [showRankForm, setShowRankForm] = useState(false)
 
   useEffect(() => {
     fetch(`/api/admin/users/${userId}`).then(r => r.json()).then(d => { setUser(d); setLoading(false) })
@@ -168,6 +216,20 @@ function UserModal({ userId, onClose, onUpdate }: { userId: string; onClose: () 
     } catch { toast('Ошибка', 'error') } finally { setActing(null); setShowBanForm(false) }
   }
 
+  const giveRank = async () => {
+    setGivingRank(true)
+    try {
+      const r = await fetch(`/api/admin/users/${userId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'give-rank', productId: rankProduct, duration: rankDuration }),
+      })
+      const data = await r.json()
+      if (data.ok) toast(`Ранг ${rankProduct} (${rankDuration}) выдан!`, 'success')
+      else toast(data.error ?? 'Ошибка RCON', 'error')
+      setShowRankForm(false)
+    } catch { toast('Ошибка', 'error') } finally { setGivingRank(false) }
+  }
+
   if (loading || !user) return (
     <Modal title="Пользователь" onClose={onClose}>
       <div className="py-16 text-center text-site-muted">Загрузка...</div>
@@ -175,116 +237,239 @@ function UserModal({ userId, onClose, onUpdate }: { userId: string; onClose: () 
   )
 
   const isBanned = !!user.bannedAt
+  const gameFiltered = gameKind === 'all' ? user.gameEvents : user.gameEvents.filter(e => e.kind === gameKind)
+
+  const USER_TABS: { id: UserTab; label: string; count?: number }[] = [
+    { id: 'info', label: 'Профиль' },
+    { id: 'game', label: 'Игра', count: user.gameEvents.length },
+    { id: 'orders', label: 'Заказы', count: user.orders.length },
+    { id: 'activity', label: 'Входы', count: user.logins.length },
+  ]
 
   return (
-    <Modal title={`@${user.username}`} onClose={onClose}>
-      <div className="p-6 space-y-6">
-        <div className="flex flex-wrap gap-4 items-start">
-          <div className="flex-1 space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-lg font-bold">{user.username}</span>
-              {isBanned && <span className="px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">BANNED</span>}
-              {user.emailVerified && <span className="px-2 py-0.5 rounded text-xs bg-green-500/10 text-green-400">verified</span>}
+    <Modal title={`@${user.username}${isBanned ? ' [BANNED]' : ''}`} onClose={onClose}>
+      {/* Inner tab bar */}
+      <div className="border-b border-site-border px-6 flex gap-0 shrink-0">
+        {USER_TABS.map(t => (
+          <button key={t.id} onClick={() => setUTab(t.id)}
+            className={`px-4 py-3 text-xs whitespace-nowrap border-b-2 transition-colors flex items-center gap-1.5 ${uTab === t.id ? 'border-site-accent text-site-accent' : 'border-transparent text-site-muted hover:text-site-text'}`}>
+            {t.label}
+            {t.count !== undefined && <span className="text-[10px] opacity-60">({t.count})</span>}
+          </button>
+        ))}
+      </div>
+
+      <div className="p-6 space-y-5">
+
+        {/* ── INFO TAB ── */}
+        {uTab === 'info' && (
+          <div className="space-y-5">
+            {/* Header */}
+            <div className="flex flex-wrap gap-4 items-start">
+              <div className="flex-1 space-y-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-xl font-bold">{user.username}</span>
+                  {isBanned && <span className="px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">BANNED</span>}
+                  {user.emailVerified ? <span className="px-2 py-0.5 rounded text-xs bg-green-500/10 text-green-400">verified</span> : <span className="px-2 py-0.5 rounded text-xs bg-red-500/10 text-red-400">unverified</span>}
+                </div>
+                <div className="text-site-muted text-sm">{user.email}</div>
+                <div className="text-site-muted text-xs font-mono">id: {user.id}</div>
+                <div className="text-site-muted text-xs">tokenVersion: {user.tokenVersion} · создан: {fmtDate(user.createdAt)}</div>
+                {isBanned && <div className="text-red-400 text-xs mt-1 bg-red-500/5 border border-red-500/20 rounded p-2">Заблокирован {fmtDate(user.bannedAt!)} — {user.banReason}</div>}
+              </div>
             </div>
-            <div className="text-site-muted text-sm">{user.email}</div>
-            <div className="text-site-muted text-xs">tokenVersion: {user.tokenVersion} · создан: {fmtDate(user.createdAt)}</div>
-            {isBanned && <div className="text-red-400 text-xs">Заблокирован {fmtDate(user.bannedAt!)} — {user.banReason}</div>}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {isBanned ? (
-              <button onClick={() => action('unban')} disabled={!!acting}
-                className="px-3 py-1.5 text-xs border border-green-500/50 text-green-400 hover:bg-green-500/10 rounded disabled:opacity-40 transition-colors">
-                {acting === 'unban' ? '...' : 'Разбанить'}
-              </button>
-            ) : (
-              <button onClick={() => setShowBanForm(v => !v)}
-                className="px-3 py-1.5 text-xs border border-red-500/50 text-red-400 hover:bg-red-500/10 rounded transition-colors">
-                Заблокировать
-              </button>
+
+            {/* Stats */}
+            <div className="grid grid-cols-4 gap-3">
+              <StatCard label="Заказов" value={user.orders.length} />
+              <StatCard label="Входов" value={user.logins.filter(l => l.kind === 'login').length} />
+              <StatCard label="Действий" value={user.gameEvents.length} />
+              <StatCard label="Сессий" value={user.tokens.length} />
+            </div>
+
+            {/* Actions */}
+            <div className="space-y-3">
+              <div className="text-site-muted text-xs uppercase tracking-wider">Действия</div>
+              <div className="flex flex-wrap gap-2">
+                {isBanned ? (
+                  <button onClick={() => action('unban')} disabled={!!acting}
+                    className="px-3 py-2 text-xs border border-green-500/50 text-green-400 hover:bg-green-500/10 rounded disabled:opacity-40 transition-colors">
+                    {acting === 'unban' ? '...' : 'Разбанить'}
+                  </button>
+                ) : (
+                  <button onClick={() => setShowBanForm(v => !v)}
+                    className={`px-3 py-2 text-xs border rounded transition-colors ${showBanForm ? 'border-red-500/80 text-red-400 bg-red-500/10' : 'border-red-500/50 text-red-400 hover:bg-red-500/10'}`}>
+                    Заблокировать
+                  </button>
+                )}
+                <button onClick={() => action('revoke-tokens')} disabled={!!acting}
+                  className="px-3 py-2 text-xs border border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 rounded disabled:opacity-40 transition-colors">
+                  {acting === 'revoke-tokens' ? '...' : 'Сбросить токены'}
+                </button>
+                {!user.emailVerified ? (
+                  <button onClick={() => action('force-verify')} disabled={!!acting}
+                    className="px-3 py-2 text-xs border border-purple-500/50 text-purple-400 hover:bg-purple-500/10 rounded disabled:opacity-40 transition-colors">
+                    {acting === 'force-verify' ? '...' : 'Верифицировать'}
+                  </button>
+                ) : (
+                  <button onClick={() => action('force-unverify')} disabled={!!acting}
+                    className="px-3 py-2 text-xs border border-site-border text-site-muted hover:text-site-text rounded disabled:opacity-40 transition-colors">
+                    {acting === 'force-unverify' ? '...' : 'Снять верификацию'}
+                  </button>
+                )}
+                <button onClick={() => setShowRankForm(v => !v)}
+                  className={`px-3 py-2 text-xs border rounded transition-colors ${showRankForm ? 'border-site-accent text-site-accent bg-site-accent/10' : 'border-site-accent/50 text-site-accent hover:bg-site-accent/10'}`}>
+                  Выдать ранг
+                </button>
+              </div>
+
+              {/* Ban form */}
+              {showBanForm && (
+                <div className="flex gap-2">
+                  <input value={banReason} onChange={e => setBanReason(e.target.value)}
+                    placeholder="Причина блокировки..."
+                    className="flex-1 bg-site-block border border-red-500/50 rounded px-3 py-2 text-sm focus:outline-none focus:border-red-400 transition-colors" />
+                  <button onClick={() => action('ban', { banReason: banReason || 'Заблокирован администратором' })} disabled={!!acting}
+                    className="px-4 py-2 text-xs bg-red-500/20 border border-red-500/50 text-red-400 hover:bg-red-500/30 rounded disabled:opacity-40 transition-colors">
+                    {acting === 'ban' ? '...' : 'Заблокировать'}
+                  </button>
+                </div>
+              )}
+
+              {/* Give rank form */}
+              {showRankForm && (
+                <div className="bg-site-block border border-site-accent/30 rounded-lg p-4 space-y-3">
+                  <div className="text-xs text-site-accent uppercase tracking-wider font-medium">Выдать ранг через RCON</div>
+                  <div className="flex gap-3 flex-wrap">
+                    <select value={rankProduct} onChange={e => setRankProduct(e.target.value)}
+                      className="bg-site-bg border border-site-border rounded px-3 py-2 text-sm text-site-text focus:outline-none focus:border-site-accent">
+                      {PRODUCTS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    <select value={rankDuration} onChange={e => setRankDuration(e.target.value)}
+                      className="bg-site-bg border border-site-border rounded px-3 py-2 text-sm text-site-text focus:outline-none focus:border-site-accent">
+                      {DURATIONS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+                    </select>
+                    <button onClick={giveRank} disabled={givingRank}
+                      className="px-4 py-2 text-xs bg-site-accent text-white rounded hover:bg-site-accent/80 disabled:opacity-40 transition-colors font-medium">
+                      {givingRank ? 'Выдаём...' : `Выдать ${PRODUCTS.find(p => p.id === rankProduct)?.name} (${DURATIONS.find(d => d.id === rankDuration)?.label})`}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Active tokens */}
+            {user.tokens.filter(t => t.hasServerId).length > 0 && (
+              <div className="bg-green-500/5 border border-green-500/20 rounded p-3 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                <span className="text-green-400 text-sm">Сейчас в игре</span>
+              </div>
             )}
-            <button onClick={() => action('revoke-tokens')} disabled={!!acting}
-              className="px-3 py-1.5 text-xs border border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 rounded disabled:opacity-40 transition-colors">
-              {acting === 'revoke-tokens' ? '...' : 'Сбросить токены'}
-            </button>
-            {!user.emailVerified ? (
-              <button onClick={() => action('force-verify')} disabled={!!acting}
-                className="px-3 py-1.5 text-xs border border-purple-500/50 text-purple-400 hover:bg-purple-500/10 rounded disabled:opacity-40 transition-colors">
-                {acting === 'force-verify' ? '...' : 'Верифицировать'}
-              </button>
+          </div>
+        )}
+
+        {/* ── GAME TAB ── */}
+        {uTab === 'game' && (
+          <div className="space-y-4">
+            {user.gameEvents.length === 0 ? (
+              <div className="text-center py-12 text-site-muted">
+                <div className="text-2xl mb-2">🎮</div>
+                <div className="text-sm">Нет игровых событий</div>
+                <div className="text-xs mt-2 opacity-60">Установи NatuxPlugin на Minecraft сервер чтобы видеть логи</div>
+              </div>
             ) : (
-              <button onClick={() => action('force-unverify')} disabled={!!acting}
-                className="px-3 py-1.5 text-xs border border-site-border text-site-muted hover:text-site-text rounded disabled:opacity-40 transition-colors">
-                {acting === 'force-unverify' ? '...' : 'Снять верификацию'}
-              </button>
+              <>
+                {/* Filter */}
+                <div className="flex flex-wrap gap-2">
+                  {['all', 'command', 'chat', 'block_break', 'block_place', 'kill', 'death', 'join', 'quit'].map(k => {
+                    const cnt = k === 'all' ? user.gameEvents.length : user.gameEvents.filter(e => e.kind === k).length
+                    if (cnt === 0 && k !== 'all') return null
+                    return (
+                      <button key={k} onClick={() => setGameKind(k)}
+                        className={`px-2.5 py-1 text-xs rounded border transition-colors ${gameKind === k ? 'border-site-accent text-site-accent' : 'border-site-border text-site-muted hover:border-site-accent/50'}`}>
+                        {k === 'all' ? 'Все' : k} <span className="opacity-60">({cnt})</span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Game events table */}
+                <div className="bg-site-block border border-site-border rounded-lg overflow-hidden">
+                  <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-site-block border-b border-site-border">
+                        <tr className="text-site-muted uppercase tracking-wider">
+                          <th className="text-left px-3 py-2 whitespace-nowrap">Время</th>
+                          <th className="text-left px-3 py-2">Тип</th>
+                          <th className="text-left px-3 py-2">Действие</th>
+                          <th className="text-left px-3 py-2">Мир / Координаты</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {gameFiltered.map(e => (
+                          <tr key={e.id} className="border-b border-site-border/30 hover:bg-white/[0.02]">
+                            <td className="px-3 py-2 text-site-muted whitespace-nowrap">{fmtDate(e.createdAt)}</td>
+                            <td className="px-3 py-2">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${GAME_KIND_STYLE[e.kind] ?? 'text-site-muted bg-site-border/30'}`}>
+                                {e.kind}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 max-w-[280px] font-mono">
+                              <span className="truncate block" title={e.message || e.extra}>
+                                {e.kind === 'command' ? <span className="text-yellow-300">{e.message}</span>
+                                  : e.kind === 'chat' ? <span className="text-blue-300">&quot;{e.message}&quot;</span>
+                                  : e.kind === 'kill' ? <span>убил <span className="text-purple-300">{e.message}</span></span>
+                                  : e.kind === 'death' ? <span className="text-red-300 text-[10px]">{e.message}</span>
+                                  : e.extra || e.message || '—'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-site-muted">
+                              {e.world && <span className="mr-2">{e.world}</span>}
+                              {e.x !== null && <span className="font-mono">{Math.round(e.x ?? 0)},{Math.round(e.y ?? 0)},{Math.round(e.z ?? 0)}</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="px-3 py-2 border-t border-site-border/30 text-xs text-site-muted">
+                    Показано {gameFiltered.length} из {user.gameEvents.length} событий
+                  </div>
+                </div>
+              </>
             )}
           </div>
-        </div>
-
-        {showBanForm && (
-          <div className="flex gap-2">
-            <input value={banReason} onChange={e => setBanReason(e.target.value)}
-              placeholder="Причина блокировки..."
-              className="flex-1 bg-site-block border border-red-500/50 rounded px-3 py-2 text-sm text-site-text placeholder-site-muted/50 focus:outline-none focus:border-red-400 transition-colors" />
-            <button onClick={() => action('ban', { banReason: banReason || 'Заблокирован администратором' })} disabled={!!acting}
-              className="px-4 py-2 text-xs bg-red-500/20 border border-red-500/50 text-red-400 hover:bg-red-500/30 rounded disabled:opacity-40 transition-colors">
-              {acting === 'ban' ? '...' : 'Заблокировать'}
-            </button>
-          </div>
         )}
 
-        <div className="grid grid-cols-3 gap-3">
-          <StatCard label="Заказов" value={user.orders.length} />
-          <StatCard label="Входов" value={user.logins.filter(l => l.kind === 'login').length} />
-          <StatCard label="Сессий" value={user.tokens.length} />
-        </div>
-
-        {user.orders.length > 0 && (
-          <div>
-            <div className="text-site-muted text-xs uppercase tracking-wider mb-2">Заказы</div>
-            <Table cols={['Дата', 'Товар', 'Срок', 'Сумма', 'Статус']}>
-              {user.orders.map(o => (
-                <Tr key={o.id}>
-                  <Td className="text-xs text-site-muted whitespace-nowrap">{fmtDate(o.createdAt)}</Td>
-                  <Td>{o.productName}</Td>
-                  <Td className="text-xs text-site-muted">{o.variantDurationLabel}</Td>
-                  <Td>{o.price} р</Td>
-                  <Td className={ORDER_STATUS_COLOR[o.status] ?? 'text-site-muted'}>{ORDER_STATUS_LABEL[o.status] ?? o.status}</Td>
-                </Tr>
-              ))}
-            </Table>
-          </div>
+        {/* ── ORDERS TAB ── */}
+        {uTab === 'orders' && (
+          <Table cols={['Дата', 'Товар', 'Срок', 'Сумма', 'Статус']}>
+            {user.orders.map(o => (
+              <Tr key={o.id}>
+                <Td className="text-xs text-site-muted whitespace-nowrap">{fmtDate(o.createdAt)}</Td>
+                <Td>{o.productName}</Td>
+                <Td className="text-xs text-site-muted">{o.variantDurationLabel}</Td>
+                <Td>{o.price} р</Td>
+                <Td className={ORDER_STATUS_COLOR[o.status] ?? 'text-site-muted'}>{ORDER_STATUS_LABEL[o.status] ?? o.status}</Td>
+              </Tr>
+            ))}
+          </Table>
         )}
 
-        {user.logins.length > 0 && (
-          <div>
-            <div className="text-site-muted text-xs uppercase tracking-wider mb-2">Активность (последние 50)</div>
-            <Table cols={['Время', 'Событие', 'IP', 'UA']}>
-              {user.logins.map(l => (
-                <Tr key={l.id}>
-                  <Td className="text-xs text-site-muted whitespace-nowrap">{fmtDate(l.createdAt)}</Td>
-                  <Td><span className={`px-2 py-0.5 rounded text-xs ${KIND_BADGE[l.kind] ?? 'text-site-muted bg-site-border/30'}`}>{l.kind}</span></Td>
-                  <Td className="font-mono text-xs">{l.ip}</Td>
-                  <Td className="text-xs text-site-muted max-w-[180px] truncate">{l.userAgent || '—'}</Td>
-                </Tr>
-              ))}
-            </Table>
-          </div>
+        {/* ── ACTIVITY TAB ── */}
+        {uTab === 'activity' && (
+          <Table cols={['Время', 'Событие', 'IP', 'UA']}>
+            {user.logins.map(l => (
+              <Tr key={l.id}>
+                <Td className="text-xs text-site-muted whitespace-nowrap">{fmtDate(l.createdAt)}</Td>
+                <Td><span className={`px-2 py-0.5 rounded text-xs ${KIND_BADGE[l.kind] ?? 'text-site-muted bg-site-border/30'}`}>{l.kind}</span></Td>
+                <Td className="font-mono text-xs">{l.ip}</Td>
+                <Td className="text-xs text-site-muted max-w-[200px] truncate">{l.userAgent || '—'}</Td>
+              </Tr>
+            ))}
+          </Table>
         )}
 
-        {user.tokens.length > 0 && (
-          <div>
-            <div className="text-site-muted text-xs uppercase tracking-wider mb-2">Игровые сессии</div>
-            <Table cols={['Токен', 'В игре', 'Выдан']}>
-              {user.tokens.map((t, i) => (
-                <Tr key={i}>
-                  <Td className="font-mono text-xs text-site-muted">{t.accessToken}</Td>
-                  <Td className={t.hasServerId ? 'text-green-400' : 'text-site-muted'}>{t.hasServerId ? 'online' : '—'}</Td>
-                  <Td className="text-xs text-site-muted whitespace-nowrap">{fmtDate(t.createdAt)}</Td>
-                </Tr>
-              ))}
-            </Table>
-          </div>
-        )}
       </div>
     </Modal>
   )
@@ -293,7 +478,6 @@ function UserModal({ userId, onClose, onUpdate }: { userId: string; onClose: () 
 // ── Dashboard Tab ──────────────────────────────────────────────────────────────
 function DashTab({ stats, events, liveEvents }: { stats: Stats | null; events: LoginEvent[]; liveEvents: LiveEvent[] }) {
   const liveActivity = liveEvents.filter(e => e.type !== 'ping' && e.type !== 'connected').slice(-8).reverse()
-
   if (!stats) return <div className="text-center text-site-muted py-16">Загрузка...</div>
   return (
     <div className="space-y-6">
@@ -305,7 +489,6 @@ function DashTab({ stats, events, liveEvents }: { stats: Stats | null; events: L
         <StatCard label="Логины" value={stats.logins.today} sub={`${stats.logins.failsToday} fail`} color="text-green-400" />
         <StatCard label="Краши" value={stats.crashes.today} sub={`${stats.crashes.total} всего`} color={stats.crashes.today > 0 ? 'text-red-400' : 'text-site-text'} />
       </div>
-
       {liveActivity.length > 0 && (
         <div className="bg-site-block border border-green-500/20 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -315,31 +498,14 @@ function DashTab({ stats, events, liveEvents }: { stats: Stats | null; events: L
           <div className="space-y-1.5">
             {liveActivity.map((e, i) => {
               const d = e.data as Record<string, string> | undefined
-              if (e.type === 'login_event') return (
-                <div key={i} className="flex gap-3 text-xs">
-                  <span className={`px-1.5 py-0.5 rounded ${KIND_BADGE[d?.kind ?? ''] ?? 'text-site-muted bg-site-border/30'}`}>{d?.kind}</span>
-                  <span className="font-mono text-site-muted">{d?.ip}</span>
-                </div>
-              )
-              if (e.type === 'order') return (
-                <div key={i} className="flex gap-3 text-xs">
-                  <span className="px-1.5 py-0.5 rounded text-yellow-400 bg-yellow-400/10">order</span>
-                  <span className="font-mono">{d?.username}</span>
-                  <span className="text-site-muted">{d?.productName}</span>
-                </div>
-              )
-              if (e.type === 'crash') return (
-                <div key={i} className="flex gap-3 text-xs">
-                  <span className="px-1.5 py-0.5 rounded text-red-400 bg-red-400/10">crash</span>
-                  <span className="text-site-muted truncate max-w-xs">{d?.message as string}</span>
-                </div>
-              )
+              if (e.type === 'login_event') return <div key={i} className="flex gap-3 text-xs"><span className={`px-1.5 py-0.5 rounded ${KIND_BADGE[d?.kind ?? ''] ?? 'text-site-muted bg-site-border/30'}`}>{d?.kind}</span><span className="font-mono text-site-muted">{d?.ip}</span></div>
+              if (e.type === 'order') return <div key={i} className="flex gap-3 text-xs"><span className="px-1.5 py-0.5 rounded text-yellow-400 bg-yellow-400/10">order</span><span className="font-mono">{d?.username}</span><span className="text-site-muted">{d?.productName}</span></div>
+              if (e.type === 'crash') return <div key={i} className="flex gap-3 text-xs"><span className="px-1.5 py-0.5 rounded text-red-400 bg-red-400/10">crash</span><span className="text-site-muted truncate max-w-xs">{d?.message}</span></div>
               return null
             })}
           </div>
         </div>
       )}
-
       <div>
         <div className="text-site-muted text-xs uppercase tracking-wider mb-3">Последняя активность</div>
         <Table cols={['Время', 'Юзер', 'Событие', 'IP']}>
@@ -361,12 +527,8 @@ function DashTab({ stats, events, liveEvents }: { stats: Stats | null; events: L
 function UsersTab({ users, onSelect, onUpdate }: { users: AdminUser[]; onSelect: (id: string) => void; onUpdate: (u: Partial<AdminUser>) => void }) {
   const [q, setQ] = useState('')
   const [filterBanned, setFilterBanned] = useState(false)
-  let filtered = q ? users.filter(u =>
-    u.username.toLowerCase().includes(q.toLowerCase()) ||
-    u.email.toLowerCase().includes(q.toLowerCase())
-  ) : users
+  let filtered = q ? users.filter(u => u.username.toLowerCase().includes(q.toLowerCase()) || u.email.toLowerCase().includes(q.toLowerCase())) : users
   if (filterBanned) filtered = filtered.filter(u => u.bannedAt)
-
   return (
     <div className="space-y-4">
       <div className="flex gap-3 flex-wrap items-center">
@@ -487,22 +649,9 @@ function OrdersTab({ orders, onRetry, retrying }: { orders: Order[]; onRetry: (i
             <Td className="font-mono">{o.username}</Td>
             <Td>{o.productName}</Td>
             <Td className="text-xs text-site-muted">{o.variantDurationLabel}</Td>
-            <Td className="whitespace-nowrap">
-              {o.price} р
-              {o.originalPrice && o.originalPrice !== o.price && <span className="ml-1 text-xs text-site-muted line-through">{o.originalPrice}</span>}
-            </Td>
-            <Td>
-              <span className={ORDER_STATUS_COLOR[o.status] ?? 'text-site-muted'}>{ORDER_STATUS_LABEL[o.status] ?? o.status}</span>
-              {o.couponCode && <div className="text-[10px] text-green-400">{o.couponCode}</div>}
-            </Td>
-            <Td>
-              {o.status === 'delivery_failed' && (
-                <button onClick={() => onRetry(o.id)} disabled={retrying === o.id}
-                  className="px-2 py-1 text-xs border border-site-accent/50 text-site-accent hover:bg-site-accent/10 rounded disabled:opacity-40 transition-colors">
-                  {retrying === o.id ? '...' : 'Повторить'}
-                </button>
-              )}
-            </Td>
+            <Td className="whitespace-nowrap">{o.price} р{o.originalPrice && o.originalPrice !== o.price && <span className="ml-1 text-xs text-site-muted line-through">{o.originalPrice}</span>}</Td>
+            <Td><span className={ORDER_STATUS_COLOR[o.status] ?? 'text-site-muted'}>{ORDER_STATUS_LABEL[o.status] ?? o.status}</span>{o.couponCode && <div className="text-[10px] text-green-400">{o.couponCode}</div>}</Td>
+            <Td>{o.status === 'delivery_failed' && <button onClick={() => onRetry(o.id)} disabled={retrying === o.id} className="px-2 py-1 text-xs border border-site-accent/50 text-site-accent hover:bg-site-accent/10 rounded disabled:opacity-40 transition-colors">{retrying === o.id ? '...' : 'Повторить'}</button>}</Td>
           </Tr>
         ))}
       </Table>
@@ -536,7 +685,6 @@ function CrashTab({ reports, onSelect, selected }: { reports: CrashReport[]; onS
       </div>
     </div>
   )
-
   return (
     <Table cols={['Время', 'Kind', 'Stage', 'Сообщение', 'Exit', 'v', 'OS']}>
       {reports.map(r => (
@@ -544,9 +692,7 @@ function CrashTab({ reports, onSelect, selected }: { reports: CrashReport[]; onS
           <Td className="text-xs text-site-muted whitespace-nowrap">{fmtDate(r.createdAt)}</Td>
           <Td><span className="px-2 py-0.5 rounded text-xs bg-red-400/10 text-red-400">{r.kind}</span></Td>
           <Td className="text-xs text-site-muted">{r.stage}</Td>
-          <Td className="text-xs max-w-[260px] truncate">
-            <button onClick={() => onSelect(r.id)} className="text-left hover:text-site-accent transition-colors">{r.message}</button>
-          </Td>
+          <Td className="text-xs max-w-[260px] truncate"><button onClick={() => onSelect(r.id)} className="text-left hover:text-site-accent transition-colors">{r.message}</button></Td>
           <Td className="text-xs text-site-muted text-center">{r.exitCode ?? '—'}</Td>
           <Td className="text-xs text-site-muted">{r.version}</Td>
           <Td className="text-xs text-site-muted">{r.platform}</Td>
@@ -562,93 +708,55 @@ function CouponsTab({ coupons, setCoupons }: { coupons: Coupon[]; setCoupons: Re
   const [form, setForm] = useState({ code: '', type: 'percent', value: '', description: '', maxUses: '', expiresAt: '' })
   const [creating, setCreating] = useState(false)
   const [showForm, setShowForm] = useState(false)
-
   const create = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setCreating(true)
+    e.preventDefault(); setCreating(true)
     try {
-      const r = await fetch('/api/admin/coupons', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, value: Number(form.value), maxUses: form.maxUses ? Number(form.maxUses) : null, expiresAt: form.expiresAt || null }),
-      })
+      const r = await fetch('/api/admin/coupons', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, value: Number(form.value), maxUses: form.maxUses ? Number(form.maxUses) : null, expiresAt: form.expiresAt || null }) })
       const data = await r.json()
       if (!r.ok) { toast(data.error ?? 'Ошибка', 'error'); return }
-      setCoupons(prev => [data, ...prev])
-      setForm({ code: '', type: 'percent', value: '', description: '', maxUses: '', expiresAt: '' })
-      setShowForm(false)
-      toast('Купон создан', 'success')
+      setCoupons(prev => [data, ...prev]); setForm({ code: '', type: 'percent', value: '', description: '', maxUses: '', expiresAt: '' }); setShowForm(false); toast('Купон создан', 'success')
     } catch { toast('Ошибка', 'error') } finally { setCreating(false) }
   }
-
   const toggle = async (code: string, active: boolean) => {
-    const r = await fetch(`/api/admin/coupons/${code}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active }),
-    })
-    if (r.ok) setCoupons(prev => prev.map(c => c.code === code ? { ...c, active } : c))
-    else toast('Ошибка', 'error')
+    const r = await fetch(`/api/admin/coupons/${code}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }) })
+    if (r.ok) setCoupons(prev => prev.map(c => c.code === code ? { ...c, active } : c)); else toast('Ошибка', 'error')
   }
-
   const del = async (code: string) => {
     if (!confirm(`Удалить купон ${code}?`)) return
     const r = await fetch(`/api/admin/coupons/${code}`, { method: 'DELETE' })
-    if (r.ok) setCoupons(prev => prev.filter(c => c.code !== code))
-    else toast('Ошибка', 'error')
+    if (r.ok) setCoupons(prev => prev.filter(c => c.code !== code)); else toast('Ошибка', 'error')
   }
-
-  const inputCls = "bg-site-block border border-site-border focus:border-site-accent rounded px-3 py-2 text-sm text-site-text placeholder-site-muted/50 focus:outline-none transition-colors"
-
+  const inp = "bg-site-block border border-site-border focus:border-site-accent rounded px-3 py-2 text-sm text-site-text placeholder-site-muted/50 focus:outline-none transition-colors"
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <span className="text-site-muted text-xs">{coupons.length} купонов · {coupons.filter(c => c.active).length} активных</span>
-        <button onClick={() => setShowForm(v => !v)}
-          className="px-3 py-1.5 text-xs border border-site-accent/50 text-site-accent hover:bg-site-accent/10 rounded transition-colors">
-          {showForm ? 'Закрыть' : '+ Создать купон'}
-        </button>
+        <button onClick={() => setShowForm(v => !v)} className="px-3 py-1.5 text-xs border border-site-accent/50 text-site-accent hover:bg-site-accent/10 rounded transition-colors">{showForm ? 'Закрыть' : '+ Создать купон'}</button>
       </div>
-
       {showForm && (
         <form onSubmit={create} className="bg-site-block border border-site-border rounded-lg p-4 space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <input required placeholder="КОД (A-Z0-9)" value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} className={inputCls} />
-            <select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))} className={inputCls}>
-              <option value="percent">Процент %</option>
-              <option value="fixed">Фиксированный р</option>
-              <option value="free">Бесплатно</option>
-            </select>
-            <input placeholder={form.type === 'percent' ? 'Размер (%)' : form.type === 'fixed' ? 'Сумма (р)' : '0'} type="number" min="0" value={form.value} onChange={e => setForm(p => ({ ...p, value: e.target.value }))} className={inputCls} />
-            <input placeholder="Описание" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className={inputCls} />
-            <input placeholder="Макс. использований" type="number" min="1" value={form.maxUses} onChange={e => setForm(p => ({ ...p, maxUses: e.target.value }))} className={inputCls} />
-            <input placeholder="Истекает" type="datetime-local" value={form.expiresAt} onChange={e => setForm(p => ({ ...p, expiresAt: e.target.value }))} className={inputCls} />
+            <input required placeholder="КОД" value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} className={inp} />
+            <select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))} className={inp}><option value="percent">Процент %</option><option value="fixed">Фиксированный р</option><option value="free">Бесплатно</option></select>
+            <input placeholder="Размер" type="number" min="0" value={form.value} onChange={e => setForm(p => ({ ...p, value: e.target.value }))} className={inp} />
+            <input placeholder="Описание" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className={inp} />
+            <input placeholder="Макс. использований" type="number" min="1" value={form.maxUses} onChange={e => setForm(p => ({ ...p, maxUses: e.target.value }))} className={inp} />
+            <input placeholder="Истекает" type="datetime-local" value={form.expiresAt} onChange={e => setForm(p => ({ ...p, expiresAt: e.target.value }))} className={inp} />
           </div>
-          <button type="submit" disabled={creating}
-            className="px-4 py-2 text-xs bg-site-accent text-white rounded hover:bg-site-accent/80 disabled:opacity-40 transition-colors">
-            {creating ? 'Создаём...' : 'Создать'}
-          </button>
+          <button type="submit" disabled={creating} className="px-4 py-2 text-xs bg-site-accent text-white rounded hover:bg-site-accent/80 disabled:opacity-40 transition-colors">{creating ? 'Создаём...' : 'Создать'}</button>
         </form>
       )}
-
       <Table cols={['Код', 'Тип', 'Скидка', 'Описание', 'Использований', 'Истекает', 'Статус', '']}>
         {coupons.map(c => (
           <Tr key={c.code}>
             <Td className="font-mono font-bold">{c.code}</Td>
             <Td className="text-site-muted text-xs">{c.type}</Td>
-            <Td className="font-bold text-site-accent">
-              {c.type === 'free' ? 'FREE' : c.type === 'percent' ? `${c.value}%` : `${c.value}р`}
-            </Td>
+            <Td className="font-bold text-site-accent">{c.type === 'free' ? 'FREE' : c.type === 'percent' ? `${c.value}%` : `${c.value}р`}</Td>
             <Td className="text-site-muted text-xs">{c.description || '—'}</Td>
             <Td className="text-center text-xs">{c.usedCount}{c.maxUses ? ` / ${c.maxUses}` : ''}</Td>
             <Td className="text-xs text-site-muted whitespace-nowrap">{c.expiresAt ? fmtDate(c.expiresAt) : 'навсегда'}</Td>
-            <Td>
-              <button onClick={() => toggle(c.code, !c.active)}
-                className={`px-2 py-0.5 rounded text-xs border transition-colors ${c.active ? 'border-green-500/50 text-green-400 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/50' : 'border-red-500/50 text-red-400 hover:bg-green-500/10 hover:text-green-400 hover:border-green-500/50'}`}>
-                {c.active ? 'Активен' : 'Отключён'}
-              </button>
-            </Td>
-            <Td>
-              <button onClick={() => del(c.code)} className="text-xs text-site-muted hover:text-red-400 transition-colors">Удалить</button>
-            </Td>
+            <Td><button onClick={() => toggle(c.code, !c.active)} className={`px-2 py-0.5 rounded text-xs border transition-colors ${c.active ? 'border-green-500/50 text-green-400 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/50' : 'border-red-500/50 text-red-400 hover:bg-green-500/10 hover:text-green-400 hover:border-green-500/50'}`}>{c.active ? 'Активен' : 'Отключён'}</button></Td>
+            <Td><button onClick={() => del(c.code)} className="text-xs text-site-muted hover:text-red-400 transition-colors">Удалить</button></Td>
           </Tr>
         ))}
       </Table>
@@ -658,83 +766,40 @@ function CouponsTab({ coupons, setCoupons }: { coupons: Coupon[]; setCoupons: Re
 
 // ── RCON Tab ───────────────────────────────────────────────────────────────────
 const RCON_PRESETS = [
-  { label: 'Список игроков', cmd: 'list' },
-  { label: 'Время', cmd: 'time query daytime' },
-  { label: 'TPS', cmd: 'tps' },
-  { label: 'Версия', cmd: 'version' },
-  { label: 'Clearlag', cmd: 'clearlagg run' },
-  { label: 'Online mode', cmd: 'whitelist list' },
+  { label: 'Список игроков', cmd: 'list' }, { label: 'Время', cmd: 'time query daytime' },
+  { label: 'TPS', cmd: 'tps' }, { label: 'Версия', cmd: 'version' }, { label: 'Clearlag', cmd: 'clearlagg run' },
 ]
-
 function RconTab() {
   const { toast } = useToast()
   const [cmd, setCmd] = useState('')
   const [loading, setLoading] = useState(false)
   const [history, setHistory] = useState<{ cmd: string; result: string; ok: boolean; ts: number }[]>([])
   const logRef = useRef<HTMLDivElement>(null)
-
   const send = async (command: string) => {
-    const c = command.trim()
-    if (!c) return
-    setLoading(true)
+    const c = command.trim(); if (!c) return; setLoading(true)
     try {
-      const r = await fetch('/api/admin/rcon', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: c }),
-      })
+      const r = await fetch('/api/admin/rcon', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: c }) })
       const data = await r.json()
       setHistory(prev => [...prev, { cmd: c, ts: Date.now(), ok: data.success ?? r.ok, result: data.error ?? (data.success ? 'OK' : JSON.stringify(data)) }])
-      if (!data.success && data.error) toast(data.error, 'error')
-      setCmd('')
+      if (!data.success && data.error) toast(data.error, 'error'); setCmd('')
     } catch { toast('Ошибка', 'error') } finally { setLoading(false) }
   }
-
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
-  }, [history])
-
+  useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [history])
   return (
     <div className="space-y-4">
       <div className="bg-site-block border border-site-border rounded-lg p-4 space-y-3">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="w-2 h-2 rounded-full bg-green-400" />
-          <span className="text-xs text-site-muted font-mono">RCON → mc.vibestudy.ru</span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {RCON_PRESETS.map(p => (
-            <button key={p.cmd} onClick={() => send(p.cmd)} disabled={loading}
-              className="px-2.5 py-1 text-xs border border-site-border hover:border-site-accent text-site-muted hover:text-site-text rounded disabled:opacity-40 transition-colors">
-              {p.label}
-            </button>
-          ))}
-        </div>
+        <div className="flex items-center gap-2 mb-1"><span className="w-2 h-2 rounded-full bg-green-400" /><span className="text-xs text-site-muted font-mono">RCON → mc.vibestudy.ru</span></div>
+        <div className="flex flex-wrap gap-2">{RCON_PRESETS.map(p => <button key={p.cmd} onClick={() => send(p.cmd)} disabled={loading} className="px-2.5 py-1 text-xs border border-site-border hover:border-site-accent text-site-muted hover:text-site-text rounded disabled:opacity-40 transition-colors">{p.label}</button>)}</div>
         <div className="flex gap-2">
           <div className="flex-1 flex items-center bg-black/40 border border-site-border focus-within:border-site-accent rounded px-3 py-2 gap-2 transition-colors">
             <span className="text-green-400 text-sm font-mono">&gt;</span>
-            <input value={cmd} onChange={e => setCmd(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(cmd) } }}
-              placeholder="Команда для сервера..."
-              className="flex-1 bg-transparent text-sm text-site-text placeholder-site-muted/40 focus:outline-none font-mono" />
+            <input value={cmd} onChange={e => setCmd(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(cmd) } }} placeholder="Команда для сервера..." className="flex-1 bg-transparent text-sm text-site-text placeholder-site-muted/40 focus:outline-none font-mono" />
           </div>
-          <button onClick={() => send(cmd)} disabled={loading || !cmd.trim()}
-            className="px-4 py-2 text-xs bg-site-accent text-white rounded hover:bg-site-accent/80 disabled:opacity-40 transition-colors font-medium">
-            {loading ? '...' : 'Run'}
-          </button>
+          <button onClick={() => send(cmd)} disabled={loading || !cmd.trim()} className="px-4 py-2 text-xs bg-site-accent text-white rounded hover:bg-site-accent/80 disabled:opacity-40 transition-colors font-medium">{loading ? '...' : 'Run'}</button>
         </div>
-        {history.length > 0 && (
-          <div ref={logRef} className="bg-black/40 rounded p-3 max-h-64 overflow-y-auto space-y-2 font-mono text-xs">
-            {history.map(h => (
-              <div key={h.ts} className="space-y-0.5">
-                <div className="text-green-400">&gt; {h.cmd}</div>
-                <div className={h.ok ? 'text-site-muted' : 'text-red-400'}>{h.result}</div>
-              </div>
-            ))}
-          </div>
-        )}
+        {history.length > 0 && <div ref={logRef} className="bg-black/40 rounded p-3 max-h-64 overflow-y-auto space-y-2 font-mono text-xs">{history.map(h => <div key={h.ts} className="space-y-0.5"><div className="text-green-400">&gt; {h.cmd}</div><div className={h.ok ? 'text-site-muted' : 'text-red-400'}>{h.result}</div></div>)}</div>}
       </div>
-      <div className="text-site-muted text-xs bg-yellow-500/5 border border-yellow-500/20 rounded p-3">
-        Команды stop, restart, ban-ip, op/deop заблокированы из панели. Используй SSH для критических операций.
-      </div>
+      <div className="text-site-muted text-xs bg-yellow-500/5 border border-yellow-500/20 rounded p-3">Команды stop, restart, ban-ip, op/deop заблокированы из панели.</div>
     </div>
   )
 }
@@ -742,14 +807,10 @@ function RconTab() {
 // ── Main ───────────────────────────────────────────────────────────────────────
 type Tab = 'dash' | 'users' | 'activity' | 'sessions' | 'orders' | 'crashes' | 'coupons' | 'rcon'
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'dash', label: 'Обзор' },
-  { id: 'users', label: 'Пользователи' },
-  { id: 'activity', label: 'Активность' },
-  { id: 'sessions', label: 'Сессии' },
-  { id: 'orders', label: 'Заказы' },
-  { id: 'crashes', label: 'Краши' },
-  { id: 'coupons', label: 'Купоны' },
-  { id: 'rcon', label: 'RCON' },
+  { id: 'dash', label: 'Обзор' }, { id: 'users', label: 'Пользователи' },
+  { id: 'activity', label: 'Активность' }, { id: 'sessions', label: 'Сессии' },
+  { id: 'orders', label: 'Заказы' }, { id: 'crashes', label: 'Краши' },
+  { id: 'coupons', label: 'Купоны' }, { id: 'rcon', label: 'RCON' },
 ]
 
 export default function AdminPage() {
@@ -757,7 +818,6 @@ export default function AdminPage() {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('dash')
   const [loading, setLoading] = useState(false)
-
   const [stats, setStats] = useState<Stats | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [events, setEvents] = useState<LoginEvent[]>([])
@@ -770,99 +830,50 @@ export default function AdminPage() {
   const [selectedUser, setSelectedUser] = useState<string | null>(null)
   const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([])
   const [sseStatus, setSseStatus] = useState<'connecting' | 'live' | 'off'>('connecting')
-
   const loaded = useRef<Set<Tab>>(new Set())
-
-  const checkAuth = useCallback((res: Response) => {
-    if (res.status === 401) { router.push('/admin/login'); return false }
-    return true
-  }, [router])
-
+  const checkAuth = useCallback((res: Response) => { if (res.status === 401) { router.push('/admin/login'); return false } return true }, [router])
   const loadTab = useCallback(async (t: Tab, force = false) => {
     if (loaded.current.has(t) && !force) return
     setLoading(true)
     try {
-      if (t === 'dash') {
-        const [sr, er] = await Promise.all([fetch('/api/admin/stats'), fetch('/api/admin/login-events')])
-        if (!checkAuth(sr)) return
-        setStats(await sr.json()); setEvents(await er.json())
-      } else if (t === 'users') {
-        const r = await fetch('/api/admin/users'); if (!checkAuth(r)) return; setUsers(await r.json())
-      } else if (t === 'activity') {
-        const r = await fetch('/api/admin/login-events'); if (!checkAuth(r)) return; setEvents(await r.json())
-      } else if (t === 'sessions') {
-        const r = await fetch('/api/admin/game-tokens'); if (!checkAuth(r)) return; setTokens(await r.json())
-      } else if (t === 'orders') {
-        const r = await fetch('/api/admin/orders'); if (!checkAuth(r)) return; setOrders(await r.json())
-      } else if (t === 'crashes') {
-        const r = await fetch('/api/admin/crash-reports'); if (!checkAuth(r)) return; setCrashes(await r.json())
-      } else if (t === 'coupons') {
-        const r = await fetch('/api/admin/coupons'); if (!checkAuth(r)) return; setCoupons(await r.json())
-      }
+      if (t === 'dash') { const [sr, er] = await Promise.all([fetch('/api/admin/stats'), fetch('/api/admin/login-events')]); if (!checkAuth(sr)) return; setStats(await sr.json()); setEvents(await er.json()) }
+      else if (t === 'users') { const r = await fetch('/api/admin/users'); if (!checkAuth(r)) return; setUsers(await r.json()) }
+      else if (t === 'activity') { const r = await fetch('/api/admin/login-events'); if (!checkAuth(r)) return; setEvents(await r.json()) }
+      else if (t === 'sessions') { const r = await fetch('/api/admin/game-tokens'); if (!checkAuth(r)) return; setTokens(await r.json()) }
+      else if (t === 'orders') { const r = await fetch('/api/admin/orders'); if (!checkAuth(r)) return; setOrders(await r.json()) }
+      else if (t === 'crashes') { const r = await fetch('/api/admin/crash-reports'); if (!checkAuth(r)) return; setCrashes(await r.json()) }
+      else if (t === 'coupons') { const r = await fetch('/api/admin/coupons'); if (!checkAuth(r)) return; setCoupons(await r.json()) }
       loaded.current.add(t)
     } catch { toast('Ошибка загрузки', 'error') } finally { setLoading(false) }
   }, [checkAuth, toast])
 
   useEffect(() => {
-    let es: EventSource | null = null
-    let retryTimer: ReturnType<typeof setTimeout>
+    let es: EventSource | null = null; let rt: ReturnType<typeof setTimeout>
     const connect = () => {
       es = new EventSource('/api/admin/events')
       es.onopen = () => setSseStatus('live')
-      es.onerror = () => {
-        setSseStatus('off'); es?.close()
-        retryTimer = setTimeout(connect, 10000)
-      }
-      es.onmessage = (evt) => {
-        try {
-          const parsed = JSON.parse(evt.data) as LiveEvent
-          if (parsed.type === 'connected') return
-          setLiveEvents(prev => [...prev.slice(-49), parsed])
-        } catch { /* ignore */ }
-      }
+      es.onerror = () => { setSseStatus('off'); es?.close(); rt = setTimeout(connect, 10000) }
+      es.onmessage = (evt) => { try { const p = JSON.parse(evt.data) as LiveEvent; if (p.type === 'connected') return; setLiveEvents(prev => [...prev.slice(-49), p]) } catch { /* ignore */ } }
     }
     connect()
-    return () => { es?.close(); clearTimeout(retryTimer) }
+    return () => { es?.close(); clearTimeout(rt) }
   }, [])
 
   useEffect(() => { loadTab('dash') }, [loadTab])
-
   const switchTab = (t: Tab) => { setTab(t); loadTab(t) }
   const refresh = () => { loaded.current.delete(tab); loadTab(tab, true) }
-
-  const selectCrash = async (id: string) => {
-    if (!id) { setSelectedCrash(null); return }
-    const r = await fetch(`/api/admin/crash-reports?id=${id}`)
-    if (r.ok) setSelectedCrash(await r.json())
-  }
-
+  const selectCrash = async (id: string) => { if (!id) { setSelectedCrash(null); return }; const r = await fetch(`/api/admin/crash-reports?id=${id}`); if (r.ok) setSelectedCrash(await r.json()) }
   const retryOrder = async (id: string) => {
     setRetrying(id)
-    try {
-      const r = await fetch(`/api/admin/orders/${id}/retry-delivery`, { method: 'POST' })
-      if (r.ok) {
-        const { order } = await r.json()
-        setOrders(prev => prev.map(o => o.id === id ? order : o))
-        toast(order.status === 'delivered' ? 'Донат выдан!' : 'Ошибка выдачи', order.status === 'delivered' ? 'success' : 'error')
-      }
-    } catch { toast('Ошибка', 'error') } finally { setRetrying(null) }
+    try { const r = await fetch(`/api/admin/orders/${id}/retry-delivery`, { method: 'POST' }); if (r.ok) { const { order } = await r.json(); setOrders(prev => prev.map(o => o.id === id ? order : o)); toast(order.status === 'delivered' ? 'Донат выдан!' : 'Ошибка выдачи', order.status === 'delivered' ? 'success' : 'error') } }
+    catch { toast('Ошибка', 'error') } finally { setRetrying(null) }
   }
-
-  const updateUser = (update: Partial<AdminUser>) => {
-    setUsers(prev => prev.map(u => u.id === update.id ? { ...u, ...update } : u))
-  }
-
-  const logout = async () => {
-    await fetch('/api/admin/logout', { method: 'POST' })
-    router.push('/admin/login')
-  }
+  const updateUser = (update: Partial<AdminUser>) => setUsers(prev => prev.map(u => u.id === update.id ? { ...u, ...update } : u))
+  const logout = async () => { await fetch('/api/admin/logout', { method: 'POST' }); router.push('/admin/login') }
 
   return (
     <div className="min-h-screen bg-site-bg">
-      {selectedUser && (
-        <UserModal userId={selectedUser} onClose={() => setSelectedUser(null)} onUpdate={updateUser} />
-      )}
-
+      {selectedUser && <UserModal userId={selectedUser} onClose={() => setSelectedUser(null)} onUpdate={updateUser} />}
       <div className="border-b border-site-border bg-site-block/80 backdrop-blur sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -887,7 +898,6 @@ export default function AdminPage() {
           ))}
         </div>
       </div>
-
       <div className="max-w-7xl mx-auto px-4 py-6">
         {tab === 'dash' && <DashTab stats={stats} events={events} liveEvents={liveEvents} />}
         {tab === 'users' && <UsersTab users={users} onSelect={setSelectedUser} onUpdate={updateUser} />}
