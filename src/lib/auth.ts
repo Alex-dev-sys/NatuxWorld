@@ -22,6 +22,14 @@ export function verifyToken(token: string): { sub: string; tv: number } {
   return { sub: payload.sub, tv: payload.tv ?? 0 }
 }
 
+// Extract the user id from an `Authorization: Bearer <jwt>` header, or null.
+export function bearerUserId(headers: Headers): string | null {
+  const h = headers.get('authorization') ?? ''
+  const token = h.startsWith('Bearer ') ? h.slice(7) : null
+  if (!token) return null
+  try { return verifyToken(token).sub } catch { return null }
+}
+
 export function generateCode(): string {
   return String(randomInt(100000, 1000000))
 }
