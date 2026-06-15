@@ -1,4 +1,4 @@
-import { createHash, createPrivateKey, randomBytes } from 'crypto'
+import { createHash, createPrivateKey, createPublicKey, randomBytes } from 'crypto'
 
 // Same algorithm as electron/services/AuthService.ts — keeps UUIDs stable across online/offline modes.
 export function offlineUuid(username: string): string {
@@ -17,7 +17,8 @@ export function randomToken(): string {
 }
 
 export function getPublicKeyPem(): string {
-  const pem = process.env.YGGDRASIL_PRIVATE_KEY
-  if (!pem) throw new Error('YGGDRASIL_PRIVATE_KEY not set')
-  return createPrivateKey(pem).export({ type: 'spki', format: 'pem' }) as string
+  const raw = process.env.YGGDRASIL_PRIVATE_KEY
+  if (!raw) throw new Error('YGGDRASIL_PRIVATE_KEY not set')
+  const pem = raw.includes('\\n') ? raw.replace(/\\n/g, '\n') : raw
+  return createPublicKey(createPrivateKey(pem)).export({ type: 'spki', format: 'pem' }) as string
 }
