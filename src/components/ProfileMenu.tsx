@@ -15,6 +15,7 @@ const ru = {
   newNickPh: 'Новый ник',
   changeNick: 'Сменить ник',
   security: 'Двухфакторка (2FA)',
+  securityOn: '2FA включена',
   logout: 'Выйти',
 };
 const en: typeof ru = {
@@ -24,6 +25,7 @@ const en: typeof ru = {
   newNickPh: 'New username',
   changeNick: 'Change username',
   security: 'Two-factor (2FA)',
+  securityOn: '2FA enabled',
   logout: 'Log out',
 };
 const TR = { ru, en };
@@ -38,6 +40,7 @@ export function ProfileMenu() {
   const accountLogout = useAccountStore((s) => s.logout);
   const accountName = useAccountStore((s) => s.user?.username);
   const accountEmail = useAccountStore((s) => s.user?.email);
+  const twoFactorEnabled = useAccountStore((s) => s.user?.twoFactorEnabled);
 
   const [open, setOpen] = useState(false);
   const [show2fa, setShow2fa] = useState(false);
@@ -164,7 +167,14 @@ export function ProfileMenu() {
                 </button>
               ) : null}
 
-              {accountName && (
+              {accountName && twoFactorEnabled && (
+                <div className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-success">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  {t.securityOn}
+                  <Check className="ml-auto h-3.5 w-3.5" />
+                </div>
+              )}
+              {accountName && !twoFactorEnabled && (
                 <button
                   onClick={() => { setShow2fa(true); setOpen(false); }}
                   className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-white/80 hover:bg-white/[0.06] hover:text-white"
