@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'crypto'
 import { createSessionToken, ADMIN_SESSION_TTL_SECONDS } from '@/lib/adminSession'
 import { rateLimit } from '@/lib/ratelimit'
 import { clientIp } from '@/lib/clientIp'
+import { verifyTotp } from '@/lib/totp'
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
@@ -28,6 +29,13 @@ export async function POST(req: NextRequest) {
   if (!match) {
     await new Promise(r => setTimeout(r, 500))
     return NextResponse.json({ error: 'Неверный пароль' }, { status: 401 })
+  }
+
+  // Mandatory second factor for the admin panel (TOTP).
+  const totpSecret = process.env.ADMIN_TOTP_SECRET
+  if (!totpSecret || !body.code || !verifyTotp(String(body.code), totpSecret)) {
+    await new Promise(r => setTimeout(r, 500))
+    return NextResponse.json({ error: 'Неверный код 2FA' }, { status: 401 })
   }
 
   // Подписанный токен с истечением срока — не раскрывает сам секрет

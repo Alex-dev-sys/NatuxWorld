@@ -17,5 +17,11 @@ export async function GET(req: NextRequest) {
   const user = await prisma.user.findUnique({ where: { id: claims.sub } })
   if (!user || user.tokenVersion !== claims.tv) return apiError('token_invalid', 'Сессия истекла', 401)
 
-  return Response.json({ user: formatUser(user) })
+  return Response.json({
+    user: {
+      ...formatUser(user),
+      twoFactorEnabled: user.twoFactorEnabled,
+      twoFactorMethod: user.twoFactorMethod,
+    },
+  })
 }
