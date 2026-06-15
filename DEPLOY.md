@@ -123,3 +123,17 @@ nslookup host.docker.internal
 ```bash
 docker compose restart app
 ```
+
+## Reverse proxy — заголовки client IP (ОБЯЗАТЕЛЬНО для rate limiting)
+
+Rate limiting и блокировка брутфорса опираются на реальный IP клиента из
+`X-Forwarded-For`. nginx должен **перезаписывать** этот заголовок значением
+`$remote_addr`, а не дописывать клиентское (`$proxy_add_x_forwarded_for`) —
+иначе атакующий подделает IP и обойдёт лимит.
+
+В `server`/`location` блоке, проксирующем на Next.js:
+```nginx
+proxy_set_header X-Real-IP         $remote_addr;
+proxy_set_header X-Forwarded-For   $remote_addr;   # overwrite, НЕ $proxy_add_x_forwarded_for
+proxy_set_header X-Forwarded-Proto $scheme;
+```
