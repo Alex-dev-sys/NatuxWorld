@@ -7,20 +7,22 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   if (!(await requireAdmin(req))) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
 
-  const events = await prisma.loginEvent.findMany({
+  const tokens = await prisma.gameToken.findMany({
     orderBy: { createdAt: 'desc' },
-    take: 300,
+    take: 200,
   })
 
-  const userIds = [...new Set(events.map(e => e.userId).filter(Boolean) as string[])]
+  const userIds = [...new Set(tokens.map(t => t.userId))]
   const users = await prisma.user.findMany({
     where: { id: { in: userIds } },
-    select: { id: true, username: true },
+    select: { id: true, username: true, email: true },
   })
-  const userMap = Object.fromEntries(users.map(u => [u.id, u.username]))
+  const userMap = Object.fromEntries(users.map(u => [u.id, u]))
 
-  return NextResponse.json(events.map(e => ({
-    ...e,
-    username: e.userId ? (userMap[e.userId] ?? null) : null,
+  return NextResponse.json(tokens.map(t => ({
+    accessToken: t.accessToken.slice(0, 8) + '…',
+    hasServerId: !!t.serverId,
+    createdAt: t.createdAt,
+    user: userMap[t.userId] ?? null,
   })))
 }

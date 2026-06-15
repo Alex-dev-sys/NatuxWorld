@@ -2,6 +2,8 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { verifySessionToken } from '@/lib/adminSession'
 
+const ADMIN_ALLOWED_IP = '109.122.200.90'
+
 function unauthorized(req: NextRequest, isApi: boolean) {
   if (isApi) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
   const loginUrl = new URL('/admin/login', req.url)
@@ -11,6 +13,15 @@ function unauthorized(req: NextRequest, isApi: boolean) {
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
+
+  const isAdmin = pathname.startsWith('/admin') || pathname.startsWith('/api/admin')
+  if (!isAdmin) return NextResponse.next()
+
+  // IP whitelist — return 404 to avoid revealing admin existence
+  const realIp = req.headers.get('x-real-ip') ?? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+  if (realIp !== ADMIN_ALLOWED_IP) {
+    return new NextResponse(null, { status: 404 })
+  }
 
   const isAdminPage = pathname.startsWith('/admin') && pathname !== '/admin/login'
   const isAdminApi = pathname.startsWith('/api/admin') &&

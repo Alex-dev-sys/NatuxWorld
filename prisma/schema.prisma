@@ -52,6 +52,22 @@ model LoginEvent {
   @@index([createdAt])
 }
 
+model CrashReport {
+  id        String   @id @default(uuid())
+  kind      String
+  stage     String
+  message   String
+  exitCode  Int?
+  logs      String[]
+  version   String   @default("")
+  platform  String   @default("")
+  arch      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([kind])
+}
+
 model Order {
   id                   String    @id @default(uuid())
   publicId             String    @unique @default(uuid())
