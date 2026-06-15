@@ -14,8 +14,22 @@ interface Stats {
 }
 interface AdminUser {
   id: string; username: string; email: string
-  emailVerified: boolean; tokenVersion: number; createdAt: string
+  emailVerified: boolean; tokenVersion: number
+  bannedAt: string | null; banReason: string | null
+  createdAt: string
   orders: number; lastLogin: { at: string; ip: string } | null
+}
+interface UserDetail extends Omit<AdminUser, 'orders' | 'lastLogin'> {
+  orders: OrderSummary[]
+  logins: LoginEventRow[]
+  tokens: { accessToken: string; hasServerId: boolean; createdAt: string }[]
+}
+interface OrderSummary {
+  id: string; publicId: string; productName: string; variantDurationLabel: string
+  price: number; status: string; createdAt: string; deliveredAt: string | null; couponCode: string | null
+}
+interface LoginEventRow {
+  id: string; kind: string; ip: string; userAgent: string; createdAt: string
 }
 interface LoginEvent {
   id: string; userId: string | null; username: string | null
@@ -34,6 +48,14 @@ interface Order {
   id: string; publicId: string; productName: string; variantDurationLabel: string
   username: string; price: number; originalPrice?: number
   status: string; couponCode?: string; createdAt: string
+}
+interface Coupon {
+  code: string; type: string; value: number; description: string
+  maxUses: number | null; usedCount: number; expiresAt: string | null; active: boolean
+}
+interface LiveEvent {
+  type: 'login_event' | 'order' | 'crash' | 'ping' | 'connected'
+  data?: Record<string, unknown>
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -71,6 +93,7 @@ function StatCard({ label, value, sub, color = 'text-site-text' }: { label: stri
 }
 
 function Table({ cols, children, empty }: { cols: string[]; children: React.ReactNode; empty?: string }) {
+  const isEmpty = !children || (Array.isArray(children) && children.filter(Boolean).length === 0)
   return (
     <div className="bg-site-block border border-site-border rounded-lg overflow-hidden">
       <div className="overflow-x-auto">
@@ -80,11 +103,9 @@ function Table({ cols, children, empty }: { cols: string[]; children: React.Reac
               {cols.map(c => <th key={c} className="text-left px-4 py-3 font-medium whitespace-nowrap">{c}</th>)}
             </tr>
           </thead>
-          <tbody>{children}</tbody>
+          <tbody>{isEmpty ? null : children}</tbody>
         </table>
-        {!children || (Array.isArray(children) && children.length === 0) ? (
-          <div className="py-12 text-center text-site-muted text-sm">{empty ?? 'Нет данных'}</div>
-        ) : null}
+        {isEmpty && <div className="py-12 text-center text-site-muted text-sm">{empty ?? 'Нет данных'}</div>}
       </div>
     </div>
   )
@@ -93,29 +114,236 @@ function Table({ cols, children, empty }: { cols: string[]; children: React.Reac
 function Tr({ children }: { children: React.ReactNode }) {
   return <tr className="border-b border-site-border/40 hover:bg-white/[0.02] transition-colors">{children}</tr>
 }
-
 function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return <td className={`px-4 py-3 ${className}`}>{children}</td>
 }
 
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 px-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="relative bg-site-bg border border-site-border rounded-xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-site-border">
+          <h2 className="font-pixel text-sm text-site-text">{title}</h2>
+          <button onClick={onClose} className="text-site-muted hover:text-site-text transition-colors text-xl leading-none">x</button>
+        </div>
+        <div className="overflow-y-auto flex-1">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+// ── User Detail Modal ──────────────────────────────────────────────────────────
+function UserModal({ userId, onClose, onUpdate }: { userId: string; onClose: () => void; onUpdate: (u: Partial<AdminUser>) => void }) {
+  const { toast } = useToast()
+  const [user, setUser] = useState<UserDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [acting, setActing] = useState<string | null>(null)
+  const [banReason, setBanReason] = useState('')
+  const [showBanForm, setShowBanForm] = useState(false)
+
+  useEffect(() => {
+    fetch(`/api/admin/users/${userId}`).then(r => r.json()).then(d => { setUser(d); setLoading(false) })
+  }, [userId])
+
+  const action = async (act: string, extra?: Record<string, unknown>) => {
+    setActing(act)
+    try {
+      const r = await fetch(`/api/admin/users/${userId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: act, ...extra }),
+      })
+      const data = await r.json()
+      if (!r.ok) { toast(data.error ?? 'Ошибка', 'error'); return }
+      toast('Готово', 'success')
+      const fresh = await fetch(`/api/admin/users/${userId}`).then(x => x.json())
+      setUser(fresh)
+      onUpdate({ id: userId, bannedAt: fresh.bannedAt, banReason: fresh.banReason, tokenVersion: fresh.tokenVersion, emailVerified: fresh.emailVerified })
+    } catch { toast('Ошибка', 'error') } finally { setActing(null); setShowBanForm(false) }
+  }
+
+  if (loading || !user) return (
+    <Modal title="Пользователь" onClose={onClose}>
+      <div className="py-16 text-center text-site-muted">Загрузка...</div>
+    </Modal>
+  )
+
+  const isBanned = !!user.bannedAt
+
+  return (
+    <Modal title={`@${user.username}`} onClose={onClose}>
+      <div className="p-6 space-y-6">
+        <div className="flex flex-wrap gap-4 items-start">
+          <div className="flex-1 space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono text-lg font-bold">{user.username}</span>
+              {isBanned && <span className="px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">BANNED</span>}
+              {user.emailVerified && <span className="px-2 py-0.5 rounded text-xs bg-green-500/10 text-green-400">verified</span>}
+            </div>
+            <div className="text-site-muted text-sm">{user.email}</div>
+            <div className="text-site-muted text-xs">tokenVersion: {user.tokenVersion} · создан: {fmtDate(user.createdAt)}</div>
+            {isBanned && <div className="text-red-400 text-xs">Заблокирован {fmtDate(user.bannedAt!)} — {user.banReason}</div>}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {isBanned ? (
+              <button onClick={() => action('unban')} disabled={!!acting}
+                className="px-3 py-1.5 text-xs border border-green-500/50 text-green-400 hover:bg-green-500/10 rounded disabled:opacity-40 transition-colors">
+                {acting === 'unban' ? '...' : 'Разбанить'}
+              </button>
+            ) : (
+              <button onClick={() => setShowBanForm(v => !v)}
+                className="px-3 py-1.5 text-xs border border-red-500/50 text-red-400 hover:bg-red-500/10 rounded transition-colors">
+                Заблокировать
+              </button>
+            )}
+            <button onClick={() => action('revoke-tokens')} disabled={!!acting}
+              className="px-3 py-1.5 text-xs border border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 rounded disabled:opacity-40 transition-colors">
+              {acting === 'revoke-tokens' ? '...' : 'Сбросить токены'}
+            </button>
+            {!user.emailVerified ? (
+              <button onClick={() => action('force-verify')} disabled={!!acting}
+                className="px-3 py-1.5 text-xs border border-purple-500/50 text-purple-400 hover:bg-purple-500/10 rounded disabled:opacity-40 transition-colors">
+                {acting === 'force-verify' ? '...' : 'Верифицировать'}
+              </button>
+            ) : (
+              <button onClick={() => action('force-unverify')} disabled={!!acting}
+                className="px-3 py-1.5 text-xs border border-site-border text-site-muted hover:text-site-text rounded disabled:opacity-40 transition-colors">
+                {acting === 'force-unverify' ? '...' : 'Снять верификацию'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {showBanForm && (
+          <div className="flex gap-2">
+            <input value={banReason} onChange={e => setBanReason(e.target.value)}
+              placeholder="Причина блокировки..."
+              className="flex-1 bg-site-block border border-red-500/50 rounded px-3 py-2 text-sm text-site-text placeholder-site-muted/50 focus:outline-none focus:border-red-400 transition-colors" />
+            <button onClick={() => action('ban', { banReason: banReason || 'Заблокирован администратором' })} disabled={!!acting}
+              className="px-4 py-2 text-xs bg-red-500/20 border border-red-500/50 text-red-400 hover:bg-red-500/30 rounded disabled:opacity-40 transition-colors">
+              {acting === 'ban' ? '...' : 'Заблокировать'}
+            </button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-3 gap-3">
+          <StatCard label="Заказов" value={user.orders.length} />
+          <StatCard label="Входов" value={user.logins.filter(l => l.kind === 'login').length} />
+          <StatCard label="Сессий" value={user.tokens.length} />
+        </div>
+
+        {user.orders.length > 0 && (
+          <div>
+            <div className="text-site-muted text-xs uppercase tracking-wider mb-2">Заказы</div>
+            <Table cols={['Дата', 'Товар', 'Срок', 'Сумма', 'Статус']}>
+              {user.orders.map(o => (
+                <Tr key={o.id}>
+                  <Td className="text-xs text-site-muted whitespace-nowrap">{fmtDate(o.createdAt)}</Td>
+                  <Td>{o.productName}</Td>
+                  <Td className="text-xs text-site-muted">{o.variantDurationLabel}</Td>
+                  <Td>{o.price} р</Td>
+                  <Td className={ORDER_STATUS_COLOR[o.status] ?? 'text-site-muted'}>{ORDER_STATUS_LABEL[o.status] ?? o.status}</Td>
+                </Tr>
+              ))}
+            </Table>
+          </div>
+        )}
+
+        {user.logins.length > 0 && (
+          <div>
+            <div className="text-site-muted text-xs uppercase tracking-wider mb-2">Активность (последние 50)</div>
+            <Table cols={['Время', 'Событие', 'IP', 'UA']}>
+              {user.logins.map(l => (
+                <Tr key={l.id}>
+                  <Td className="text-xs text-site-muted whitespace-nowrap">{fmtDate(l.createdAt)}</Td>
+                  <Td><span className={`px-2 py-0.5 rounded text-xs ${KIND_BADGE[l.kind] ?? 'text-site-muted bg-site-border/30'}`}>{l.kind}</span></Td>
+                  <Td className="font-mono text-xs">{l.ip}</Td>
+                  <Td className="text-xs text-site-muted max-w-[180px] truncate">{l.userAgent || '—'}</Td>
+                </Tr>
+              ))}
+            </Table>
+          </div>
+        )}
+
+        {user.tokens.length > 0 && (
+          <div>
+            <div className="text-site-muted text-xs uppercase tracking-wider mb-2">Игровые сессии</div>
+            <Table cols={['Токен', 'В игре', 'Выдан']}>
+              {user.tokens.map((t, i) => (
+                <Tr key={i}>
+                  <Td className="font-mono text-xs text-site-muted">{t.accessToken}</Td>
+                  <Td className={t.hasServerId ? 'text-green-400' : 'text-site-muted'}>{t.hasServerId ? 'online' : '—'}</Td>
+                  <Td className="text-xs text-site-muted whitespace-nowrap">{fmtDate(t.createdAt)}</Td>
+                </Tr>
+              ))}
+            </Table>
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 // ── Dashboard Tab ──────────────────────────────────────────────────────────────
-function DashTab({ stats, events }: { stats: Stats | null; events: LoginEvent[] }) {
-  if (!stats) return <div className="text-center text-site-muted py-16">Загрузка…</div>
-  const recent = events.slice(0, 15)
+function DashTab({ stats, events, liveEvents }: { stats: Stats | null; events: LoginEvent[]; liveEvents: LiveEvent[] }) {
+  const liveActivity = liveEvents.filter(e => e.type !== 'ping' && e.type !== 'connected').slice(-8).reverse()
+
+  if (!stats) return <div className="text-center text-site-muted py-16">Загрузка...</div>
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <StatCard label="Юзеры" value={stats.users.total} sub={`${stats.users.verified} верифиц.`} />
         <StatCard label="Заказы" value={stats.orders.total} sub={`+${stats.orders.today} сегодня`} />
-        <StatCard label="Выручка" value={`${stats.orders.revenue.toLocaleString('ru')} ₽`} color="text-site-accent" />
-        <StatCard label="Сессии" value={stats.sessions.active} sub="активных в игре" color="text-blue-400" />
+        <StatCard label="Выручка" value={`${stats.orders.revenue.toLocaleString('ru')} р`} color="text-site-accent" />
+        <StatCard label="Сессии" value={stats.sessions.active} sub="в игре сейчас" color="text-blue-400" />
         <StatCard label="Логины" value={stats.logins.today} sub={`${stats.logins.failsToday} fail`} color="text-green-400" />
         <StatCard label="Краши" value={stats.crashes.today} sub={`${stats.crashes.total} всего`} color={stats.crashes.today > 0 ? 'text-red-400' : 'text-site-text'} />
       </div>
+
+      {liveActivity.length > 0 && (
+        <div className="bg-site-block border border-green-500/20 rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-green-400 text-xs uppercase tracking-wider font-medium">Live</span>
+          </div>
+          <div className="space-y-1.5">
+            {liveActivity.map((e, i) => {
+              const d = e.data as Record<string, string> | undefined
+              if (e.type === 'login_event') return (
+                <div key={i} className="flex gap-3 text-xs">
+                  <span className={`px-1.5 py-0.5 rounded ${KIND_BADGE[d?.kind ?? ''] ?? 'text-site-muted bg-site-border/30'}`}>{d?.kind}</span>
+                  <span className="font-mono text-site-muted">{d?.ip}</span>
+                </div>
+              )
+              if (e.type === 'order') return (
+                <div key={i} className="flex gap-3 text-xs">
+                  <span className="px-1.5 py-0.5 rounded text-yellow-400 bg-yellow-400/10">order</span>
+                  <span className="font-mono">{d?.username}</span>
+                  <span className="text-site-muted">{d?.productName}</span>
+                </div>
+              )
+              if (e.type === 'crash') return (
+                <div key={i} className="flex gap-3 text-xs">
+                  <span className="px-1.5 py-0.5 rounded text-red-400 bg-red-400/10">crash</span>
+                  <span className="text-site-muted truncate max-w-xs">{d?.message as string}</span>
+                </div>
+              )
+              return null
+            })}
+          </div>
+        </div>
+      )}
+
       <div>
         <div className="text-site-muted text-xs uppercase tracking-wider mb-3">Последняя активность</div>
         <Table cols={['Время', 'Юзер', 'Событие', 'IP']}>
-          {recent.map(e => (
+          {events.slice(0, 15).map(e => (
             <Tr key={e.id}>
               <Td className="text-site-muted text-xs whitespace-nowrap">{fmtDate(e.createdAt)}</Td>
               <Td className="font-mono text-xs">{e.username ?? <span className="text-site-muted">—</span>}</Td>
@@ -130,39 +358,44 @@ function DashTab({ stats, events }: { stats: Stats | null; events: LoginEvent[] 
 }
 
 // ── Users Tab ──────────────────────────────────────────────────────────────────
-function UsersTab({ users }: { users: AdminUser[] }) {
+function UsersTab({ users, onSelect, onUpdate }: { users: AdminUser[]; onSelect: (id: string) => void; onUpdate: (u: Partial<AdminUser>) => void }) {
   const [q, setQ] = useState('')
-  const filtered = q ? users.filter(u =>
+  const [filterBanned, setFilterBanned] = useState(false)
+  let filtered = q ? users.filter(u =>
     u.username.toLowerCase().includes(q.toLowerCase()) ||
     u.email.toLowerCase().includes(q.toLowerCase())
   ) : users
+  if (filterBanned) filtered = filtered.filter(u => u.bannedAt)
 
   return (
     <div className="space-y-4">
-      <input
-        placeholder="Поиск по нику или email…"
-        value={q} onChange={e => setQ(e.target.value)}
-        className="w-full max-w-sm bg-site-block border border-site-border focus:border-site-accent rounded px-3 py-2 text-sm text-site-text placeholder-site-muted/50 focus:outline-none transition-colors"
-      />
-      <Table cols={['Ник', 'Email', 'Верифицирован', 'tokenVer', 'Заказы', 'Последний вход', 'Регистрация']}>
+      <div className="flex gap-3 flex-wrap items-center">
+        <input placeholder="Поиск по нику или email..." value={q} onChange={e => setQ(e.target.value)}
+          className="flex-1 min-w-[200px] max-w-sm bg-site-block border border-site-border focus:border-site-accent rounded px-3 py-2 text-sm text-site-text placeholder-site-muted/50 focus:outline-none transition-colors" />
+        <button onClick={() => setFilterBanned(v => !v)}
+          className={`px-3 py-2 text-xs border rounded transition-colors ${filterBanned ? 'border-red-500/50 text-red-400 bg-red-500/10' : 'border-site-border text-site-muted hover:border-site-accent/50'}`}>
+          {filterBanned ? 'x Только banned' : 'Фильтр: banned'}
+        </button>
+        <span className="text-site-muted text-xs">{filtered.length} / {users.length}</span>
+      </div>
+      <Table cols={['Ник', 'Email', 'Верифицирован', 'tokenVer', 'Заказы', 'Последний вход', 'Регистрация', '']}>
         {filtered.map(u => (
           <Tr key={u.id}>
-            <Td className="font-mono font-medium">{u.username}</Td>
-            <Td className="text-site-muted text-xs">{u.email}</Td>
             <Td>
-              <span className={u.emailVerified ? 'text-green-400' : 'text-red-400'}>
-                {u.emailVerified ? '✓ да' : '✗ нет'}
-              </span>
+              <button onClick={() => onSelect(u.id)} className="font-mono font-medium hover:text-site-accent transition-colors flex items-center gap-2">
+                {u.username}
+                {u.bannedAt && <span className="text-[10px] px-1 rounded bg-red-500/20 text-red-400">BAN</span>}
+              </button>
             </Td>
+            <Td className="text-site-muted text-xs">{u.email}</Td>
+            <Td><span className={u.emailVerified ? 'text-green-400' : 'text-red-400'}>{u.emailVerified ? 'да' : 'нет'}</span></Td>
             <Td className="text-center text-site-muted">{u.tokenVersion}</Td>
             <Td className="text-center">{u.orders}</Td>
             <Td className="text-xs text-site-muted whitespace-nowrap">
-              {u.lastLogin
-                ? <><div>{fmtDate(u.lastLogin.at)}</div><div className="font-mono">{u.lastLogin.ip}</div></>
-                : '—'
-              }
+              {u.lastLogin ? <><div>{fmtDate(u.lastLogin.at)}</div><div className="font-mono">{u.lastLogin.ip}</div></> : '—'}
             </Td>
             <Td className="text-xs text-site-muted whitespace-nowrap">{fmtDate(u.createdAt)}</Td>
+            <Td><button onClick={() => onSelect(u.id)} className="text-xs text-site-accent hover:underline">Открыть</button></Td>
           </Tr>
         ))}
       </Table>
@@ -179,8 +412,9 @@ function ActivityTab({ events }: { events: LoginEvent[] }) {
       <div className="flex flex-wrap gap-2">
         {['all', 'login', 'fail', 'join', 'register', 'verify'].map(k => (
           <button key={k} onClick={() => setKind(k)}
-            className={`px-3 py-1.5 text-xs rounded border transition-colors ${kind === k ? 'border-site-accent text-site-accent bg-site-secondary' : 'border-site-border text-site-muted hover:border-site-accent/50'}`}
-          >{k === 'all' ? 'Все' : k}</button>
+            className={`px-3 py-1.5 text-xs rounded border transition-colors ${kind === k ? 'border-site-accent text-site-accent bg-site-secondary' : 'border-site-border text-site-muted hover:border-site-accent/50'}`}>
+            {k === 'all' ? 'Все' : k}
+          </button>
         ))}
       </div>
       <Table cols={['Время', 'Юзер', 'Событие', 'IP', 'User-Agent']}>
@@ -200,22 +434,22 @@ function ActivityTab({ events }: { events: LoginEvent[] }) {
 
 // ── Sessions Tab ───────────────────────────────────────────────────────────────
 function SessionsTab({ tokens }: { tokens: GameToken[] }) {
+  const online = tokens.filter(t => t.hasServerId)
   return (
-    <Table cols={['Токен', 'Юзер', 'Email', 'В игре', 'Выдан']}>
-      {tokens.map((t, i) => (
-        <Tr key={i}>
-          <Td className="font-mono text-xs text-site-muted">{t.accessToken}</Td>
-          <Td className="font-mono text-sm">{t.user?.username ?? <span className="text-site-muted">—</span>}</Td>
-          <Td className="text-xs text-site-muted">{t.user?.email ?? '—'}</Td>
-          <Td>
-            <span className={t.hasServerId ? 'text-green-400' : 'text-site-muted'}>
-              {t.hasServerId ? '● online' : '○ —'}
-            </span>
-          </Td>
-          <Td className="text-xs text-site-muted whitespace-nowrap">{fmtDate(t.createdAt)}</Td>
-        </Tr>
-      ))}
-    </Table>
+    <div className="space-y-4">
+      <div className="text-site-muted text-xs">{online.length} в игре сейчас · {tokens.length} токенов всего</div>
+      <Table cols={['Токен', 'Юзер', 'Email', 'В игре', 'Выдан']}>
+        {tokens.map((t, i) => (
+          <Tr key={i}>
+            <Td className="font-mono text-xs text-site-muted">{t.accessToken}</Td>
+            <Td className="font-mono text-sm">{t.user?.username ?? <span className="text-site-muted">—</span>}</Td>
+            <Td className="text-xs text-site-muted">{t.user?.email ?? '—'}</Td>
+            <Td><span className={t.hasServerId ? 'text-green-400' : 'text-site-muted'}>{t.hasServerId ? 'online' : '—'}</span></Td>
+            <Td className="text-xs text-site-muted whitespace-nowrap">{fmtDate(t.createdAt)}</Td>
+          </Tr>
+        ))}
+      </Table>
+    </div>
   )
 }
 
@@ -224,7 +458,6 @@ function OrdersTab({ orders, onRetry, retrying }: { orders: Order[]; onRetry: (i
   const [filter, setFilter] = useState('all')
   const filtered = filter === 'all' ? orders : orders.filter(o => o.status === filter)
   const stats = {
-    total: orders.length,
     delivered: orders.filter(o => o.status === 'delivered').length,
     pending: orders.filter(o => ['waiting_payment', 'delivery_pending', 'paid'].includes(o.status)).length,
     failed: orders.filter(o => o.status === 'delivery_failed').length,
@@ -232,18 +465,18 @@ function OrdersTab({ orders, onRetry, retrying }: { orders: Order[]; onRetry: (i
   }
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <StatCard label="Всего" value={stats.total} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Выдано" value={stats.delivered} color="text-green-400" />
         <StatCard label="В процессе" value={stats.pending} color="text-yellow-400" />
         <StatCard label="Ошибки" value={stats.failed} color="text-red-400" />
-        <StatCard label="Выручка" value={`${stats.revenue.toLocaleString('ru')} ₽`} color="text-site-accent" />
+        <StatCard label="Выручка" value={`${stats.revenue.toLocaleString('ru')} р`} color="text-site-accent" />
       </div>
       <div className="flex flex-wrap gap-2">
         {[['all','Все'],['delivered','Выданные'],['delivery_failed','Ошибки'],['waiting_payment','Ожидают']].map(([k,l]) => (
           <button key={k} onClick={() => setFilter(k)}
-            className={`px-3 py-1.5 text-xs rounded border transition-colors ${filter === k ? 'border-site-accent text-site-accent bg-site-secondary' : 'border-site-border text-site-muted hover:border-site-accent/50'}`}
-          >{l}</button>
+            className={`px-3 py-1.5 text-xs rounded border transition-colors ${filter === k ? 'border-site-accent text-site-accent bg-site-secondary' : 'border-site-border text-site-muted hover:border-site-accent/50'}`}>
+            {l}
+          </button>
         ))}
       </div>
       <Table cols={['ID', 'Дата', 'Ник', 'Товар', 'Срок', 'Сумма', 'Статус', '']}>
@@ -255,8 +488,8 @@ function OrdersTab({ orders, onRetry, retrying }: { orders: Order[]; onRetry: (i
             <Td>{o.productName}</Td>
             <Td className="text-xs text-site-muted">{o.variantDurationLabel}</Td>
             <Td className="whitespace-nowrap">
-              {o.price} ₽
-              {o.originalPrice && o.originalPrice !== o.price && <span className="ml-1 text-xs text-site-muted line-through">{o.originalPrice}₽</span>}
+              {o.price} р
+              {o.originalPrice && o.originalPrice !== o.price && <span className="ml-1 text-xs text-site-muted line-through">{o.originalPrice}</span>}
             </Td>
             <Td>
               <span className={ORDER_STATUS_COLOR[o.status] ?? 'text-site-muted'}>{ORDER_STATUS_LABEL[o.status] ?? o.status}</span>
@@ -266,7 +499,7 @@ function OrdersTab({ orders, onRetry, retrying }: { orders: Order[]; onRetry: (i
               {o.status === 'delivery_failed' && (
                 <button onClick={() => onRetry(o.id)} disabled={retrying === o.id}
                   className="px-2 py-1 text-xs border border-site-accent/50 text-site-accent hover:bg-site-accent/10 rounded disabled:opacity-40 transition-colors">
-                  {retrying === o.id ? '…' : 'Повторить'}
+                  {retrying === o.id ? '...' : 'Повторить'}
                 </button>
               )}
             </Td>
@@ -279,32 +512,30 @@ function OrdersTab({ orders, onRetry, retrying }: { orders: Order[]; onRetry: (i
 
 // ── Crash Reports Tab ──────────────────────────────────────────────────────────
 function CrashTab({ reports, onSelect, selected }: { reports: CrashReport[]; onSelect: (id: string) => void; selected: CrashReport | null }) {
-  if (selected) {
-    return (
-      <div className="space-y-4">
-        <button onClick={() => onSelect('')} className="text-site-accent text-sm hover:underline">← Назад к списку</button>
-        <div className="bg-site-block border border-site-border rounded-lg p-4 space-y-3">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="px-2 py-0.5 rounded text-xs bg-red-400/10 text-red-400">{selected.kind}</span>
-            <span className="text-site-muted text-xs">{selected.stage}</span>
-            <span className="text-site-muted text-xs">{selected.platform}/{selected.arch}</span>
-            <span className="text-site-muted text-xs">v{selected.version}</span>
-            {selected.exitCode != null && <span className="text-site-muted text-xs">exit: {selected.exitCode}</span>}
-            <span className="text-site-muted text-xs ml-auto">{fmtDate(selected.createdAt)}</span>
-          </div>
-          <div className="text-sm text-red-300 bg-red-900/20 rounded p-3 font-mono break-all">{selected.message}</div>
-          {selected.logs && selected.logs.length > 0 && (
-            <div>
-              <div className="text-site-muted text-xs uppercase tracking-wider mb-2">Логи ({selected.logs.length} строк)</div>
-              <div className="bg-black/40 rounded p-3 max-h-96 overflow-y-auto text-xs font-mono text-site-muted space-y-0.5">
-                {selected.logs.map((l, i) => <div key={i} className="break-all">{l}</div>)}
-              </div>
-            </div>
-          )}
+  if (selected) return (
+    <div className="space-y-4">
+      <button onClick={() => onSelect('')} className="text-site-accent text-sm hover:underline">Назад к списку</button>
+      <div className="bg-site-block border border-site-border rounded-lg p-4 space-y-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="px-2 py-0.5 rounded text-xs bg-red-400/10 text-red-400">{selected.kind}</span>
+          <span className="text-site-muted text-xs">{selected.stage}</span>
+          <span className="text-site-muted text-xs">{selected.platform}/{selected.arch}</span>
+          <span className="text-site-muted text-xs">v{selected.version}</span>
+          {selected.exitCode != null && <span className="text-site-muted text-xs">exit: {selected.exitCode}</span>}
+          <span className="text-site-muted text-xs ml-auto">{fmtDate(selected.createdAt)}</span>
         </div>
+        <div className="text-sm text-red-300 bg-red-900/20 rounded p-3 font-mono break-all">{selected.message}</div>
+        {selected.logs && selected.logs.length > 0 && (
+          <div>
+            <div className="text-site-muted text-xs uppercase tracking-wider mb-2">Логи ({selected.logs.length} строк)</div>
+            <div className="bg-black/40 rounded p-3 max-h-96 overflow-y-auto text-xs font-mono text-site-muted space-y-0.5">
+              {selected.logs.map((l, i) => <div key={i} className="break-all">{l}</div>)}
+            </div>
+          </div>
+        )}
       </div>
-    )
-  }
+    </div>
+  )
 
   return (
     <Table cols={['Время', 'Kind', 'Stage', 'Сообщение', 'Exit', 'v', 'OS']}>
@@ -314,9 +545,7 @@ function CrashTab({ reports, onSelect, selected }: { reports: CrashReport[]; onS
           <Td><span className="px-2 py-0.5 rounded text-xs bg-red-400/10 text-red-400">{r.kind}</span></Td>
           <Td className="text-xs text-site-muted">{r.stage}</Td>
           <Td className="text-xs max-w-[260px] truncate">
-            <button onClick={() => onSelect(r.id)} className="text-left hover:text-site-accent transition-colors">
-              {r.message}
-            </button>
+            <button onClick={() => onSelect(r.id)} className="text-left hover:text-site-accent transition-colors">{r.message}</button>
           </Td>
           <Td className="text-xs text-site-muted text-center">{r.exitCode ?? '—'}</Td>
           <Td className="text-xs text-site-muted">{r.version}</Td>
@@ -327,15 +556,200 @@ function CrashTab({ reports, onSelect, selected }: { reports: CrashReport[]; onS
   )
 }
 
-// ── Main Component ─────────────────────────────────────────────────────────────
-type Tab = 'dash' | 'users' | 'activity' | 'sessions' | 'orders' | 'crashes'
+// ── Coupons Tab ────────────────────────────────────────────────────────────────
+function CouponsTab({ coupons, setCoupons }: { coupons: Coupon[]; setCoupons: React.Dispatch<React.SetStateAction<Coupon[]>> }) {
+  const { toast } = useToast()
+  const [form, setForm] = useState({ code: '', type: 'percent', value: '', description: '', maxUses: '', expiresAt: '' })
+  const [creating, setCreating] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+
+  const create = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setCreating(true)
+    try {
+      const r = await fetch('/api/admin/coupons', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, value: Number(form.value), maxUses: form.maxUses ? Number(form.maxUses) : null, expiresAt: form.expiresAt || null }),
+      })
+      const data = await r.json()
+      if (!r.ok) { toast(data.error ?? 'Ошибка', 'error'); return }
+      setCoupons(prev => [data, ...prev])
+      setForm({ code: '', type: 'percent', value: '', description: '', maxUses: '', expiresAt: '' })
+      setShowForm(false)
+      toast('Купон создан', 'success')
+    } catch { toast('Ошибка', 'error') } finally { setCreating(false) }
+  }
+
+  const toggle = async (code: string, active: boolean) => {
+    const r = await fetch(`/api/admin/coupons/${code}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active }),
+    })
+    if (r.ok) setCoupons(prev => prev.map(c => c.code === code ? { ...c, active } : c))
+    else toast('Ошибка', 'error')
+  }
+
+  const del = async (code: string) => {
+    if (!confirm(`Удалить купон ${code}?`)) return
+    const r = await fetch(`/api/admin/coupons/${code}`, { method: 'DELETE' })
+    if (r.ok) setCoupons(prev => prev.filter(c => c.code !== code))
+    else toast('Ошибка', 'error')
+  }
+
+  const inputCls = "bg-site-block border border-site-border focus:border-site-accent rounded px-3 py-2 text-sm text-site-text placeholder-site-muted/50 focus:outline-none transition-colors"
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <span className="text-site-muted text-xs">{coupons.length} купонов · {coupons.filter(c => c.active).length} активных</span>
+        <button onClick={() => setShowForm(v => !v)}
+          className="px-3 py-1.5 text-xs border border-site-accent/50 text-site-accent hover:bg-site-accent/10 rounded transition-colors">
+          {showForm ? 'Закрыть' : '+ Создать купон'}
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={create} className="bg-site-block border border-site-border rounded-lg p-4 space-y-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <input required placeholder="КОД (A-Z0-9)" value={form.code} onChange={e => setForm(p => ({ ...p, code: e.target.value.toUpperCase() }))} className={inputCls} />
+            <select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))} className={inputCls}>
+              <option value="percent">Процент %</option>
+              <option value="fixed">Фиксированный р</option>
+              <option value="free">Бесплатно</option>
+            </select>
+            <input placeholder={form.type === 'percent' ? 'Размер (%)' : form.type === 'fixed' ? 'Сумма (р)' : '0'} type="number" min="0" value={form.value} onChange={e => setForm(p => ({ ...p, value: e.target.value }))} className={inputCls} />
+            <input placeholder="Описание" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} className={inputCls} />
+            <input placeholder="Макс. использований" type="number" min="1" value={form.maxUses} onChange={e => setForm(p => ({ ...p, maxUses: e.target.value }))} className={inputCls} />
+            <input placeholder="Истекает" type="datetime-local" value={form.expiresAt} onChange={e => setForm(p => ({ ...p, expiresAt: e.target.value }))} className={inputCls} />
+          </div>
+          <button type="submit" disabled={creating}
+            className="px-4 py-2 text-xs bg-site-accent text-white rounded hover:bg-site-accent/80 disabled:opacity-40 transition-colors">
+            {creating ? 'Создаём...' : 'Создать'}
+          </button>
+        </form>
+      )}
+
+      <Table cols={['Код', 'Тип', 'Скидка', 'Описание', 'Использований', 'Истекает', 'Статус', '']}>
+        {coupons.map(c => (
+          <Tr key={c.code}>
+            <Td className="font-mono font-bold">{c.code}</Td>
+            <Td className="text-site-muted text-xs">{c.type}</Td>
+            <Td className="font-bold text-site-accent">
+              {c.type === 'free' ? 'FREE' : c.type === 'percent' ? `${c.value}%` : `${c.value}р`}
+            </Td>
+            <Td className="text-site-muted text-xs">{c.description || '—'}</Td>
+            <Td className="text-center text-xs">{c.usedCount}{c.maxUses ? ` / ${c.maxUses}` : ''}</Td>
+            <Td className="text-xs text-site-muted whitespace-nowrap">{c.expiresAt ? fmtDate(c.expiresAt) : 'навсегда'}</Td>
+            <Td>
+              <button onClick={() => toggle(c.code, !c.active)}
+                className={`px-2 py-0.5 rounded text-xs border transition-colors ${c.active ? 'border-green-500/50 text-green-400 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/50' : 'border-red-500/50 text-red-400 hover:bg-green-500/10 hover:text-green-400 hover:border-green-500/50'}`}>
+                {c.active ? 'Активен' : 'Отключён'}
+              </button>
+            </Td>
+            <Td>
+              <button onClick={() => del(c.code)} className="text-xs text-site-muted hover:text-red-400 transition-colors">Удалить</button>
+            </Td>
+          </Tr>
+        ))}
+      </Table>
+    </div>
+  )
+}
+
+// ── RCON Tab ───────────────────────────────────────────────────────────────────
+const RCON_PRESETS = [
+  { label: 'Список игроков', cmd: 'list' },
+  { label: 'Время', cmd: 'time query daytime' },
+  { label: 'TPS', cmd: 'tps' },
+  { label: 'Версия', cmd: 'version' },
+  { label: 'Clearlag', cmd: 'clearlagg run' },
+  { label: 'Online mode', cmd: 'whitelist list' },
+]
+
+function RconTab() {
+  const { toast } = useToast()
+  const [cmd, setCmd] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [history, setHistory] = useState<{ cmd: string; result: string; ok: boolean; ts: number }[]>([])
+  const logRef = useRef<HTMLDivElement>(null)
+
+  const send = async (command: string) => {
+    const c = command.trim()
+    if (!c) return
+    setLoading(true)
+    try {
+      const r = await fetch('/api/admin/rcon', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: c }),
+      })
+      const data = await r.json()
+      setHistory(prev => [...prev, { cmd: c, ts: Date.now(), ok: data.success ?? r.ok, result: data.error ?? (data.success ? 'OK' : JSON.stringify(data)) }])
+      if (!data.success && data.error) toast(data.error, 'error')
+      setCmd('')
+    } catch { toast('Ошибка', 'error') } finally { setLoading(false) }
+  }
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
+  }, [history])
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-site-block border border-site-border rounded-lg p-4 space-y-3">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="w-2 h-2 rounded-full bg-green-400" />
+          <span className="text-xs text-site-muted font-mono">RCON → mc.vibestudy.ru</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {RCON_PRESETS.map(p => (
+            <button key={p.cmd} onClick={() => send(p.cmd)} disabled={loading}
+              className="px-2.5 py-1 text-xs border border-site-border hover:border-site-accent text-site-muted hover:text-site-text rounded disabled:opacity-40 transition-colors">
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <div className="flex-1 flex items-center bg-black/40 border border-site-border focus-within:border-site-accent rounded px-3 py-2 gap-2 transition-colors">
+            <span className="text-green-400 text-sm font-mono">&gt;</span>
+            <input value={cmd} onChange={e => setCmd(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(cmd) } }}
+              placeholder="Команда для сервера..."
+              className="flex-1 bg-transparent text-sm text-site-text placeholder-site-muted/40 focus:outline-none font-mono" />
+          </div>
+          <button onClick={() => send(cmd)} disabled={loading || !cmd.trim()}
+            className="px-4 py-2 text-xs bg-site-accent text-white rounded hover:bg-site-accent/80 disabled:opacity-40 transition-colors font-medium">
+            {loading ? '...' : 'Run'}
+          </button>
+        </div>
+        {history.length > 0 && (
+          <div ref={logRef} className="bg-black/40 rounded p-3 max-h-64 overflow-y-auto space-y-2 font-mono text-xs">
+            {history.map(h => (
+              <div key={h.ts} className="space-y-0.5">
+                <div className="text-green-400">&gt; {h.cmd}</div>
+                <div className={h.ok ? 'text-site-muted' : 'text-red-400'}>{h.result}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="text-site-muted text-xs bg-yellow-500/5 border border-yellow-500/20 rounded p-3">
+        Команды stop, restart, ban-ip, op/deop заблокированы из панели. Используй SSH для критических операций.
+      </div>
+    </div>
+  )
+}
+
+// ── Main ───────────────────────────────────────────────────────────────────────
+type Tab = 'dash' | 'users' | 'activity' | 'sessions' | 'orders' | 'crashes' | 'coupons' | 'rcon'
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'dash', label: '📊 Обзор' },
-  { id: 'users', label: '👥 Пользователи' },
-  { id: 'activity', label: '📋 Активность' },
-  { id: 'sessions', label: '🎮 Сессии' },
-  { id: 'orders', label: '💰 Заказы' },
-  { id: 'crashes', label: '💥 Краши' },
+  { id: 'dash', label: 'Обзор' },
+  { id: 'users', label: 'Пользователи' },
+  { id: 'activity', label: 'Активность' },
+  { id: 'sessions', label: 'Сессии' },
+  { id: 'orders', label: 'Заказы' },
+  { id: 'crashes', label: 'Краши' },
+  { id: 'coupons', label: 'Купоны' },
+  { id: 'rcon', label: 'RCON' },
 ]
 
 export default function AdminPage() {
@@ -351,7 +765,11 @@ export default function AdminPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [crashes, setCrashes] = useState<CrashReport[]>([])
   const [selectedCrash, setSelectedCrash] = useState<CrashReport | null>(null)
+  const [coupons, setCoupons] = useState<Coupon[]>([])
   const [retrying, setRetrying] = useState<string | null>(null)
+  const [selectedUser, setSelectedUser] = useState<string | null>(null)
+  const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([])
+  const [sseStatus, setSseStatus] = useState<'connecting' | 'live' | 'off'>('connecting')
 
   const loaded = useRef<Set<Tab>>(new Set())
 
@@ -365,46 +783,51 @@ export default function AdminPage() {
     setLoading(true)
     try {
       if (t === 'dash') {
-        const [sr, er] = await Promise.all([
-          fetch('/api/admin/stats'),
-          fetch('/api/admin/login-events'),
-        ])
+        const [sr, er] = await Promise.all([fetch('/api/admin/stats'), fetch('/api/admin/login-events')])
         if (!checkAuth(sr)) return
-        setStats(await sr.json())
-        setEvents(await er.json())
+        setStats(await sr.json()); setEvents(await er.json())
       } else if (t === 'users') {
-        const r = await fetch('/api/admin/users')
-        if (!checkAuth(r)) return
-        setUsers(await r.json())
+        const r = await fetch('/api/admin/users'); if (!checkAuth(r)) return; setUsers(await r.json())
       } else if (t === 'activity') {
-        const r = await fetch('/api/admin/login-events')
-        if (!checkAuth(r)) return
-        setEvents(await r.json())
+        const r = await fetch('/api/admin/login-events'); if (!checkAuth(r)) return; setEvents(await r.json())
       } else if (t === 'sessions') {
-        const r = await fetch('/api/admin/game-tokens')
-        if (!checkAuth(r)) return
-        setTokens(await r.json())
+        const r = await fetch('/api/admin/game-tokens'); if (!checkAuth(r)) return; setTokens(await r.json())
       } else if (t === 'orders') {
-        const r = await fetch('/api/admin/orders')
-        if (!checkAuth(r)) return
-        setOrders(await r.json())
+        const r = await fetch('/api/admin/orders'); if (!checkAuth(r)) return; setOrders(await r.json())
       } else if (t === 'crashes') {
-        const r = await fetch('/api/admin/crash-reports')
-        if (!checkAuth(r)) return
-        setCrashes(await r.json())
+        const r = await fetch('/api/admin/crash-reports'); if (!checkAuth(r)) return; setCrashes(await r.json())
+      } else if (t === 'coupons') {
+        const r = await fetch('/api/admin/coupons'); if (!checkAuth(r)) return; setCoupons(await r.json())
       }
       loaded.current.add(t)
-    } catch {
-      toast('Ошибка загрузки', 'error')
-    } finally {
-      setLoading(false)
-    }
+    } catch { toast('Ошибка загрузки', 'error') } finally { setLoading(false) }
   }, [checkAuth, toast])
+
+  useEffect(() => {
+    let es: EventSource | null = null
+    let retryTimer: ReturnType<typeof setTimeout>
+    const connect = () => {
+      es = new EventSource('/api/admin/events')
+      es.onopen = () => setSseStatus('live')
+      es.onerror = () => {
+        setSseStatus('off'); es?.close()
+        retryTimer = setTimeout(connect, 10000)
+      }
+      es.onmessage = (evt) => {
+        try {
+          const parsed = JSON.parse(evt.data) as LiveEvent
+          if (parsed.type === 'connected') return
+          setLiveEvents(prev => [...prev.slice(-49), parsed])
+        } catch { /* ignore */ }
+      }
+    }
+    connect()
+    return () => { es?.close(); clearTimeout(retryTimer) }
+  }, [])
 
   useEffect(() => { loadTab('dash') }, [loadTab])
 
   const switchTab = (t: Tab) => { setTab(t); loadTab(t) }
-
   const refresh = () => { loaded.current.delete(tab); loadTab(tab, true) }
 
   const selectCrash = async (id: string) => {
@@ -425,6 +848,10 @@ export default function AdminPage() {
     } catch { toast('Ошибка', 'error') } finally { setRetrying(null) }
   }
 
+  const updateUser = (update: Partial<AdminUser>) => {
+    setUsers(prev => prev.map(u => u.id === update.id ? { ...u, ...update } : u))
+  }
+
   const logout = async () => {
     await fetch('/api/admin/logout', { method: 'POST' })
     router.push('/admin/login')
@@ -432,47 +859,44 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-site-bg">
-      {/* Top bar */}
+      {selectedUser && (
+        <UserModal userId={selectedUser} onClose={() => setSelectedUser(null)} onUpdate={updateUser} />
+      )}
+
       <div className="border-b border-site-border bg-site-block/80 backdrop-blur sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="font-pixel text-xs text-site-accent">ADMIN</span>
-            {loading && <span className="text-site-muted text-xs animate-pulse">загрузка…</span>}
+          <div className="flex items-center gap-3">
+            <span className="font-pixel text-xs text-site-accent">NATUX ADMIN</span>
+            <span className={`flex items-center gap-1.5 text-xs ${sseStatus === 'live' ? 'text-green-400' : sseStatus === 'connecting' ? 'text-yellow-400' : 'text-red-400'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${sseStatus === 'live' ? 'bg-green-400 animate-pulse' : sseStatus === 'connecting' ? 'bg-yellow-400' : 'bg-red-400'}`} />
+              {sseStatus}
+            </span>
+            {loading && <span className="text-site-muted text-xs animate-pulse">загрузка...</span>}
           </div>
           <div className="flex gap-2">
-            <button onClick={refresh}
-              className="px-3 py-1.5 border border-site-border hover:border-site-accent text-site-muted hover:text-site-text rounded text-xs transition-colors">
-              ↻ Обновить
-            </button>
-            <button onClick={logout}
-              className="px-3 py-1.5 border border-site-border hover:border-red-500 text-site-muted hover:text-red-400 rounded text-xs transition-colors">
-              Выйти
-            </button>
+            <button onClick={refresh} className="px-3 py-1.5 border border-site-border hover:border-site-accent text-site-muted hover:text-site-text rounded text-xs transition-colors">Обновить</button>
+            <button onClick={logout} className="px-3 py-1.5 border border-site-border hover:border-red-500 text-site-muted hover:text-red-400 rounded text-xs transition-colors">Выйти</button>
           </div>
         </div>
-        {/* Tabs */}
-        <div className="max-w-7xl mx-auto px-4 flex gap-1 pb-0 overflow-x-auto">
+        <div className="max-w-7xl mx-auto px-4 flex overflow-x-auto">
           {TABS.map(({ id, label }) => (
             <button key={id} onClick={() => switchTab(id)}
-              className={`px-4 py-2.5 text-xs whitespace-nowrap border-b-2 transition-colors ${
-                tab === id
-                  ? 'border-site-accent text-site-accent'
-                  : 'border-transparent text-site-muted hover:text-site-text'
-              }`}>
+              className={`px-4 py-2.5 text-xs whitespace-nowrap border-b-2 transition-colors ${tab === id ? 'border-site-accent text-site-accent' : 'border-transparent text-site-muted hover:text-site-text'}`}>
               {label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Content */}
       <div className="max-w-7xl mx-auto px-4 py-6">
-        {tab === 'dash' && <DashTab stats={stats} events={events} />}
-        {tab === 'users' && <UsersTab users={users} />}
+        {tab === 'dash' && <DashTab stats={stats} events={events} liveEvents={liveEvents} />}
+        {tab === 'users' && <UsersTab users={users} onSelect={setSelectedUser} onUpdate={updateUser} />}
         {tab === 'activity' && <ActivityTab events={events} />}
         {tab === 'sessions' && <SessionsTab tokens={tokens} />}
         {tab === 'orders' && <OrdersTab orders={orders} onRetry={retryOrder} retrying={retrying} />}
         {tab === 'crashes' && <CrashTab reports={crashes} onSelect={selectCrash} selected={selectedCrash} />}
+        {tab === 'coupons' && <CouponsTab coupons={coupons} setCoupons={setCoupons} />}
+        {tab === 'rcon' && <RconTab />}
       </div>
     </div>
   )

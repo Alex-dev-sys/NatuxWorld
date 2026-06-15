@@ -1,0 +1,109 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/db'
+import { requireAdmin } from '@/lib/adminAuth'
+
+export const dynamic = 'force-dynamic'
+
+type Ctx = { params: { id: string } }
+
+export async function GET(req: NextRequest, { params }: Ctx) {
+  if (!(await requireAdmin(req))) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
+
+  const user = await prisma.user.findUnique({
+    where: { id: params.id },
+    select: {
+      id: true, username: true, email: true,
+      emailVerified: true, tokenVersion: true,
+      bannedAt: true, banReason: true, createdAt: true,
+    },
+  })
+  if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const [orders, logins, tokens] = await Promise.all([
+    prisma.order.findMany({
+      where: { username: user.username },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: {
+        id: true, publicId: true, productName: true, variantDurationLabel: true,
+        price: true, status: true, createdAt: true, deliveredAt: true, couponCode: true,
+      },
+    }),
+    prisma.loginEvent.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { id: true, kind: true, ip: true, userAgent: true, createdAt: true },
+    }),
+    prisma.gameToken.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: { accessToken: true, serverId: true, createdAt: true },
+    }),
+  ])
+
+  return NextResponse.json({
+    ...user,
+    orders,
+    logins,
+    tokens: tokens.map(t => ({
+      accessToken: t.accessToken.slice(0, 8) + '…',
+      hasServerId: !!t.serverId,
+      createdAt: t.createdAt,
+    })),
+  })
+}
+
+export async function PATCH(req: NextRequest, { params }: Ctx) {
+  if (!(await requireAdmin(req))) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
+
+  const body = await req.json()
+  const { action, banReason } = body as { action: string; banReason?: string }
+
+  const user = await prisma.user.findUnique({ where: { id: params.id } })
+  if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  if (action === 'ban') {
+    const updated = await prisma.user.update({
+      where: { id: params.id },
+      data: { bannedAt: new Date(), banReason: banReason ?? 'Заблокирован администратором', tokenVersion: { increment: 1 } },
+    })
+    return NextResponse.json({ ok: true, user: updated })
+  }
+
+  if (action === 'unban') {
+    const updated = await prisma.user.update({
+      where: { id: params.id },
+      data: { bannedAt: null, banReason: null },
+    })
+    return NextResponse.json({ ok: true, user: updated })
+  }
+
+  if (action === 'revoke-tokens') {
+    const updated = await prisma.user.update({
+      where: { id: params.id },
+      data: { tokenVersion: { increment: 1 } },
+    })
+    await prisma.gameToken.deleteMany({ where: { userId: params.id } })
+    return NextResponse.json({ ok: true, tokenVersion: updated.tokenVersion })
+  }
+
+  if (action === 'force-verify') {
+    const updated = await prisma.user.update({
+      where: { id: params.id },
+      data: { emailVerified: true, verifyCode: null, verifyCodeExpires: null },
+    })
+    return NextResponse.json({ ok: true, user: updated })
+  }
+
+  if (action === 'force-unverify') {
+    const updated = await prisma.user.update({
+      where: { id: params.id },
+      data: { emailVerified: false },
+    })
+    return NextResponse.json({ ok: true, user: updated })
+  }
+
+  return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+}

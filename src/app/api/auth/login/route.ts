@@ -46,6 +46,11 @@ export async function POST(req: NextRequest) {
     return apiError('rate_limited', 'Слишком много попыток, попробуйте позже', 429)
   }
 
+  if (user.bannedAt) {
+    await logLoginEvent({ userId: user.id, ip, userAgent, kind: 'fail' })
+    return apiError('banned', user.banReason ?? 'Аккаунт заблокирован', 403)
+  }
+
   if (!user.emailVerified) {
     await logLoginEvent({ userId: user.id, ip, userAgent, kind: 'fail' })
     return apiError('email_unverified', 'Подтвердите email', 403)
