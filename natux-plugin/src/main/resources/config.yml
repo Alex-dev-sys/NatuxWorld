@@ -1,0 +1,24 @@
+api:
+  url: "http://127.0.0.1:3000/api/game-event"
+  key: "CHANGE_ME"
+
+# Events to track (set to false to disable)
+track:
+  commands: true
+  chat: true
+  block_break: true
+  block_place: true
+  join: true
+  quit: true
+  death: true
+  kill: true
+
+# Block/place events only for blocks in this list (empty = all blocks)
+# Add block type names to filter noise (e.g. CHEST, DIAMOND_ORE, etc.)
+important_blocks: []
+
+# Batch flush interval in seconds
+flush_interval: 5
+
+# Max events per batch
+batch_size: 100
