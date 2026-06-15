@@ -17,7 +17,37 @@ model User {
   verifyCodeExpires  DateTime?
   bannedAt           DateTime?
   banReason          String?
+  twoFactorEnabled     Boolean   @default(false)
+  twoFactorMethod      String?
+  totpSecretEnc        String?
+  twoFactorCode        String?
+  twoFactorCodeExpires DateTime?
+  backupCodes          TwoFactorBackupCode[]
+  appPasswords         AppPassword[]
   createdAt          DateTime  @default(now())
+}
+
+model TwoFactorBackupCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model AppPassword {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label      String
+  hash       String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId])
 }
 
 model Coupon {
