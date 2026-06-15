@@ -17,7 +17,11 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = clientIp(req)
-  if (!rateLimit(`ygg-auth:${ip}:${username}`, 10, 60_000)) {
+  // Two independent buckets: IP-wide cap stops password spraying across many accounts;
+  // per-(ip, account) cap stops targeted brute force. Identifier normalized so
+  // "Admin"/"admin"/" admin " cannot each open a fresh bucket against one account.
+  const acct = username.toLowerCase().trim()
+  if (!rateLimit(`ygg-auth:ip:${ip}`, 30, 60_000) || !rateLimit(`ygg-auth:${ip}:${acct}`, 10, 60_000)) {
     return Response.json(
       { error: 'ForbiddenOperationException', errorMessage: 'Too many requests' },
       { status: 429 },
