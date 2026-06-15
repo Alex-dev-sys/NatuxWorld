@@ -47,8 +47,9 @@ Spec: `docs/superpowers/specs/2026-06-15-two-factor-auth-design.md`.
 
 - [ ] **Step 1: Install**
 
-Run: `npm i otplib qrcode && npm i -D @types/qrcode`
-Expected: `otplib`, `qrcode` in `dependencies`, types in `devDependencies`.
+Run: `npm i otplib@12 qrcode && npm i -D @types/qrcode`
+Expected: `otplib@12`, `qrcode` in `dependencies`, types in `devDependencies`.
+> Pin **otplib v12** — v13 is a functional-API rewrite that removes the `authenticator` export this plan uses.
 
 - [ ] **Step 2: Commit**
 
