@@ -4,7 +4,9 @@ import { prisma } from '@/lib/db'
 import { rateLimit } from '@/lib/ratelimit'
 import { clientIp } from '@/lib/clientIp'
 import { isLockedOut } from '@/lib/lockout'
-import { signToken, formatUser, apiError, logLoginEvent } from '@/lib/auth'
+import { signToken, formatUser, apiError, logLoginEvent, generateCode, codeExpiry, sendVerificationEmail } from '@/lib/auth'
+import { signChallenge } from '@/lib/twofaChallenge'
+import { hashBackupCode } from '@/lib/backupCodes'
 
 export async function POST(req: NextRequest) {
   const ip = clientIp(req)
@@ -54,6 +56,25 @@ export async function POST(req: NextRequest) {
   if (!user.emailVerified) {
     await logLoginEvent({ userId: user.id, ip, userAgent, kind: 'fail' })
     return apiError('email_unverified', 'Подтвердите email', 403)
+  }
+
+  // Password is correct — but if 2FA is on, do NOT issue a session yet. Return a
+  // short-lived challenge; the client completes via POST /api/auth/login/2fa.
+  if (user.twoFactorEnabled) {
+    if (user.twoFactorMethod === 'email') {
+      const code = generateCode()
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { twoFactorCode: hashBackupCode(code), twoFactorCodeExpires: codeExpiry() },
+      })
+      await sendVerificationEmail(user.email, code)
+    }
+    await logLoginEvent({ userId: user.id, ip, userAgent, kind: 'login' })
+    return Response.json({
+      twoFactorRequired: true,
+      method: user.twoFactorMethod,
+      challenge: signChallenge(user.id),
+    })
   }
 
   await logLoginEvent({ userId: user.id, ip, userAgent, kind: 'login' })
