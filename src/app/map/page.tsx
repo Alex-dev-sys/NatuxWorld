@@ -2,7 +2,6 @@ export const metadata = {
   title: 'Карта — NATUX WORLD',
 }
 
-import MapWorld3DLoader from '@/components/three/MapWorld3DLoader'
 
 const X_RULER = ['000', '128', '256', '384', '512', '640']
 const Y_RULER = ['N', '64', '128', '192', 'S']
@@ -77,40 +76,19 @@ export default function MapPage() {
           </span>
         </div>
 
-        {/* 3D Canvas */}
-        <div style={{ width: '100%', height: '70vh', minHeight: 420, background: '#070707', position: 'relative' }}>
-          <MapWorld3DLoader />
-
-          {/* Overlay legend */}
-          <div style={{
-            position: 'absolute', bottom: 16, left: 16, zIndex: 10,
-            display: 'flex', flexDirection: 'column', gap: 6,
-            background: 'rgba(7,7,7,0.80)', border: '1px solid #2a1018',
-            padding: '10px 14px',
-            pointerEvents: 'none',
-          }}>
-            {[
-              { color: '#50C878', label: 'SPAWN' },
-              { color: '#FF2B4F', label: 'PVP ZONE' },
-              { color: '#F0A500', label: 'WARZONE' },
-            ].map(({ color, label }) => (
+        {/* Map placeholder */}
+        <div style={{ width: '100%', height: '70vh', minHeight: 420, background: '#070707', position: 'relative', display: 'grid', placeItems: 'center', border: '1px solid #1a0810' }}>
+          <div style={{ textAlign: 'center', fontFamily: '"JetBrains Mono", monospace', color: '#3A1017' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🗺</div>
+            <div style={{ fontSize: 11, letterSpacing: '0.3em', textTransform: 'uppercase' }}>КАРТА В РАЗРАБОТКЕ</div>
+          </div>
+          <div style={{ position: 'absolute', bottom: 16, left: 16, display: 'flex', flexDirection: 'column', gap: 6, background: 'rgba(7,7,7,0.80)', border: '1px solid #2a1018', padding: '10px 14px' }}>
+            {[{ color: '#50C878', label: 'SPAWN' }, { color: '#FF2B4F', label: 'PVP ZONE' }, { color: '#F0A500', label: 'WARZONE' }].map(({ color, label }) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: '"JetBrains Mono", monospace', fontSize: 9, letterSpacing: '0.2em', color: '#888' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, boxShadow: `0 0 6px ${color}`, display: 'inline-block' }} />
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
                 {label}
               </div>
             ))}
-          </div>
-
-          {/* Drag hint */}
-          <div style={{
-            position: 'absolute', bottom: 16, right: 16, zIndex: 10,
-            fontFamily: '"JetBrains Mono", monospace', fontSize: 9,
-            letterSpacing: '0.2em', color: '#5a2730', textTransform: 'uppercase',
-            background: 'rgba(7,7,7,0.80)', border: '1px solid #2a1018',
-            padding: '6px 12px',
-            pointerEvents: 'none',
-          }}>
-            {'DRAG TO ROTATE · SCROLL TO ZOOM'}
           </div>
         </div>
 

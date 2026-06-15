@@ -1,7 +1,5 @@
 import { products } from '@/lib/products'
-import RankInsignia from '@/components/RankInsignia'
 import Link from 'next/link'
-import CompareHeaderRow from '@/components/three/CompareHeaderRow'
 
 export const metadata = {
   title: 'Сравнение рангов — NATUX WORLD',
@@ -79,7 +77,6 @@ export default function ComparePage() {
                 style={{ background: '#0a0405', padding: '0 0 4px', verticalAlign: 'bottom' }}
                 aria-hidden="true"
               />
-              <CompareHeaderRow ranks={sorted.map(p => ({ id: p.id, color: p.color }))} />
             </tr>
             <tr>
               <th className={STICKY_LABEL} style={{ background: '#0a0405', borderBottom: '1px solid #3A1017' }}>
@@ -90,7 +87,6 @@ export default function ComparePage() {
               {sorted.map(p => (
                 <th key={p.id} className={TH_BASE} style={{ background: '#0a0405', borderBottom: `2px solid ${p.color}`, borderLeft: '1px solid #160808' }}>
                   <div className="flex flex-col items-center gap-1.5">
-                    <RankInsignia rank={p.id} size={26} />
                     <span style={{ fontFamily: '"Bebas Neue", sans-serif', fontSize: 15, letterSpacing: '0.05em', color: p.color }}>
                       {p.name}
                     </span>

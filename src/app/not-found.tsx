@@ -1,13 +1,8 @@
 import Link from 'next/link'
-import dynamic from 'next/dynamic'
-
-const NotFound3D = dynamic(() => import('@/components/three/NotFound3D'), { ssr: false })
 
 export default function NotFound() {
   return (
     <section className="relative overflow-hidden min-h-[80vh] flex flex-col items-center justify-center scanline">
-      {/* 3D voxel backdrop */}
-      <NotFound3D />
       <div className="absolute inset-0 grid-bg opacity-50" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_50%,rgba(139,0,24,0.2)_0%,transparent_70%)]" />
       <div className="absolute top-4 left-4 w-8 h-8 border-l-2 border-t-2 border-site-accent/50" />

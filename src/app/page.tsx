@@ -4,8 +4,6 @@ import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import ServerStatus from '@/components/ServerStatus'
 import TopDonors from '@/components/TopDonors'
-import { Hero3D } from '@/components/three'
-import { PremiumCard } from '@/components/PremiumFX'
 import type { ServerStatus as ServerStatusType } from '@/lib/types'
 
 const MONO = { fontFamily: '"JetBrains Mono", monospace' }
@@ -630,7 +628,6 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_50%_120%,rgba(139,0,24,0.22)_0%,transparent_60%)]" />
         <div className="absolute inset-0 grid-bg opacity-60" />
         <div className="absolute inset-0 grid-bg-dense opacity-20" style={{ maskImage: 'radial-gradient(ellipse 60% 50% at 50% 45%, #000 0%, transparent 75%)' }} />
-        <Hero3D className="absolute inset-0 z-[2] pointer-events-none opacity-90 mix-blend-screen" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_40%,rgba(139,0,24,0.18)_0%,transparent_70%)]" />
         {/* moving scan sweep for depth */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -769,12 +766,9 @@ export default function HomePage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {features.map((f, i) => (
-            <PremiumCard
+            <div
               key={f.title}
-              color="#FF2B4F"
-              tilt={3}
-              className="group bg-[#0d0000]/60 border border-[#3A1017] hover:border-site-accent/60 clip-tr transition-all duration-300 p-5 hover:bg-[#130000]/80 overflow-hidden"
-              style={{ animationDelay: `${i * 0.1}s` }}
+              className="group relative bg-[#0d0000]/60 border border-[#3A1017] hover:border-site-accent/60 clip-tr transition-all duration-300 p-5 hover:bg-[#130000]/80 overflow-hidden"
             >
               {/* scanline overlay on hover */}
               <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{
@@ -801,7 +795,7 @@ export default function HomePage() {
                   {'>'} {f.detail}
                 </div>
               </div>
-            </PremiumCard>
+            </div>
           ))}
         </div>
       </section>
