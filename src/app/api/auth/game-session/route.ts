@@ -10,11 +10,13 @@ export async function POST(req: NextRequest) {
   const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
   if (!bearer) return apiError('unauthorized', 'Требуется JWT токен', 401)
 
-  let userId: string
-  try { userId = verifyToken(bearer) } catch { return apiError('token_invalid', 'Сессия истекла', 401) }
+  let claims: { sub: string; tv: number }
+  try { claims = verifyToken(bearer) } catch { return apiError('token_invalid', 'Сессия истекла', 401) }
 
-  const user = await prisma.user.findUnique({ where: { id: userId } })
-  if (!user || !user.emailVerified) return apiError('unauthorized', 'Аккаунт не верифицирован', 403)
+  const user = await prisma.user.findUnique({ where: { id: claims.sub } })
+  if (!user || !user.emailVerified || user.tokenVersion !== claims.tv) {
+    return apiError('unauthorized', 'Аккаунт не верифицирован', 403)
+  }
 
   const accessToken = randomToken()
   const clientToken = randomToken()

@@ -7,15 +7,15 @@ export async function GET(req: NextRequest) {
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
   if (!token) return apiError('token_invalid', 'Сессия истекла', 401)
 
-  let userId: string
+  let claims: { sub: string; tv: number }
   try {
-    userId = verifyToken(token)
+    claims = verifyToken(token)
   } catch {
     return apiError('token_invalid', 'Сессия истекла', 401)
   }
 
-  const user = await prisma.user.findUnique({ where: { id: userId } })
-  if (!user) return apiError('token_invalid', 'Сессия истекла', 401)
+  const user = await prisma.user.findUnique({ where: { id: claims.sub } })
+  if (!user || user.tokenVersion !== claims.tv) return apiError('token_invalid', 'Сессия истекла', 401)
 
   return Response.json({ user: formatUser(user) })
 }

@@ -40,6 +40,6 @@ export async function POST(req: NextRequest) {
   })
 
   await logLoginEvent({ userId: updated.id, ip, userAgent, kind: 'verify' })
-  const token = signToken(updated.id)
+  const token = signToken(updated.id, updated.tokenVersion)
   return Response.json({ token, user: formatUser(updated) })
 }
