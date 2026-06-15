@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/db'
 import { buildProfile, randomToken } from '@/lib/yggdrasil'
+import { rateLimit } from '@/lib/ratelimit'
+import { clientIp } from '@/lib/clientIp'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,6 +14,14 @@ export async function POST(req: NextRequest) {
   const { username, password, clientToken, requestUser } = body as Record<string, string>
   if (!username || !password) {
     return Response.json({ error: 'ForbiddenOperationException', errorMessage: 'Invalid credentials' }, { status: 403 })
+  }
+
+  const ip = clientIp(req)
+  if (!rateLimit(`ygg-auth:${ip}:${username}`, 10, 60_000)) {
+    return Response.json(
+      { error: 'ForbiddenOperationException', errorMessage: 'Too many requests' },
+      { status: 429 },
+    )
   }
 
   const isEmail = username.includes('@')
