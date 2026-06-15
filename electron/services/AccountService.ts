@@ -7,6 +7,9 @@ export interface AccountUser {
   id: string;
   username: string;
   email: string;
+  // Populated by /me (and bootstrap). Undefined right after login until refreshed.
+  twoFactorEnabled?: boolean;
+  twoFactorMethod?: string | null;
 }
 
 export interface StoredSession {

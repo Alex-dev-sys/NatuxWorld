@@ -93,6 +93,7 @@ export const useAccountStore = create<AccountState>((set, get) => ({
           return true;
         }
         set({ status: 'authed', user: res.data.user });
+        await get().bootstrap(); // refresh full user (incl. twoFactorEnabled) from /me
         return true;
       }
       if (res.error.code === 'email_unverified') set({ pendingEmail: login.includes('@') ? login : null });
@@ -112,6 +113,7 @@ export const useAccountStore = create<AccountState>((set, get) => ({
       const res = await bridge.account.login2fa({ challenge, code });
       if (res.ok && !res.data.twoFactor) {
         set({ status: 'authed', user: res.data.user, twoFactorChallenge: null, twoFactorMethod: null });
+        await get().bootstrap(); // refresh full user (incl. twoFactorEnabled) from /me
         return true;
       }
       set({ error: res.ok ? 'Ошибка' : res.error.message });
