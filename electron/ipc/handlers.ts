@@ -204,9 +204,35 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('account:login', (_e, p: { login: string; password: string }) =>
     accountWrap(async () => {
-      const session = await account.login(p.login, p.password);
+      const r = await account.login(p.login, p.password);
+      if (r.kind === '2fa') return { twoFactor: true as const, method: r.method, challenge: r.challenge };
+      await account.saveStored(r.session);
+      return { twoFactor: false as const, user: r.session.user };
+    }));
+
+  ipcMain.handle('account:login2fa', (_e, p: { challenge: string; code: string }) =>
+    accountWrap(async () => {
+      const session = await account.loginTwoFactor(p.challenge, p.code);
       await account.saveStored(session);
-      return session.user;
+      return { twoFactor: false as const, user: session.user };
+    }));
+
+  ipcMain.handle('account:2faSetup', () =>
+    accountWrap(async () => {
+      const s = await account.loadStored();
+      if (!s) throw new AccountApiError('token_invalid', 'Сессия истекла', 401);
+      return account.twoFactorSetup(s.token);
+    }));
+
+  ipcMain.handle('account:2faEnable', (_e, p: { code: string }) =>
+    accountWrap(async () => {
+      const s = await account.loadStored();
+      if (!s) throw new AccountApiError('token_invalid', 'Сессия истекла', 401);
+      const res = await account.twoFactorEnable(s.token, p.code);
+      // Enabling bumps tokenVersion server-side → the stored JWT is now dead. Drop it so
+      // the user re-logs in (now through the 2FA step).
+      await account.clearStored();
+      return res;
     }));
 
   ipcMain.handle('account:logout', async () => { await account.clearStored(); return { ok: true as const }; });

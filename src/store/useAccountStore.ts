@@ -9,11 +9,17 @@ interface AccountState {
   user: AccountUser | null;
   error: string | null;
   pendingEmail: string | null;
+  /** Set when /login returned a 2FA challenge — the login UI then asks for the code. */
+  twoFactorChallenge: string | null;
+  twoFactorMethod: string | null;
   bootstrap: () => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<boolean>;
   verify: (code: string) => Promise<boolean>;
   resend: () => Promise<void>;
   login: (login: string, password: string) => Promise<boolean>;
+  /** Complete login by submitting the TOTP / email / backup code. */
+  submitTwoFactor: (code: string) => Promise<boolean>;
+  cancelTwoFactor: () => void;
   logout: () => Promise<void>;
   clearError: () => void;
   /** Abandon the email-verification step and return to the login/register form. */
@@ -25,6 +31,8 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   user: null,
   error: null,
   pendingEmail: null,
+  twoFactorChallenge: null,
+  twoFactorMethod: null,
 
   bootstrap: async () => {
     try {
@@ -79,7 +87,14 @@ export const useAccountStore = create<AccountState>((set, get) => ({
     set({ error: null });
     try {
       const res = await bridge.account.login({ login, password });
-      if (res.ok) { set({ status: 'authed', user: res.data }); return true; }
+      if (res.ok) {
+        if (res.data.twoFactor) {
+          set({ twoFactorChallenge: res.data.challenge, twoFactorMethod: res.data.method ?? null });
+          return true;
+        }
+        set({ status: 'authed', user: res.data.user });
+        return true;
+      }
       if (res.error.code === 'email_unverified') set({ pendingEmail: login.includes('@') ? login : null });
       set({ error: res.error.message });
       return false;
@@ -88,6 +103,26 @@ export const useAccountStore = create<AccountState>((set, get) => ({
       return false;
     }
   },
+
+  submitTwoFactor: async (code) => {
+    const challenge = get().twoFactorChallenge;
+    if (!challenge) return false;
+    set({ error: null });
+    try {
+      const res = await bridge.account.login2fa({ challenge, code });
+      if (res.ok && !res.data.twoFactor) {
+        set({ status: 'authed', user: res.data.user, twoFactorChallenge: null, twoFactorMethod: null });
+        return true;
+      }
+      set({ error: res.ok ? 'Ошибка' : res.error.message });
+      return false;
+    } catch {
+      set({ error: 'Ошибка сети' });
+      return false;
+    }
+  },
+
+  cancelTwoFactor: () => set({ twoFactorChallenge: null, twoFactorMethod: null, error: null }),
 
   logout: async () => {
     try {

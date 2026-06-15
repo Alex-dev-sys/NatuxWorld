@@ -70,6 +70,9 @@ const api = {
     verify: (p: unknown) => ipcRenderer.invoke('account:verify', p),
     resend: (p: unknown) => ipcRenderer.invoke('account:resend', p),
     login: (p: unknown) => ipcRenderer.invoke('account:login', p),
+    login2fa: (p: unknown) => ipcRenderer.invoke('account:login2fa', p),
+    twoFactorSetup: () => ipcRenderer.invoke('account:2faSetup'),
+    twoFactorEnable: (p: unknown) => ipcRenderer.invoke('account:2faEnable', p),
     logout: () => ipcRenderer.invoke('account:logout'),
   },
   app: {
