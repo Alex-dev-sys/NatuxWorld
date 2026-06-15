@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { timingSafeEqual } from 'crypto'
 import { createSessionToken, ADMIN_SESSION_TTL_SECONDS } from '@/lib/adminSession'
+import { rateLimit } from '@/lib/ratelimit'
+import { clientIp } from '@/lib/clientIp'
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   if (!body?.password) {
     return NextResponse.json({ error: 'Пароль не указан' }, { status: 400 })
+  }
+
+  const ip = clientIp(req)
+  if (!rateLimit(`admin-login:${ip}`, 5, 60_000)) {
+    return NextResponse.json({ error: 'Слишком много попыток, подождите' }, { status: 429 })
   }
 
   const adminPassword = process.env.ADMIN_PASSWORD
