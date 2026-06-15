@@ -12,6 +12,7 @@ model User {
   email              String    @unique
   passwordHash       String
   emailVerified      Boolean   @default(false)
+  tokenVersion       Int       @default(0)
   verifyCode         String?
   verifyCodeExpires  DateTime?
   createdAt          DateTime  @default(now())
