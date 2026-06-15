@@ -6,6 +6,7 @@ import { rateLimit } from '@/lib/ratelimit'
 import { clientIp } from '@/lib/clientIp'
 import { isLockedOut } from '@/lib/lockout'
 import { logLoginEvent } from '@/lib/auth'
+import { verifyAppPassword } from '@/lib/appPassword'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,7 +39,18 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'ForbiddenOperationException', errorMessage: 'Invalid credentials' }, { status: 403 })
   }
 
-  const valid = await bcrypt.compare(password, user.passwordHash)
+  // 2FA users must use a generated app-password here; the main password is NOT
+  // accepted on this endpoint (the vanilla MC client cannot prompt for a TOTP code).
+  let valid: boolean
+  if (user.twoFactorEnabled) {
+    const aps = await prisma.appPassword.findMany({ where: { userId: user.id }, select: { hash: true } })
+    valid = await verifyAppPassword(password, aps.map((a) => a.hash))
+    if (valid) {
+      await prisma.appPassword.updateMany({ where: { userId: user.id }, data: { lastUsedAt: new Date() } })
+    }
+  } else {
+    valid = await bcrypt.compare(password, user.passwordHash)
+  }
   if (!valid) {
     await logLoginEvent({ userId: user.id, ip, userAgent: req.headers.get('user-agent') ?? '', kind: 'fail' })
     return Response.json({ error: 'ForbiddenOperationException', errorMessage: 'Invalid credentials' }, { status: 403 })

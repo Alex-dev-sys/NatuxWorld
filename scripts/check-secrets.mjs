@@ -1,7 +1,7 @@
 // scripts/check-secrets.mjs
 // Fails (exit 1) if any required secret is missing, too short, or still a placeholder.
 const PLACEHOLDERS = [/change_me/i, /your_/i, /min_32_chars/i, /example/i]
-const REQUIRED = ['JWT_SECRET', 'ADMIN_PASSWORD', 'ADMIN_SECRET', 'GAME_API_KEY']
+const REQUIRED = ['JWT_SECRET', 'ADMIN_PASSWORD', 'ADMIN_SECRET', 'GAME_API_KEY', 'TWOFA_ENC_KEY', 'ADMIN_TOTP_SECRET']
 
 let bad = false
 for (const name of REQUIRED) {
