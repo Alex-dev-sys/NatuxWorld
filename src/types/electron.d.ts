@@ -13,6 +13,9 @@ import type { AccountUser } from '../../electron/services/AccountService';
 
 export type AccountResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } };
 export type BootstrapResult = { status: 'guest' } | { status: 'authed'; user: AccountUser };
+export type LoginOutcome =
+  | { twoFactor: false; user: AccountUser }
+  | { twoFactor: true; method: string | null; challenge: string };
 
 export interface LauncherLog {
   stream: 'stdout' | 'stderr' | 'forge' | string;
@@ -75,7 +78,10 @@ export interface NatuxAPI {
     register: (p: { username: string; email: string; password: string }) => Promise<AccountResult<void>>;
     verify: (p: { email: string; code: string }) => Promise<AccountResult<AccountUser>>;
     resend: (p: { email: string }) => Promise<AccountResult<void>>;
-    login: (p: { login: string; password: string }) => Promise<AccountResult<AccountUser>>;
+    login: (p: { login: string; password: string }) => Promise<AccountResult<LoginOutcome>>;
+    login2fa: (p: { challenge: string; code: string }) => Promise<AccountResult<{ twoFactor: false; user: AccountUser }>>;
+    twoFactorSetup: () => Promise<AccountResult<{ otpauthUri: string; qr: string }>>;
+    twoFactorEnable: (p: { code: string }) => Promise<AccountResult<{ ok: boolean; backupCodes: string[] }>>;
     logout: () => Promise<{ ok: true }>;
   };
 }

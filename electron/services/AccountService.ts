@@ -14,6 +14,10 @@ export interface StoredSession {
   user: AccountUser;
 }
 
+export type LoginResult =
+  | { kind: 'session'; session: StoredSession }
+  | { kind: '2fa'; method: string | null; challenge: string };
+
 export interface ApiError {
   code: string;
   message: string;
@@ -114,8 +118,30 @@ export class AccountService {
     await this.request('POST', '/resend-code', { email });
   }
 
-  async login(login: string, password: string): Promise<StoredSession> {
-    return this.request<StoredSession>('POST', '/login', { login, password });
+  // /login returns a full session, OR — when 2FA is on — a challenge to complete via
+  // /login/2fa. The handler discriminates on `kind`.
+  async login(login: string, password: string): Promise<LoginResult> {
+    const res = await this.request<Record<string, unknown>>('POST', '/login', { login, password });
+    if (res.twoFactorRequired) {
+      return { kind: '2fa', method: (res.method as string) ?? null, challenge: res.challenge as string };
+    }
+    return { kind: 'session', session: res as unknown as StoredSession };
+  }
+
+  // Second step: exchange the challenge + a TOTP / email / backup code for a real session.
+  async loginTwoFactor(challenge: string, code: string): Promise<StoredSession> {
+    return this.request<StoredSession>('POST', '/login/2fa', { challenge, code });
+  }
+
+  // Begin TOTP enrollment — returns the otpauth URI + a QR data-URL to scan in
+  // Google Authenticator. The secret is stored server-side as pending until /enable.
+  async twoFactorSetup(token: string): Promise<{ otpauthUri: string; qr: string }> {
+    return this.request<{ otpauthUri: string; qr: string }>('POST', '/2fa/totp/setup', undefined, token);
+  }
+
+  // Confirm the code from the app → 2FA on, returns one-time backup codes.
+  async twoFactorEnable(token: string, code: string): Promise<{ ok: boolean; backupCodes: string[] }> {
+    return this.request<{ ok: boolean; backupCodes: string[] }>('POST', '/2fa/totp/enable', { code }, token);
   }
 
   async me(token: string): Promise<AccountUser> {

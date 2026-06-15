@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Check, Copy, LogOut, Pencil, User } from 'lucide-react';
+import { Check, Copy, LogOut, Pencil, ShieldCheck, User } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useAccountStore } from '../store/useAccountStore';
+import { TwoFactorSetup } from './auth/TwoFactorSetup';
 import { isValidUsername } from '../lib/validators';
 import { useCopied } from '../hooks/useCopied';
 import { useLang, pick } from '../i18n';
@@ -13,6 +14,7 @@ const ru = {
   copied: 'Скопировано',
   newNickPh: 'Новый ник',
   changeNick: 'Сменить ник',
+  security: 'Двухфакторка (2FA)',
   logout: 'Выйти',
 };
 const en: typeof ru = {
@@ -21,6 +23,7 @@ const en: typeof ru = {
   copied: 'Copied',
   newNickPh: 'New username',
   changeNick: 'Change username',
+  security: 'Two-factor (2FA)',
   logout: 'Log out',
 };
 const TR = { ru, en };
@@ -37,6 +40,7 @@ export function ProfileMenu() {
   const accountEmail = useAccountStore((s) => s.user?.email);
 
   const [open, setOpen] = useState(false);
+  const [show2fa, setShow2fa] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [copied, markCopied] = useCopied();
@@ -160,6 +164,16 @@ export function ProfileMenu() {
                 </button>
               ) : null}
 
+              {accountName && (
+                <button
+                  onClick={() => { setShow2fa(true); setOpen(false); }}
+                  className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-white/80 hover:bg-white/[0.06] hover:text-white"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  {t.security}
+                </button>
+              )}
+
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-white/80 hover:bg-primary/10 hover:text-primary"
@@ -171,6 +185,8 @@ export function ProfileMenu() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {show2fa && <TwoFactorSetup onClose={() => setShow2fa(false)} />}
     </div>
   );
 }

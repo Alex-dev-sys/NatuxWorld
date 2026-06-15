@@ -90,6 +90,9 @@ const fallback: NatuxAPI = {
     verify: async () => ({ ok: false as const, error: { code: 'offline', message: 'Недоступно в браузере' } }),
     resend: async () => ({ ok: true as const, data: undefined }),
     login: async () => ({ ok: false as const, error: { code: 'offline', message: 'Недоступно в браузере' } }),
+    login2fa: async () => ({ ok: false as const, error: { code: 'offline', message: 'Недоступно в браузере' } }),
+    twoFactorSetup: async () => ({ ok: false as const, error: { code: 'offline', message: 'Недоступно в браузере' } }),
+    twoFactorEnable: async () => ({ ok: false as const, error: { code: 'offline', message: 'Недоступно в браузере' } }),
     logout: async () => ({ ok: true as const }),
   },
 };

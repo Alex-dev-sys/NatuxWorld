@@ -47,12 +47,23 @@ function mockHttps(status: number, body: unknown) {
 }
 
 describe('AccountService HTTP', () => {
-  it('login returns token+user on 200', async () => {
+  it('login returns a session on 200', async () => {
     mockHttps(200, { token: 'jwt1', user: { id: 'u1', username: 'Steve', email: 'a@b.ru' } });
     const { AccountService } = await import('../AccountService');
     const res = await new AccountService().login('Steve', 'secret123');
-    expect(res.token).toBe('jwt1');
-    expect(res.user.username).toBe('Steve');
+    expect(res.kind).toBe('session');
+    if (res.kind === 'session') {
+      expect(res.session.token).toBe('jwt1');
+      expect(res.session.user.username).toBe('Steve');
+    }
+  });
+
+  it('login returns a 2fa challenge when twoFactorRequired', async () => {
+    mockHttps(200, { twoFactorRequired: true, method: 'totp', challenge: 'ch1' });
+    const { AccountService } = await import('../AccountService');
+    const res = await new AccountService().login('Steve', 'secret123');
+    expect(res.kind).toBe('2fa');
+    if (res.kind === '2fa') expect(res.challenge).toBe('ch1');
   });
 
   it('login throws AccountApiError on 401', async () => {
