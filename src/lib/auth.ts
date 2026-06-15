@@ -9,17 +9,17 @@ export function formatUser(u: { id: string; username: string; email: string }): 
   return { id: u.id, username: u.username, email: u.email }
 }
 
-export function signToken(userId: string): string {
+export function signToken(userId: string, tokenVersion: number = 0): string {
   const secret = process.env.JWT_SECRET
   if (!secret) throw new Error('JWT_SECRET not set')
-  return jwt.sign({ sub: userId }, secret, { expiresIn: '30d' })
+  return jwt.sign({ sub: userId, tv: tokenVersion }, secret, { expiresIn: '30d' })
 }
 
-export function verifyToken(token: string): string {
+export function verifyToken(token: string): { sub: string; tv: number } {
   const secret = process.env.JWT_SECRET
   if (!secret) throw new Error('JWT_SECRET not set')
-  const payload = jwt.verify(token, secret) as { sub: string }
-  return payload.sub
+  const payload = jwt.verify(token, secret) as { sub: string; tv?: number }
+  return { sub: payload.sub, tv: payload.tv ?? 0 }
 }
 
 export function generateCode(): string {
