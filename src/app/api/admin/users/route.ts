@@ -15,7 +15,8 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  const ids = users.map(u => u.id)
+  type UserRow = typeof users[number]
+  const ids = users.map((u: UserRow) => u.id)
 
   const [orderCounts, lastLogins] = await Promise.all([
     prisma.order.groupBy({ by: ['username'], _count: { id: true } }),
@@ -27,10 +28,12 @@ export async function GET(req: NextRequest) {
     }),
   ])
 
-  const orderMap = Object.fromEntries(orderCounts.map(o => [o.username, o._count.id]))
-  const loginMap = Object.fromEntries(lastLogins.map(l => [l.userId, { at: l.createdAt, ip: l.ip }]))
+  type OrderCount = typeof orderCounts[number]
+  type LoginRow = typeof lastLogins[number]
+  const orderMap = Object.fromEntries(orderCounts.map((o: OrderCount) => [o.username, o._count.id]))
+  const loginMap = Object.fromEntries(lastLogins.map((l: LoginRow) => [l.userId, { at: l.createdAt, ip: l.ip }]))
 
-  return NextResponse.json(users.map(u => ({
+  return NextResponse.json(users.map((u: UserRow) => ({
     ...u,
     orders: orderMap[u.username] ?? 0,
     lastLogin: loginMap[u.id] ?? null,

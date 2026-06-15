@@ -54,7 +54,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     ...user,
     orders,
     logins,
-    tokens: tokens.map(t => ({
+    tokens: tokens.map((t: { accessToken: string; serverId: string | null; createdAt: Date }) => ({
       accessToken: t.accessToken.slice(0, 8) + '…',
       hasServerId: !!t.serverId,
       createdAt: t.createdAt,

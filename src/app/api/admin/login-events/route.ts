@@ -12,14 +12,16 @@ export async function GET(req: NextRequest) {
     take: 300,
   })
 
-  const userIds = [...new Set(events.map(e => e.userId).filter(Boolean) as string[])]
+  type EventRow = typeof events[number]
+  type UserRow = { id: string; username: string }
+  const userIds = [...new Set(events.map((e: EventRow) => e.userId).filter(Boolean) as string[])]
   const users = await prisma.user.findMany({
     where: { id: { in: userIds } },
     select: { id: true, username: true },
   })
-  const userMap = Object.fromEntries(users.map(u => [u.id, u.username]))
+  const userMap = Object.fromEntries((users as UserRow[]).map((u: UserRow) => [u.id, u.username]))
 
-  return NextResponse.json(events.map(e => ({
+  return NextResponse.json(events.map((e: EventRow) => ({
     ...e,
     username: e.userId ? (userMap[e.userId] ?? null) : null,
   })))

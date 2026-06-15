@@ -16,5 +16,5 @@ export async function POST(req: NextRequest) {
     select: { username: true },
   })
 
-  return Response.json(users.map((u) => buildProfile(u.username)))
+  return Response.json(users.map((u: { username: string }) => buildProfile(u.username)))
 }

@@ -12,14 +12,16 @@ export async function GET(req: NextRequest) {
     take: 200,
   })
 
-  const userIds = [...new Set(tokens.map(t => t.userId))]
+  type TokenRow = typeof tokens[number]
+  type UserRow = { id: string; username: string; email: string }
+  const userIds = [...new Set(tokens.map((t: TokenRow) => t.userId))]
   const users = await prisma.user.findMany({
     where: { id: { in: userIds } },
     select: { id: true, username: true, email: true },
   })
-  const userMap = Object.fromEntries(users.map(u => [u.id, u]))
+  const userMap = Object.fromEntries((users as UserRow[]).map((u: UserRow) => [u.id, u]))
 
-  return NextResponse.json(tokens.map(t => ({
+  return NextResponse.json(tokens.map((t: TokenRow) => ({
     accessToken: t.accessToken.slice(0, 8) + '…',
     hasServerId: !!t.serverId,
     createdAt: t.createdAt,

@@ -20,7 +20,7 @@ export async function GET() {
     })
 
     const donors: LeaderboardEntry[] = await Promise.all(
-      spending.map(async (s) => {
+      spending.map(async (s: typeof spending[number]) => {
         const lastOrder = await prisma.order.findFirst({
           where: { username: s.username, status: 'delivered' },
           orderBy: { paidAt: 'desc' },

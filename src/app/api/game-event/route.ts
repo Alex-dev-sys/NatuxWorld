@@ -50,15 +50,17 @@ export async function POST(req: NextRequest) {
   }))
 
   // Batch-resolve usernames to userIds
-  const usernames = [...new Set(events.map(e => e.username))]
+  type EventRow = typeof events[number]
+  const usernames = [...new Set(events.map((e: EventRow) => e.username))]
   const users = await prisma.user.findMany({
     where: { username: { in: usernames } },
     select: { id: true, username: true },
   })
-  const userMap = Object.fromEntries(users.map(u => [u.username, u.id]))
+  type UserRow = typeof users[number]
+  const userMap = Object.fromEntries(users.map((u: UserRow) => [u.username, u.id]))
 
   await prisma.gameEvent.createMany({
-    data: events.map(e => ({ ...e, userId: userMap[e.username] ?? null })),
+    data: events.map((e: EventRow) => ({ ...e, userId: userMap[e.username] ?? null })),
     skipDuplicates: false,
   })
 
