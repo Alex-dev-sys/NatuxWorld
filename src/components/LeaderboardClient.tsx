@@ -162,7 +162,7 @@ export default function LeaderboardClient() {
       >
         <div style={{ padding: '10px 18px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 9, letterSpacing: '0.35em', color: '#FF2B4F' }}>
-            // ПЬЕДЕСТАЛ
+            {'// ПЬЕДЕСТАЛ'}
           </span>
         </div>
         <Podium3D top3={top3Players} reducedMotion={reducedMotion} />

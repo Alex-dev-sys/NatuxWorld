@@ -189,7 +189,7 @@ export default function Footer() {
         {/* Transmission line */}
         <div className="ftr-transmission mt-6 flex items-center gap-3 overflow-hidden" aria-hidden="true">
           <span className="text-[8px] text-[#3A1017] tracking-[0.3em] uppercase shrink-0" style={{ fontFamily: '"JetBrains Mono", monospace' }}>
-            // TRANSMISSION
+            {'// TRANSMISSION'}
           </span>
           <span className="ftr-transmission-track flex-1 h-px relative overflow-hidden">
             <span className="ftr-transmission-beam absolute inset-y-0 w-1/3" />
