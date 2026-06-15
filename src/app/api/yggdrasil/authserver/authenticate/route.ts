@@ -4,6 +4,8 @@ import { prisma } from '@/lib/db'
 import { buildProfile, randomToken } from '@/lib/yggdrasil'
 import { rateLimit } from '@/lib/ratelimit'
 import { clientIp } from '@/lib/clientIp'
+import { isLockedOut } from '@/lib/lockout'
+import { logLoginEvent } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,7 +40,13 @@ export async function POST(req: NextRequest) {
 
   const valid = await bcrypt.compare(password, user.passwordHash)
   if (!valid) {
+    await logLoginEvent({ userId: user.id, ip, userAgent: req.headers.get('user-agent') ?? '', kind: 'fail' })
     return Response.json({ error: 'ForbiddenOperationException', errorMessage: 'Invalid credentials' }, { status: 403 })
+  }
+
+  // Account-wide lockout shared with /login — failures via either endpoint count together.
+  if (await isLockedOut(user.id)) {
+    return Response.json({ error: 'ForbiddenOperationException', errorMessage: 'Account temporarily locked' }, { status: 429 })
   }
 
   const accessToken = randomToken()
