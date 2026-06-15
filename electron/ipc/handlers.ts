@@ -236,4 +236,11 @@ export function registerIpcHandlers(): void {
     }));
 
   ipcMain.handle('account:logout', async () => { await account.clearStored(); return { ok: true as const }; });
+
+  ipcMain.handle('account:logoutGlobal', async () => {
+    const s = await account.loadStored();
+    if (s) { try { await account.logoutGlobal(s.token); } catch { /* revoke best-effort */ } }
+    await account.clearStored();
+    return { ok: true as const };
+  });
 }

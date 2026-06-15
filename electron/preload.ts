@@ -74,6 +74,7 @@ const api = {
     twoFactorSetup: () => ipcRenderer.invoke('account:2faSetup'),
     twoFactorEnable: (p: unknown) => ipcRenderer.invoke('account:2faEnable', p),
     logout: () => ipcRenderer.invoke('account:logout'),
+    logoutGlobal: () => ipcRenderer.invoke('account:logoutGlobal'),
   },
   app: {
     onReady: (cb: (data: { version: string }) => void) => {

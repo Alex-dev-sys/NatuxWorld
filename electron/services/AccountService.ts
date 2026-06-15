@@ -152,6 +152,12 @@ export class AccountService {
     return res.user;
   }
 
+  // Global logout: bumps tokenVersion server-side → every issued token (all devices /
+  // launchers) is invalidated at once. Best-effort; the local token is cleared regardless.
+  async logoutGlobal(token: string): Promise<void> {
+    await this.request('POST', '/logout', undefined, token);
+  }
+
   async gameSession(token: string): Promise<{ accessToken: string; clientToken: string; uuid: string; username: string }> {
     return this.request<{ accessToken: string; clientToken: string; uuid: string; username: string }>(
       'POST', '/game-session', undefined, token,
