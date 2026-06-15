@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { requireAdmin } from '@/lib/adminAuth'
-import { executeRcon } from '@/lib/rcon'
+import { buildCommands, executeRcon } from '@/lib/rcon'
 import { products } from '@/lib/products'
 
 export const dynamic = 'force-dynamic'
@@ -122,11 +122,22 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const variant = product.variants.find(v => v.duration === duration)
     if (!variant) return NextResponse.json({ error: 'Вариант не найден' }, { status: 404 })
 
-    const commands = variant.commands.map(cmd =>
-      cmd.replace(/{username}/g, user.username).replace(/{rank}/g, product.slug)
-        .replace(/{duration}/g, duration).replace(/{duration_days}/g, duration.replace('d',''))
-        .replace(/{order_id}/g, 'admin').replace(/{price}/g, String(variant.price))
-    )
+    // Route through buildCommands so the username/rank are validated against the
+    // SAFE_USERNAME / SAFE_ALPHANUMERIC guards before hitting RCON — same boundary
+    // the order-delivery path uses. Never interpolate raw user input into commands.
+    let commands: string[]
+    try {
+      commands = buildCommands(variant.commands, {
+        username: user.username,
+        rank: product.slug,
+        duration,
+        durationDays: duration.replace('d', ''),
+        orderId: 'admin',
+        price: variant.price,
+      })
+    } catch {
+      return NextResponse.json({ error: 'Недопустимый ник или ранг для RCON' }, { status: 400 })
+    }
 
     const result = await executeRcon(commands)
     return NextResponse.json({ ok: result.success, commands, error: result.error })

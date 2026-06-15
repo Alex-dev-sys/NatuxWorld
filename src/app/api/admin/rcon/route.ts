@@ -4,7 +4,10 @@ import { executeRcon } from '@/lib/rcon'
 
 export const dynamic = 'force-dynamic'
 
-const DANGEROUS = /^(stop|restart|ban-ip|op|deop|whitelist\s+remove)/i
+// Guardrail against fat-fingering destructive commands from the panel (not a security
+// boundary — the route is already behind admin auth + IP allowlist). `execute` is blocked
+// because it can wrap any of the others (e.g. `execute run stop`). Leading `/` tolerated.
+const DANGEROUS = /^\/?(stop|restart|ban|ban-ip|pardon|op|deop|kick|execute|whitelist\s+remove)\b/i
 
 export async function POST(req: NextRequest) {
   if (!(await requireAdmin(req))) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
