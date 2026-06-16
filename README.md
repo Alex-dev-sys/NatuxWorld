@@ -12,8 +12,7 @@
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-89%20passing-00FF7F)
-![Version](https://img.shields.io/badge/version-1.9.2-FF2B4F)
+![Version](https://img.shields.io/badge/version-1.9.6-FF2B4F)
 
 </div>
 
@@ -163,7 +162,7 @@ NatuxWorld/
 - При старте `bootstrap()` проверяет токен через `/me` — валиден → сразу в лаунчер.
 - Ник аккаунта подставляется как offline-ник Minecraft при запуске.
 
-> ⚠️ Backend `vibestudy.ru/api/auth` пока не развёрнут — UI и экраны работают, сквозной E2E включится после публикации API.
+> Auth-запросы идут на `vibestudy.ru/api/auth` и `vibestudy.ru/api/yggdrasil` — эти эндпоинты реализованы в натуральном виде в репо `natux-world`.
 
 ---
 
