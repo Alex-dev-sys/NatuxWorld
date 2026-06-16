@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { requireAdmin } from '@/lib/adminAuth'
 import { buildCommands, executeRcon } from '@/lib/rcon'
 import { products } from '@/lib/products'
+import { logAdminAction } from '@/lib/adminAudit'
 
 export const dynamic = 'force-dynamic'
 
@@ -79,6 +80,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       where: { id: params.id },
       data: { bannedAt: new Date(), banReason: banReason ?? 'Заблокирован администратором', tokenVersion: { increment: 1 } },
     })
+    await logAdminAction(req, 'user.ban', { target: user.username, params: { banReason }, ok: true })
     return NextResponse.json({ ok: true, user: updated })
   }
 
@@ -87,6 +89,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       where: { id: params.id },
       data: { bannedAt: null, banReason: null },
     })
+    await logAdminAction(req, 'user.unban', { target: user.username, ok: true })
     return NextResponse.json({ ok: true, user: updated })
   }
 
@@ -96,6 +99,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       data: { tokenVersion: { increment: 1 } },
     })
     await prisma.gameToken.deleteMany({ where: { userId: params.id } })
+    await logAdminAction(req, 'user.revoke-tokens', { target: user.username, ok: true })
     return NextResponse.json({ ok: true, tokenVersion: updated.tokenVersion })
   }
 
@@ -104,6 +108,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       where: { id: params.id },
       data: { emailVerified: true, verifyCode: null, verifyCodeExpires: null },
     })
+    await logAdminAction(req, 'user.force-verify', { target: user.username, ok: true })
     return NextResponse.json({ ok: true, user: updated })
   }
 
@@ -112,6 +117,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       where: { id: params.id },
       data: { emailVerified: false },
     })
+    await logAdminAction(req, 'user.force-unverify', { target: user.username, ok: true })
     return NextResponse.json({ ok: true, user: updated })
   }
 
@@ -140,6 +146,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     }
 
     const result = await executeRcon(commands)
+    await logAdminAction(req, 'user.give-rank', { target: user.username, params: { productId, duration }, ok: result.success })
     return NextResponse.json({ ok: result.success, commands, error: result.error })
   }
 

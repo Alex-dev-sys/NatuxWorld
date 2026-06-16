@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getOrderById, updateOrder } from '@/lib/store'
 import { fulfillOrder } from '@/lib/fulfillment'
 import { requireAdmin } from '@/lib/adminAuth'
+import { logAdminAction } from '@/lib/adminAudit'
 
 export async function POST(
   _req: NextRequest,
@@ -26,5 +27,6 @@ export async function POST(
   }
 
   const updated = await fulfillOrder(pending)
+  await logAdminAction(_req, 'order.retry-delivery', { target: order.publicId, params: { status: updated?.status }, ok: updated?.status === 'delivered' })
   return NextResponse.json({ order: updated })
 }
