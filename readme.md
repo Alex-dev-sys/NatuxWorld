@@ -9,7 +9,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3-38bdf8?style=flat-square&logo=tailwindcss)](https://tailwindcss.com)
 [![License](https://img.shields.io/badge/license-private-red?style=flat-square)](#)
 
-`mc.natuxworld.ru` · [vk.com/natuxworld](https://vk.com/natuxworld)
+`mc.vibestudy.ru` · [vk.com/natuxworld](https://vk.com/natuxworld)
 
 </div>
 
@@ -26,10 +26,15 @@
 ## Возможности
 
 - 🛒 **Магазин доната** — 7 рангов × 3 срока (30 дней / 90 дней / навсегда)
-- ✅ **Автовыдача через RCON** — LuckPerms-команды после подтверждения оплаты
+- ✅ **Автовыдача через RCON** — LuckPerms-команды после подтверждения оплаты (с 3 попытками)
 - 🔒 **Защита от двойной выдачи** — идемпотентная обработка webhook
-- 📋 **Страница заказа** — статус оплаты и выдачи в реальном времени
-- 🛡️ **Админ-панель** — таблица заказов, статистика, ручной повтор выдачи
+- 💳 **Оплата** — ЮKassa (карты / СБП) + CryptoBot (крипта) + YooMoney; режим `multi` для совмещения
+- 🎟️ **Промокоды** — валидация скидок перед созданием заказа
+- 🏆 **Лидерборд** — рейтинг игроков
+- 📋 **Страница заказа** — статус оплаты и выдачи
+- 👤 **Авторизация** — регистрация + подтверждение по e-mail + 2FA (TOTP и e-mail) + app-passwords
+- 🔑 **Yggdrasil** — собственный authserver для входа в Minecraft с аккаунтами сайта
+- 🛡️ **Админ-панель** — таблица заказов, пользователи, RCON-консоль, промокоды, статистика, логи
 - 🟢 **Статус сервера** — онлайн, кол-во игроков, версия
 - 📱 **Адаптивная вёрстка** — работает на мобильных устройствах
 
@@ -42,9 +47,9 @@
 | Frontend | Next.js 14 (App Router), React 18, TypeScript |
 | Стили | Tailwind CSS 3, Google Fonts (Press Start 2P, Inter) |
 | Backend | Next.js API Routes |
-| База данных | In-memory (mock) → PostgreSQL + Prisma |
-| Minecraft | RCON → LuckPerms |
-| Оплата | Mock → YooKassa / Robokassa / FreeKassa |
+| База данных | PostgreSQL + Prisma |
+| Minecraft | RCON → LuckPerms, Yggdrasil authserver |
+| Оплата | ЮKassa, CryptoBot, YooMoney |
 | Деплой | Docker, Nginx, VPS |
 
 ---
@@ -62,7 +67,10 @@ npm install
 # 3. Скопировать конфиг окружения
 cp .env.example .env
 
-# 4. Запустить dev-сервер
+# 4. Применить миграции БД
+npx prisma migrate deploy
+
+# 5. Запустить dev-сервер
 npm run dev
 ```
 
@@ -77,19 +85,23 @@ npm run dev
 ```env
 # Публичные настройки
 NEXT_PUBLIC_SERVER_NAME="NATUX WORLD"
-NEXT_PUBLIC_SERVER_IP="mc.natuxworld.ru"
+NEXT_PUBLIC_SERVER_IP="mc.vibestudy.ru"
+NEXT_PUBLIC_SITE_DOMAIN="vibestudy.ru"
 
-# Платёжная система (после подключения)
+# Платёжная система (mock | yookassa | cryptobot | yoomoney | multi)
+# multi = ЮKassa для карт/СБП + CryptoBot для крипты
 PAYMENT_PROVIDER="mock"
-PAYMENT_WEBHOOK_SECRET="your_secret"
 
 # RCON (подключение к Minecraft)
 RCON_HOST="127.0.0.1"
 RCON_PORT="25575"
 RCON_PASSWORD="your_rcon_password"
 
-# База данных (после подключения Prisma)
+# База данных
 DATABASE_URL="postgresql://user:password@localhost:5432/natux"
+
+# JWT (авторизация пользователей)
+JWT_SECRET="your_jwt_secret"
 ```
 
 ---
@@ -102,17 +114,28 @@ src/
 │   ├── page.tsx                          # Главная страница
 │   ├── shop/page.tsx                     # Магазин доната
 │   ├── order/[publicId]/page.tsx         # Статус заказа
+│   ├── pay/[id]/page.tsx                 # Страница оплаты
+│   ├── leaderboard/page.tsx              # Лидерборд
 │   ├── rules/page.tsx                    # Правила сервера
 │   ├── map/page.tsx                      # Карта мира
 │   ├── join/page.tsx                     # Как подключиться
+│   ├── news/page.tsx                     # Новости
 │   ├── admin/page.tsx                    # Админ-панель
 │   └── api/
+│       ├── auth/                         # Регистрация, вход, 2FA, verify-email, me
+│       ├── yggdrasil/                    # Authserver + sessionserver для Minecraft
 │       ├── products/                     # GET /api/products
-│       ├── orders/                       # POST /api/orders
-│       ├── orders/[publicId]/            # GET /api/orders/:id
-│       ├── payments/webhook/mock/        # POST /api/payments/webhook/mock
+│       ├── orders/                       # POST /api/orders, GET /api/orders/:id
+│       ├── payments/yookassa/            # Webhook ЮKassa
+│       ├── payments/cryptobot/           # Webhook CryptoBot
+│       ├── payments/yoomoney/            # Webhook YooMoney
+│       ├── payments/webhook/mock/        # Mock-оплата (dev)
+│       ├── coupons/validate/             # Валидация промокодов
+│       ├── leaderboard/                  # GET /api/leaderboard
 │       ├── server/status/               # GET /api/server/status
-│       └── admin/orders/                # GET, retry-delivery
+│       ├── game-event/                   # Игровые события
+│       ├── crash-report/                 # Репорты об ошибках
+│       └── admin/                        # Заказы, пользователи, RCON, статистика
 ├── components/
 │   ├── Header.tsx
 │   ├── Footer.tsx
@@ -122,8 +145,9 @@ src/
 └── lib/
     ├── types.ts                          # TypeScript типы
     ├── products.ts                       # Данные рангов и цен
-    ├── store.ts                          # Mock-хранилище заказов
-    └── rcon.ts                           # Mock RCON + шаблоны команд
+    ├── rcon.ts                           # RCON-клиент + шаблоны команд
+    ├── yookassa.ts                       # Интеграция ЮKassa
+    └── prisma.ts                         # Prisma client
 ```
 
 ---
@@ -138,7 +162,28 @@ src/
 | `POST` | `/api/orders` | Создать заказ |
 | `GET` | `/api/orders/:publicId` | Статус заказа |
 | `GET` | `/api/server/status` | Статус Minecraft-сервера |
+| `GET` | `/api/leaderboard` | Рейтинг игроков |
+| `POST` | `/api/coupons/validate` | Проверить промокод |
 | `POST` | `/api/payments/webhook/mock` | Mock-оплата (dev) |
+
+### Авторизация
+
+| Метод | Маршрут | Описание |
+|---|---|---|
+| `POST` | `/api/auth/register` | Регистрация |
+| `POST` | `/api/auth/login` | Вход |
+| `POST` | `/api/auth/verify-email` | Подтверждение e-mail |
+| `GET` | `/api/auth/me` | Текущий пользователь |
+| `POST` | `/api/auth/2fa/totp/setup` | Настроить TOTP |
+| `POST` | `/api/auth/logout` | Выход |
+
+### Yggdrasil (Minecraft auth)
+
+| Маршрут | Описание |
+|---|---|
+| `/api/yggdrasil/authserver/authenticate` | Вход в Minecraft |
+| `/api/yggdrasil/sessionserver/session/minecraft/join` | Join-сессия |
+| `/api/yggdrasil/sessionserver/session/minecraft/hasJoined` | Проверка сессии |
 
 ### Админское
 
@@ -146,6 +191,9 @@ src/
 |---|---|---|
 | `GET` | `/api/admin/orders` | Все заказы |
 | `POST` | `/api/admin/orders/:id/retry-delivery` | Повторить выдачу |
+| `GET` | `/api/admin/users` | Все пользователи |
+| `POST` | `/api/admin/rcon` | Выполнить RCON-команду |
+| `GET` | `/api/admin/stats` | Статистика |
 
 ---
 
@@ -187,20 +235,6 @@ src/
 
 ---
 
-## Roadmap
-
-- [ ] PostgreSQL + Prisma вместо mock-хранилища
-- [ ] Настоящая RCON-выдача (`rcon-client`)
-- [ ] Подключить платёжную систему (YooKassa / Robokassa)
-- [ ] Авторизация в админ-панели (NextAuth / JWT)
-- [ ] Ping Minecraft-сервера (`minecraft-server-util`)
-- [ ] Уведомления в Discord / Telegram
-- [ ] Промокоды со скидкой
-- [ ] Редактирование рангов и цен из админки
-- [ ] Логирование RCON-команд в БД
-
----
-
 ## Безопасность
 
 - Цена берётся **только с backend** — frontend не может её подменить
@@ -208,12 +242,13 @@ src/
 - Повторный webhook **не выдаёт донат второй раз**
 - Секреты хранятся **только в `.env`**
 - RCON-пароль **не попадает в код**
+- Имена пользователей и ранги валидируются регексом перед передачей в RCON-команды
 
 ---
 
 <div align="center">
 
-**NATUX WORLD** · `mc.natuxworld.ru` · [VK](https://vk.com/natuxworld)
+**NATUX WORLD** · `mc.vibestudy.ru` · [VK](https://vk.com/natuxworld)
 
 *No rules. No mercy.*
 
