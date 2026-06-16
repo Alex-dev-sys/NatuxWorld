@@ -12,7 +12,7 @@
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss&logoColor=white)
-![Version](https://img.shields.io/badge/version-1.9.6-FF2B4F)
+![Version](https://img.shields.io/badge/version-1.9.8-FF2B4F)
 
 </div>
 
