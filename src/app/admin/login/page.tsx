@@ -8,6 +8,7 @@ function LoginForm() {
   const router = useRouter()
   const params = useSearchParams()
   const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -20,7 +21,7 @@ function LoginForm() {
       const res = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password, code }),
       })
 
       if (!res.ok) {
@@ -59,6 +60,21 @@ function LoginForm() {
               placeholder="••••••••"
               autoFocus
               className="w-full bg-site-bg border border-site-border focus:border-site-accent rounded px-4 py-3 text-site-text placeholder-site-muted/40 focus:outline-none transition-colors"
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-site-muted text-xs uppercase tracking-wider mb-2">
+              Код 2FA (TOTP)
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={code}
+              onChange={e => { setCode(e.target.value.replace(/\D/g, '')); setError(null) }}
+              placeholder="000000"
+              className="w-full bg-site-bg border border-site-border focus:border-site-accent rounded px-4 py-3 text-site-text placeholder-site-muted/40 focus:outline-none transition-colors tracking-widest"
             />
           </div>
 
