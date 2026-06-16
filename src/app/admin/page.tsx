@@ -63,6 +63,11 @@ interface LiveEvent {
   type: 'login_event' | 'order' | 'crash' | 'ping' | 'connected'
   data?: Record<string, unknown>
 }
+interface AuditRow {
+  id: string; action: string; target: string | null
+  params: Record<string, unknown>; ip: string; ok: boolean; createdAt: string
+}
+interface OnlineRoster { online: number; max: number; players: string[] }
 
 // ── Product list (mirrors products.ts) ────────────────────────────────────────
 const PRODUCTS = [
@@ -371,6 +376,10 @@ function UserModal({ userId, onClose, onUpdate }: { userId: string; onClose: () 
         {/* ── GAME TAB ── */}
         {uTab === 'game' && (
           <div className="space-y-4">
+            <div className="bg-site-block border border-site-border rounded-lg p-3">
+              <div className="text-site-muted text-xs uppercase tracking-wider mb-2">Действия над игроком</div>
+              <PlayerActionBar username={user.username} />
+            </div>
             {user.gameEvents.length === 0 ? (
               <div className="text-center py-12 text-site-muted">
                 <div className="text-2xl mb-2">🎮</div>
@@ -775,12 +784,17 @@ function RconTab() {
   const [loading, setLoading] = useState(false)
   const [history, setHistory] = useState<{ cmd: string; result: string; ok: boolean; ts: number }[]>([])
   const logRef = useRef<HTMLDivElement>(null)
-  const send = async (command: string) => {
+  const send = async (command: string, confirm = false) => {
     const c = command.trim(); if (!c) return; setLoading(true)
     try {
-      const r = await fetch('/api/admin/rcon', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: c }) })
+      const r = await fetch('/api/admin/rcon', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: c, confirm }) })
       const data = await r.json()
-      setHistory(prev => [...prev, { cmd: c, ts: Date.now(), ok: data.success ?? r.ok, result: data.error ?? (data.success ? 'OK' : JSON.stringify(data)) }])
+      if (data.needConfirm) {
+        const warn = data.tier === 'server' ? '⚠ ВЛИЯЕТ НА СЕРВЕР (stop/restart)' : 'Изменяющая команда'
+        if (confirm || window.confirm(`${warn}\n\n${c}\n\nВыполнить?`)) return send(c, true)
+        setLoading(false); return
+      }
+      setHistory(prev => [...prev, { cmd: c, ts: Date.now(), ok: data.success ?? r.ok, result: data.error ?? (data.responses?.[0] ?? (data.success ? 'OK' : JSON.stringify(data))) }])
       if (!data.success && data.error) toast(data.error, 'error'); setCmd('')
     } catch { toast('Ошибка', 'error') } finally { setLoading(false) }
   }
@@ -799,18 +813,112 @@ function RconTab() {
         </div>
         {history.length > 0 && <div ref={logRef} className="bg-black/40 rounded p-3 max-h-64 overflow-y-auto space-y-2 font-mono text-xs">{history.map(h => <div key={h.ts} className="space-y-0.5"><div className="text-green-400">&gt; {h.cmd}</div><div className={h.ok ? 'text-site-muted' : 'text-red-400'}>{h.result}</div></div>)}</div>}
       </div>
-      <div className="text-site-muted text-xs bg-yellow-500/5 border border-yellow-500/20 rounded p-3">Команды stop, restart, ban-ip, op/deop заблокированы из панели.</div>
+      <div className="text-site-muted text-xs bg-yellow-500/5 border border-yellow-500/20 rounded p-3">Изменяющие команды (op/give/kick…) требуют подтверждения; stop/restart помечены как влияющие на сервер. Всё пишется в аудит.</div>
+    </div>
+  )
+}
+
+// ── Player Action Bar ───────────────────────────────────────────────────────────
+function PlayerActionBar({ username, onDone }: { username: string; onDone?: () => void }) {
+  const { toast } = useToast()
+  const [busy, setBusy] = useState<string | null>(null)
+  const run = async (action: string, params: Record<string, unknown>, destructive = false) => {
+    if (destructive && !confirm(`${action} → ${username}?`)) return
+    setBusy(action)
+    try {
+      const r = await fetch('/api/admin/player', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, username, confirm: true, ...params }),
+      })
+      const d = await r.json()
+      toast(r.ok && d.ok ? 'Готово' : (d.error ?? 'Ошибка'), r.ok && d.ok ? 'success' : 'error')
+      onDone?.()
+    } catch { toast('Ошибка', 'error') } finally { setBusy(null) }
+  }
+  const btn = "px-2.5 py-1 text-xs border border-site-border hover:border-site-accent text-site-muted hover:text-site-text rounded disabled:opacity-40 transition-colors"
+  return (
+    <div className="flex flex-wrap gap-2">
+      <button className={btn} disabled={!!busy} onClick={() => run('heal', {})}>Хил</button>
+      <button className={btn} disabled={!!busy} onClick={() => run('feed', {})}>Покормить</button>
+      <button className={btn} disabled={!!busy} onClick={() => run('god', {})}>God</button>
+      <button className={btn} disabled={!!busy} onClick={() => run('gamemode', { mode: 'survival' })}>GM Survival</button>
+      <button className={btn} disabled={!!busy} onClick={() => run('gamemode', { mode: 'creative' })}>GM Creative</button>
+      <button className={btn} disabled={!!busy} onClick={() => { const r = prompt('Причина кика:') ?? ''; run('kick', { reason: r || 'Кик администратором' }, true) }}>Кик</button>
+      <button className={btn} disabled={!!busy} onClick={() => { const t = prompt('Время мута (напр. 10m):') ?? '10m'; const r = prompt('Причина:') ?? ''; run('mute', { time: t, reason: r || 'Мут' }, true) }}>Мут</button>
+      <button className={btn} disabled={!!busy} onClick={() => run('unmute', {})}>Размут</button>
+      <button className={btn} disabled={!!busy} onClick={() => run('kill', {}, true)}>Убить</button>
+    </div>
+  )
+}
+
+// ── Online Tab ──────────────────────────────────────────────────────────────────
+function OnlineTab() {
+  const [roster, setRoster] = useState<OnlineRoster | null>(null)
+  const [loading, setLoading] = useState(true)
+  const load = useCallback(async () => {
+    try { const r = await fetch('/api/admin/online'); if (r.ok) setRoster(await r.json()) } finally { setLoading(false) }
+  }, [])
+  useEffect(() => { load(); const i = setInterval(load, 15000); return () => clearInterval(i) }, [load])
+  if (loading) return <div className="text-center text-site-muted py-16">Загрузка...</div>
+  if (!roster) return <div className="text-center text-site-muted py-16">RCON недоступен</div>
+  return (
+    <div className="space-y-4">
+      <div className="text-site-muted text-xs">{roster.online} / {roster.max} онлайн</div>
+      {roster.players.length === 0 ? (
+        <div className="text-center text-site-muted py-12">Никого нет в игре</div>
+      ) : roster.players.map(name => (
+        <div key={name} className="bg-site-block border border-site-border rounded-lg p-3 space-y-2">
+          <div className="font-mono font-medium">{name}</div>
+          <PlayerActionBar username={name} onDone={load} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Audit Tab ───────────────────────────────────────────────────────────────────
+function AuditTab() {
+  const [rows, setRows] = useState<AuditRow[]>([])
+  const [filter, setFilter] = useState('')
+  useEffect(() => {
+    fetch(`/api/admin/audit${filter ? `?action=${filter}` : ''}`).then(r => r.json()).then(setRows)
+  }, [filter])
+  const FILTERS = ['', 'user', 'player', 'rcon', 'coupon', 'order']
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        {FILTERS.map(f => (
+          <button key={f || 'all'} onClick={() => setFilter(f)}
+            className={`px-3 py-1.5 text-xs rounded border transition-colors ${filter === f ? 'border-site-accent text-site-accent' : 'border-site-border text-site-muted hover:border-site-accent/50'}`}>
+            {f || 'Все'}
+          </button>
+        ))}
+      </div>
+      <Table cols={['Время', 'Действие', 'Цель', 'Параметры', 'IP', 'OK']}>
+        {rows.map(r => (
+          <Tr key={r.id}>
+            <Td className="text-xs text-site-muted whitespace-nowrap">{fmtDate(r.createdAt)}</Td>
+            <Td><span className="px-2 py-0.5 rounded text-xs bg-site-border/30 text-site-text font-mono">{r.action}</span></Td>
+            <Td className="font-mono text-xs">{r.target ?? '—'}</Td>
+            <Td className="text-xs text-site-muted max-w-[280px] truncate">{JSON.stringify(r.params)}</Td>
+            <Td className="font-mono text-xs text-site-muted">{r.ip}</Td>
+            <Td className={r.ok ? 'text-green-400' : 'text-red-400'}>{r.ok ? 'да' : 'нет'}</Td>
+          </Tr>
+        ))}
+      </Table>
     </div>
   )
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
-type Tab = 'dash' | 'users' | 'activity' | 'sessions' | 'orders' | 'crashes' | 'coupons' | 'rcon'
+type Tab = 'dash' | 'users' | 'online' | 'activity' | 'sessions' | 'orders' | 'crashes' | 'coupons' | 'rcon' | 'audit'
 const TABS: { id: Tab; label: string }[] = [
   { id: 'dash', label: 'Обзор' }, { id: 'users', label: 'Пользователи' },
+  { id: 'online', label: 'Онлайн' },
   { id: 'activity', label: 'Активность' }, { id: 'sessions', label: 'Сессии' },
   { id: 'orders', label: 'Заказы' }, { id: 'crashes', label: 'Краши' },
   { id: 'coupons', label: 'Купоны' }, { id: 'rcon', label: 'RCON' },
+  { id: 'audit', label: 'Аудит' },
 ]
 
 export default function AdminPage() {
@@ -843,6 +951,7 @@ export default function AdminPage() {
       else if (t === 'orders') { const r = await fetch('/api/admin/orders'); if (!checkAuth(r)) return; setOrders(await r.json()) }
       else if (t === 'crashes') { const r = await fetch('/api/admin/crash-reports'); if (!checkAuth(r)) return; setCrashes(await r.json()) }
       else if (t === 'coupons') { const r = await fetch('/api/admin/coupons'); if (!checkAuth(r)) return; setCoupons(await r.json()) }
+      else if (t === 'online' || t === 'audit') { /* self-loading tabs */ }
       loaded.current.add(t)
     } catch { toast('Ошибка загрузки', 'error') } finally { setLoading(false) }
   }, [checkAuth, toast])
@@ -901,6 +1010,8 @@ export default function AdminPage() {
       <div className="max-w-7xl mx-auto px-4 py-6">
         {tab === 'dash' && <DashTab stats={stats} events={events} liveEvents={liveEvents} />}
         {tab === 'users' && <UsersTab users={users} onSelect={setSelectedUser} onUpdate={updateUser} />}
+        {tab === 'online' && <OnlineTab />}
+        {tab === 'audit' && <AuditTab />}
         {tab === 'activity' && <ActivityTab events={events} />}
         {tab === 'sessions' && <SessionsTab tokens={tokens} />}
         {tab === 'orders' && <OrdersTab orders={orders} onRetry={retryOrder} retrying={retrying} />}

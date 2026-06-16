@@ -4,6 +4,7 @@ import type { Duration } from './types'
 export interface RconResult {
   success: boolean
   commands: string[]
+  responses?: string[]
   error?: string
 }
 
@@ -47,7 +48,12 @@ async function tryRcon(commands: string[]): Promise<RconResult> {
       return { success: false, commands, error: 'Connection refused (mock fail mode)' }
     }
     await new Promise(r => setTimeout(r, 200))
-    return { success: true, commands }
+    const responses = commands.map(c =>
+      /^\/?list\b/i.test(c.trim())
+        ? 'There are 2 of 20 players online: steve, alex'
+        : 'OK',
+    )
+    return { success: true, commands, responses }
   }
 
   const { Rcon } = await import('rcon-client')
@@ -60,11 +66,13 @@ async function tryRcon(commands: string[]): Promise<RconResult> {
 
   await rcon.connect()
   try {
+    const responses: string[] = []
     for (const cmd of commands) {
       const response = await rcon.send(cmd)
       console.log(`[RCON] ${cmd} → ${response}`)
+      responses.push(response)
     }
-    return { success: true, commands }
+    return { success: true, commands, responses }
   } finally {
     await rcon.end()
   }

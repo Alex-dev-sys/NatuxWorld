@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { requireAdmin } from '@/lib/adminAuth'
+import { logAdminAction } from '@/lib/adminAudit'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,5 +33,6 @@ export async function POST(req: NextRequest) {
       active: true,
     },
   })
+  await logAdminAction(req, 'coupon.create', { target: coupon.code, params: { type, value }, ok: true })
   return NextResponse.json(coupon)
 }
