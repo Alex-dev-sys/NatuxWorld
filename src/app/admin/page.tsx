@@ -825,6 +825,10 @@ function ServerTab() {
   const [console_, setConsole] = useState<string>('')
   const [busy, setBusy] = useState<string | null>(null)
   const [unavailable, setUnavailable] = useState(false)
+  const [monitor, setMonitor] = useState<{ players: { online: number; max: number }; tps: number[] } | null>(null)
+  const [whitelist, setWhitelist] = useState<string[] | null>(null)
+  const [wlInput, setWlInput] = useState('')
+  const [wlBusy, setWlBusy] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
   const call = useCallback(async (action: string, lines?: number) => {
@@ -834,14 +838,36 @@ function ServerTab() {
     return d.output as string
   }, [])
 
+  const loadMonitor = useCallback(async () => {
+    try { const r = await fetch('/api/admin/server-status'); if (r.ok) setMonitor(await r.json()); else setMonitor(null) } catch { setMonitor(null) }
+  }, [])
+  const loadWhitelist = useCallback(async () => {
+    try { const r = await fetch('/api/admin/whitelist'); if (r.ok) setWhitelist((await r.json()).players); } catch { /* keep last */ }
+  }, [])
+
   const refresh = useCallback(async () => {
     try {
       const [s, c] = await Promise.all([call('status'), call('console', 120)])
       setStatus(s); setConsole(c); setUnavailable(false)
     } catch { setUnavailable(true) }
-  }, [call])
+    loadMonitor()
+  }, [call, loadMonitor])
 
-  useEffect(() => { refresh(); const i = setInterval(refresh, 10000); return () => clearInterval(i) }, [refresh])
+  const wlAction = async (action: 'add' | 'remove', username: string) => {
+    if (!username) return
+    setWlBusy(true)
+    try {
+      const r = await fetch('/api/admin/whitelist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, username }) })
+      const d = await r.json()
+      if (!r.ok || !d.ok) throw new Error(d.error ?? 'Ошибка')
+      toast(action === 'add' ? `${username} добавлен в whitelist` : `${username} удалён из whitelist`, 'success')
+      if (action === 'add') setWlInput('')
+      await loadWhitelist()
+    } catch (e) { toast(e instanceof Error ? e.message : 'Ошибка', 'error') }
+    finally { setWlBusy(false) }
+  }
+
+  useEffect(() => { refresh(); loadWhitelist(); const i = setInterval(refresh, 10000); return () => clearInterval(i) }, [refresh, loadWhitelist])
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [console_])
 
   const lifecycle = async (action: 'start' | 'stop' | 'restart') => {
@@ -862,6 +888,16 @@ function ServerTab() {
           <span className="text-xs text-site-muted font-mono">{unavailable ? 'SSH-мост недоступен' : online ? 'сервер запущен' : 'сервер остановлен'}</span>
         </div>
         {status && <pre className="bg-black/40 rounded p-3 text-xs font-mono text-site-text whitespace-pre-wrap">{status}</pre>}
+        {monitor && (
+          <div className="flex flex-wrap gap-2 text-xs font-mono">
+            <span className="px-2 py-1 rounded bg-site-border/30 text-site-text">онлайн: {monitor.players.online}/{monitor.players.max}</span>
+            {monitor.tps.length > 0 && (
+              <span className={`px-2 py-1 rounded bg-site-border/30 ${monitor.tps[0] >= 18 ? 'text-green-400' : monitor.tps[0] >= 12 ? 'text-yellow-400' : 'text-red-400'}`}>
+                TPS: {monitor.tps.join(' / ')}
+              </span>
+            )}
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
           <button onClick={() => lifecycle('start')} disabled={!!busy} className="px-3 py-1.5 text-xs border border-green-500/50 text-green-400 hover:bg-green-500/10 rounded disabled:opacity-40 transition-colors">{busy === 'start' ? '...' : 'Запустить'}</button>
           <button onClick={() => lifecycle('restart')} disabled={!!busy} className="px-3 py-1.5 text-xs border border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 rounded disabled:opacity-40 transition-colors">{busy === 'restart' ? '...' : 'Перезапустить'}</button>
@@ -873,7 +909,28 @@ function ServerTab() {
         <div className="text-xs text-site-muted font-mono">Консоль сервера (последние строки)</div>
         <div ref={logRef} className="bg-black/40 rounded p-3 max-h-96 overflow-y-auto font-mono text-xs text-site-muted whitespace-pre-wrap">{console_ || (unavailable ? 'Нет данных' : 'Загрузка...')}</div>
       </div>
-      <div className="text-site-muted text-xs bg-yellow-500/5 border border-yellow-500/20 rounded p-3">stop/restart влияют на живой сервер и пишутся в аудит. start/stop/restart идут через SSH-мост на хост.</div>
+      <div className="bg-site-block border border-site-border rounded-lg p-4 space-y-3">
+        <div className="text-xs text-site-muted font-mono">Whitelist {whitelist ? `(${whitelist.length})` : ''}</div>
+        <div className="flex gap-2">
+          <input value={wlInput} onChange={e => setWlInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') wlAction('add', wlInput.trim()) }} placeholder="Ник игрока..." className="flex-1 bg-black/40 border border-site-border focus:border-site-accent rounded px-3 py-2 text-sm text-site-text placeholder-site-muted/40 focus:outline-none font-mono transition-colors" />
+          <button onClick={() => wlAction('add', wlInput.trim())} disabled={wlBusy || !wlInput.trim()} className="px-4 py-2 text-xs bg-site-accent text-white rounded hover:bg-site-accent/80 disabled:opacity-40 transition-colors font-medium">Добавить</button>
+        </div>
+        {whitelist === null ? (
+          <div className="text-site-muted text-xs">RCON недоступен</div>
+        ) : whitelist.length === 0 ? (
+          <div className="text-site-muted text-xs">Whitelist пуст</div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {whitelist.map(name => (
+              <span key={name} className="flex items-center gap-1.5 px-2 py-1 text-xs font-mono bg-site-border/30 rounded">
+                {name}
+                <button onClick={() => wlAction('remove', name)} disabled={wlBusy} className="text-site-muted hover:text-red-400 disabled:opacity-40 transition-colors" title="Удалить">×</button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="text-site-muted text-xs bg-yellow-500/5 border border-yellow-500/20 rounded p-3">stop/restart влияют на живой сервер и пишутся в аудит. start/stop/restart идут через SSH-мост на хост; онлайн/TPS/whitelist — через RCON.</div>
     </div>
   )
 }

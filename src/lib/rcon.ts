@@ -41,6 +41,15 @@ export function buildCommands(
   )
 }
 
+// Canned responses for mock mode, keyed by command — keeps dev/CI realistic
+// enough to exercise the parsers without a live server.
+function mockRconResponse(cmd: string): string {
+  if (/^\/?list\b/i.test(cmd)) return 'There are 2 of 20 players online: steve, alex'
+  if (/^\/?tps\b/i.test(cmd)) return 'TPS from last 1m, 5m, 15m: 20.0, 19.9, 19.8'
+  if (/^\/?whitelist\s+list\b/i.test(cmd)) return 'There are 3 whitelisted player(s): steve, alex, notch'
+  return 'OK'
+}
+
 async function tryRcon(commands: string[]): Promise<RconResult> {
   if (process.env.PAYMENT_PROVIDER === 'mock' || process.env.RCON_MOCK === 'true') {
     console.log('[MOCK RCON] Commands:', commands)
@@ -48,11 +57,7 @@ async function tryRcon(commands: string[]): Promise<RconResult> {
       return { success: false, commands, error: 'Connection refused (mock fail mode)' }
     }
     await new Promise(r => setTimeout(r, 200))
-    const responses = commands.map(c =>
-      /^\/?list\b/i.test(c.trim())
-        ? 'There are 2 of 20 players online: steve, alex'
-        : 'OK',
-    )
+    const responses = commands.map(c => mockRconResponse(c.trim()))
     return { success: true, commands, responses }
   }
 
