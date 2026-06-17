@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/adminAuth'
 import { mcBridge } from '@/lib/mc-bridge'
 import type { McBridgeCommand } from '@/lib/mc-bridge'
+import { logAdminAction } from '@/lib/adminAudit'
 
 export const dynamic = 'force-dynamic'
 
 const ALLOWED_ACTIONS = new Set(['status', 'start', 'stop', 'restart'])
+// Lifecycle actions that change server state — these get written to the audit log.
+const AUDITED_ACTIONS = new Set(['start', 'stop', 'restart'])
 
 export async function POST(req: NextRequest) {
   if (!(await requireAdmin(req))) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
@@ -25,9 +28,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const output = await mcBridge(command)
+    if (AUDITED_ACTIONS.has(action)) await logAdminAction(req, `server.${action}`, { ok: true })
     return NextResponse.json({ ok: true, output })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    if (AUDITED_ACTIONS.has(action)) await logAdminAction(req, `server.${action}`, { ok: false, params: { error: message } })
     return NextResponse.json({ ok: false, error: message }, { status: 500 })
   }
 }

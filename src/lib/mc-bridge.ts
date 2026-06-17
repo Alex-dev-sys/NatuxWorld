@@ -13,7 +13,22 @@ function getConfig() {
   }
 }
 
+// Mock mode for dev/CI without a live SSH host. Enable with MC_MOCK=true.
+function mockOutput(command: McBridgeCommand): string {
+  if (command === 'status') return '● minecraft.service - active (running)\n   uptime: 3h 12m   players: 4/40   tps: 19.9'
+  if (command === 'start') return 'minecraft: starting tmux session…'
+  if (command === 'stop') return 'minecraft: stop signal sent'
+  if (command === 'restart') return 'minecraft: restarting…'
+  if (command.startsWith('console')) {
+    const n = Math.min(Math.max(Number(command.split(' ')[1]) || 100, 1), 500)
+    return Array.from({ length: Math.min(n, 8) }, (_, i) =>
+      `[12:0${i}:00] [Server thread/INFO]: mock log line ${i + 1}`).join('\n')
+  }
+  return ''
+}
+
 export function mcBridge(command: McBridgeCommand): Promise<string> {
+  if (process.env.MC_MOCK === 'true') return Promise.resolve(mockOutput(command))
   return new Promise((resolve, reject) => {
     const conn = new Client()
     let output = ''

@@ -818,6 +818,66 @@ function RconTab() {
   )
 }
 
+// ── Server Control Tab ──────────────────────────────────────────────────────────
+function ServerTab() {
+  const { toast } = useToast()
+  const [status, setStatus] = useState<string>('')
+  const [console_, setConsole] = useState<string>('')
+  const [busy, setBusy] = useState<string | null>(null)
+  const [unavailable, setUnavailable] = useState(false)
+  const logRef = useRef<HTMLDivElement>(null)
+
+  const call = useCallback(async (action: string, lines?: number) => {
+    const r = await fetch('/api/admin/mc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, lines }) })
+    const d = await r.json()
+    if (!r.ok || !d.ok) throw new Error(d.error ?? 'Ошибка')
+    return d.output as string
+  }, [])
+
+  const refresh = useCallback(async () => {
+    try {
+      const [s, c] = await Promise.all([call('status'), call('console', 120)])
+      setStatus(s); setConsole(c); setUnavailable(false)
+    } catch { setUnavailable(true) }
+  }, [call])
+
+  useEffect(() => { refresh(); const i = setInterval(refresh, 10000); return () => clearInterval(i) }, [refresh])
+  useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [console_])
+
+  const lifecycle = async (action: 'start' | 'stop' | 'restart') => {
+    const danger = action === 'stop' || action === 'restart'
+    if (danger && !window.confirm(`⚠ ВЛИЯЕТ НА СЕРВЕР\n\n${action} minecraft\n\nВыполнить?`)) return
+    setBusy(action)
+    try { await call(action); toast(`Команда «${action}» отправлена`, 'success'); await refresh() }
+    catch (e) { toast(e instanceof Error ? e.message : 'Ошибка', 'error') }
+    finally { setBusy(null) }
+  }
+
+  const online = /running|active/i.test(status)
+  return (
+    <div className="space-y-4">
+      <div className="bg-site-block border border-site-border rounded-lg p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${unavailable ? 'bg-red-400' : online ? 'bg-green-400 animate-pulse' : 'bg-yellow-400'}`} />
+          <span className="text-xs text-site-muted font-mono">{unavailable ? 'SSH-мост недоступен' : online ? 'сервер запущен' : 'сервер остановлен'}</span>
+        </div>
+        {status && <pre className="bg-black/40 rounded p-3 text-xs font-mono text-site-text whitespace-pre-wrap">{status}</pre>}
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => lifecycle('start')} disabled={!!busy} className="px-3 py-1.5 text-xs border border-green-500/50 text-green-400 hover:bg-green-500/10 rounded disabled:opacity-40 transition-colors">{busy === 'start' ? '...' : 'Запустить'}</button>
+          <button onClick={() => lifecycle('restart')} disabled={!!busy} className="px-3 py-1.5 text-xs border border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 rounded disabled:opacity-40 transition-colors">{busy === 'restart' ? '...' : 'Перезапустить'}</button>
+          <button onClick={() => lifecycle('stop')} disabled={!!busy} className="px-3 py-1.5 text-xs border border-red-500/50 text-red-400 hover:bg-red-500/10 rounded disabled:opacity-40 transition-colors">{busy === 'stop' ? '...' : 'Остановить'}</button>
+          <button onClick={refresh} disabled={!!busy} className="px-3 py-1.5 text-xs border border-site-border hover:border-site-accent text-site-muted hover:text-site-text rounded disabled:opacity-40 transition-colors ml-auto">Обновить</button>
+        </div>
+      </div>
+      <div className="bg-site-block border border-site-border rounded-lg p-4 space-y-2">
+        <div className="text-xs text-site-muted font-mono">Консоль сервера (последние строки)</div>
+        <div ref={logRef} className="bg-black/40 rounded p-3 max-h-96 overflow-y-auto font-mono text-xs text-site-muted whitespace-pre-wrap">{console_ || (unavailable ? 'Нет данных' : 'Загрузка...')}</div>
+      </div>
+      <div className="text-site-muted text-xs bg-yellow-500/5 border border-yellow-500/20 rounded p-3">stop/restart влияют на живой сервер и пишутся в аудит. start/stop/restart идут через SSH-мост на хост.</div>
+    </div>
+  )
+}
+
 // ── Player Action Bar ───────────────────────────────────────────────────────────
 function PlayerActionBar({ username, onDone }: { username: string; onDone?: () => void }) {
   const { toast } = useToast()
@@ -911,13 +971,13 @@ function AuditTab() {
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
-type Tab = 'dash' | 'users' | 'online' | 'activity' | 'sessions' | 'orders' | 'crashes' | 'coupons' | 'rcon' | 'audit'
+type Tab = 'dash' | 'users' | 'online' | 'activity' | 'sessions' | 'orders' | 'crashes' | 'coupons' | 'server' | 'rcon' | 'audit'
 const TABS: { id: Tab; label: string }[] = [
   { id: 'dash', label: 'Обзор' }, { id: 'users', label: 'Пользователи' },
   { id: 'online', label: 'Онлайн' },
   { id: 'activity', label: 'Активность' }, { id: 'sessions', label: 'Сессии' },
   { id: 'orders', label: 'Заказы' }, { id: 'crashes', label: 'Краши' },
-  { id: 'coupons', label: 'Купоны' }, { id: 'rcon', label: 'RCON' },
+  { id: 'coupons', label: 'Купоны' }, { id: 'server', label: 'Сервер' }, { id: 'rcon', label: 'RCON' },
   { id: 'audit', label: 'Аудит' },
 ]
 
@@ -951,7 +1011,7 @@ export default function AdminPage() {
       else if (t === 'orders') { const r = await fetch('/api/admin/orders'); if (!checkAuth(r)) return; setOrders(await r.json()) }
       else if (t === 'crashes') { const r = await fetch('/api/admin/crash-reports'); if (!checkAuth(r)) return; setCrashes(await r.json()) }
       else if (t === 'coupons') { const r = await fetch('/api/admin/coupons'); if (!checkAuth(r)) return; setCoupons(await r.json()) }
-      else if (t === 'online' || t === 'audit') { /* self-loading tabs */ }
+      else if (t === 'online' || t === 'audit' || t === 'server') { /* self-loading tabs */ }
       loaded.current.add(t)
     } catch { toast('Ошибка загрузки', 'error') } finally { setLoading(false) }
   }, [checkAuth, toast])
@@ -1017,6 +1077,7 @@ export default function AdminPage() {
         {tab === 'orders' && <OrdersTab orders={orders} onRetry={retryOrder} retrying={retrying} />}
         {tab === 'crashes' && <CrashTab reports={crashes} onSelect={selectCrash} selected={selectedCrash} />}
         {tab === 'coupons' && <CouponsTab coupons={coupons} setCoupons={setCoupons} />}
+        {tab === 'server' && <ServerTab />}
         {tab === 'rcon' && <RconTab />}
       </div>
     </div>

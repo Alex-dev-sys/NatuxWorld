@@ -2,6 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  // ssh2 ships a native .node binary (used by lib/mc-bridge.ts). Keep it external
+  // so webpack doesn't try to bundle the binary and fail the build.
   experimental: {
     serverComponentsExternalPackages: ['ssh2'],
   },
