@@ -42,6 +42,9 @@ services:
       RCON_PASSWORD: ${RCON_PASSWORD}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       ADMIN_SECRET: ${ADMIN_SECRET}
+      MC_SSH_HOST: ${MC_SSH_HOST:-host.docker.internal}
+      MC_SSH_USER: ${MC_SSH_USER:-agfa}
+      MC_SSH_KEY_B64: ${MC_SSH_KEY_B64}
     expose:
       - "3000"
 
