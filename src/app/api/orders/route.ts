@@ -1,6 +1,6 @@
 // src/app/api/orders/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { products } from '@/lib/products'
+import { getProductById } from '@/lib/productStore'
 import { saveOrder, updateOrder } from '@/lib/store'
 import { applyDiscount, isFree } from '@/lib/coupons'
 import { validateCoupon, redeemCoupon } from '@/lib/couponStore'
@@ -90,8 +90,8 @@ export async function POST(req: NextRequest) {
   }
   const orderDuration = duration as Duration
 
-  const product = products.find(p => p.id === productId && p.active)
-  if (!product) {
+  const product = await getProductById(productId)
+  if (!product || !product.active) {
     return NextResponse.json({ error: 'Товар не найден' }, { status: 404 })
   }
 

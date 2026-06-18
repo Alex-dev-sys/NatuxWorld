@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { requireAdmin } from '@/lib/adminAuth'
 import { buildCommands, executeRcon } from '@/lib/rcon'
-import { products } from '@/lib/products'
+import { getProductById } from '@/lib/productStore'
 import { logAdminAction } from '@/lib/adminAudit'
 
 export const dynamic = 'force-dynamic'
@@ -123,7 +123,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
   if (action === 'give-rank') {
     if (!productId || !duration) return NextResponse.json({ error: 'productId и duration обязательны' }, { status: 400 })
-    const product = products.find(p => p.id === productId)
+    const product = await getProductById(productId)
     if (!product) return NextResponse.json({ error: 'Продукт не найден' }, { status: 404 })
     const variant = product.variants.find(v => v.duration === duration)
     if (!variant) return NextResponse.json({ error: 'Вариант не найден' }, { status: 404 })

@@ -1,12 +1,12 @@
 // src/lib/fulfillment.ts
 // Единая точка выдачи заказа: RCON-команды + финальный статус.
-import { products } from './products'
+import { getProductById } from './productStore'
 import { buildCommands, executeRcon, DURATION_DAYS } from './rcon'
 import { updateOrder } from './store'
 import type { Order } from './types'
 
 export async function fulfillOrder(order: Order): Promise<Order | null> {
-  const product = products.find(p => p.id === order.productId)
+  const product = await getProductById(order.productId)
   const variant = product?.variants.find(v => v.duration === order.variantDuration)
 
   // Без варианта нечего выдавать — нельзя помечать заказ выполненным.

@@ -1,4 +1,4 @@
-import { products } from '@/lib/products'
+import { getActiveProducts } from '@/lib/productStore'
 import ShopClient from '@/components/ShopClient'
 
 export const metadata = {
@@ -6,7 +6,9 @@ export const metadata = {
   description: 'Купить привилегии для Minecraft-сервера NATUX WORLD',
 }
 
-export default function ShopPage() {
-  const activeProducts = products.filter(p => p.active).sort((a, b) => a.order - b.order)
+export const dynamic = 'force-dynamic'
+
+export default async function ShopPage() {
+  const activeProducts = await getActiveProducts()
   return <ShopClient products={activeProducts} />
 }

@@ -152,3 +152,34 @@ model AdminAudit {
   @@index([createdAt])
   @@index([action])
 }
+
+model Product {
+  id          String           @id
+  slug        String           @unique
+  name        String
+  description  String
+  color       String
+  order       Int
+  active      Boolean          @default(true)
+  badge       String?
+  popular     Boolean          @default(false)
+  perks       String[]
+  variants    ProductVariant[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([order])
+}
+
+model ProductVariant {
+  id            String   @id @default(uuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  duration      String
+  durationLabel String
+  price         Int
+  commands      String[]
+  order         Int      @default(0)
+
+  @@index([productId])
+}

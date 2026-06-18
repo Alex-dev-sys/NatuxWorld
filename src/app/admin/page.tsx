@@ -818,6 +818,93 @@ function RconTab() {
   )
 }
 
+// ── Products Tab ─────────────────────────────────────────────────────────────────
+interface AdminVariant { duration: string; durationLabel: string; price: number }
+interface AdminProduct { id: string; name: string; active: boolean; badge?: string; order: number; popular: boolean; variants: AdminVariant[] }
+
+function ProductsTab() {
+  const { toast } = useToast()
+  const [items, setItems] = useState<AdminProduct[] | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    try { const r = await fetch('/api/admin/products'); if (r.ok) setItems(await r.json()) } catch { /* keep */ }
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  const patch = (id: string, p: Partial<AdminProduct>) => setItems(prev => prev?.map(x => x.id === id ? { ...x, ...p } : x) ?? null)
+  const patchPrice = (id: string, duration: string, price: number) =>
+    setItems(prev => prev?.map(x => x.id === id ? { ...x, variants: x.variants.map(v => v.duration === duration ? { ...v, price } : v) } : x) ?? null)
+
+  const seed = async () => {
+    setBusy('seed')
+    try {
+      const r = await fetch('/api/admin/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'seed' }) })
+      const d = await r.json()
+      if (r.ok) { toast(`Импортировано товаров: ${d.count}`, 'success'); await load() } else toast(d.error ?? 'Ошибка', 'error')
+    } catch { toast('Ошибка', 'error') } finally { setBusy(null) }
+  }
+
+  const save = async (p: AdminProduct) => {
+    setBusy(p.id)
+    try {
+      const r = await fetch(`/api/admin/products/${p.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: p.active, badge: p.badge ?? null, order: p.order, popular: p.popular, variants: p.variants.map(v => ({ duration: v.duration, price: v.price })) }),
+      })
+      const d = await r.json()
+      toast(r.ok && d.ok ? 'Сохранено' : (d.error ?? 'Ошибка'), r.ok && d.ok ? 'success' : 'error')
+    } catch { toast('Ошибка', 'error') } finally { setBusy(null) }
+  }
+
+  const del = async (p: AdminProduct) => {
+    if (!confirm(`Удалить товар «${p.name}»? Активные заказы не затрагиваются.`)) return
+    setBusy(p.id)
+    try {
+      const r = await fetch(`/api/admin/products/${p.id}`, { method: 'DELETE' })
+      if (r.ok) { toast('Удалено', 'success'); await load() } else toast('Ошибка', 'error')
+    } catch { toast('Ошибка', 'error') } finally { setBusy(null) }
+  }
+
+  if (!items) return <div className="text-center text-site-muted py-16">Загрузка...</div>
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-site-muted text-xs">{items.length} товаров</div>
+        <button onClick={seed} disabled={!!busy} className="px-3 py-1.5 text-xs border border-site-border hover:border-site-accent text-site-muted hover:text-site-text rounded disabled:opacity-40 transition-colors">{busy === 'seed' ? '...' : 'Импорт из кода (seed)'}</button>
+      </div>
+      {items.sort((a, b) => a.order - b.order).map(p => (
+        <div key={p.id} className="bg-site-block border border-site-border rounded-lg p-4 space-y-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="font-mono font-medium">{p.name}</span>
+            <span className="text-xs text-site-muted font-mono">{p.id}</span>
+            <button onClick={() => patch(p.id, { active: !p.active })} className={`px-2 py-0.5 text-xs rounded border transition-colors ${p.active ? 'border-green-500/50 text-green-400' : 'border-site-border text-site-muted'}`}>{p.active ? 'активен' : 'скрыт'}</button>
+            <button onClick={() => patch(p.id, { popular: !p.popular })} className={`px-2 py-0.5 text-xs rounded border transition-colors ${p.popular ? 'border-site-accent text-site-accent' : 'border-site-border text-site-muted'}`}>популярный</button>
+            <label className="flex items-center gap-1.5 text-xs text-site-muted">badge
+              <input value={p.badge ?? ''} onChange={e => patch(p.id, { badge: e.target.value })} className="w-24 bg-black/40 border border-site-border focus:border-site-accent rounded px-2 py-1 text-xs text-site-text focus:outline-none transition-colors" />
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-site-muted">порядок
+              <input type="number" value={p.order} onChange={e => patch(p.id, { order: Number(e.target.value) })} className="w-16 bg-black/40 border border-site-border focus:border-site-accent rounded px-2 py-1 text-xs text-site-text focus:outline-none transition-colors" />
+            </label>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {p.variants.map(v => (
+              <label key={v.duration} className="flex items-center gap-1.5 text-xs text-site-muted">{v.durationLabel}
+                <input type="number" value={v.price} onChange={e => patchPrice(p.id, v.duration, Number(e.target.value))} className="w-24 bg-black/40 border border-site-border focus:border-site-accent rounded px-2 py-1 text-xs text-site-text font-mono focus:outline-none transition-colors" />₽
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => save(p)} disabled={busy === p.id} className="px-4 py-1.5 text-xs bg-site-accent text-white rounded hover:bg-site-accent/80 disabled:opacity-40 transition-colors font-medium">{busy === p.id ? '...' : 'Сохранить'}</button>
+            <button onClick={() => del(p)} disabled={busy === p.id} className="px-3 py-1.5 text-xs border border-site-border hover:border-red-500 text-site-muted hover:text-red-400 rounded disabled:opacity-40 transition-colors">Удалить</button>
+          </div>
+        </div>
+      ))}
+      <div className="text-site-muted text-xs bg-yellow-500/5 border border-yellow-500/20 rounded p-3">Каталог в БД. Если пусто — нажми «Импорт из кода» (переносит товары из products.ts). Перки и RCON-команды правятся в коде; здесь — цены, видимость, бейджи, порядок. Все правки в аудите.</div>
+    </div>
+  )
+}
+
 // ── Server Control Tab ──────────────────────────────────────────────────────────
 function ServerTab() {
   const { toast } = useToast()
@@ -1028,13 +1115,13 @@ function AuditTab() {
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
-type Tab = 'dash' | 'users' | 'online' | 'activity' | 'sessions' | 'orders' | 'crashes' | 'coupons' | 'server' | 'rcon' | 'audit'
+type Tab = 'dash' | 'users' | 'online' | 'activity' | 'sessions' | 'orders' | 'crashes' | 'coupons' | 'products' | 'server' | 'rcon' | 'audit'
 const TABS: { id: Tab; label: string }[] = [
   { id: 'dash', label: 'Обзор' }, { id: 'users', label: 'Пользователи' },
   { id: 'online', label: 'Онлайн' },
   { id: 'activity', label: 'Активность' }, { id: 'sessions', label: 'Сессии' },
   { id: 'orders', label: 'Заказы' }, { id: 'crashes', label: 'Краши' },
-  { id: 'coupons', label: 'Купоны' }, { id: 'server', label: 'Сервер' }, { id: 'rcon', label: 'RCON' },
+  { id: 'coupons', label: 'Купоны' }, { id: 'products', label: 'Товары' }, { id: 'server', label: 'Сервер' }, { id: 'rcon', label: 'RCON' },
   { id: 'audit', label: 'Аудит' },
 ]
 
@@ -1068,7 +1155,7 @@ export default function AdminPage() {
       else if (t === 'orders') { const r = await fetch('/api/admin/orders'); if (!checkAuth(r)) return; setOrders(await r.json()) }
       else if (t === 'crashes') { const r = await fetch('/api/admin/crash-reports'); if (!checkAuth(r)) return; setCrashes(await r.json()) }
       else if (t === 'coupons') { const r = await fetch('/api/admin/coupons'); if (!checkAuth(r)) return; setCoupons(await r.json()) }
-      else if (t === 'online' || t === 'audit' || t === 'server') { /* self-loading tabs */ }
+      else if (t === 'online' || t === 'audit' || t === 'server' || t === 'products') { /* self-loading tabs */ }
       loaded.current.add(t)
     } catch { toast('Ошибка загрузки', 'error') } finally { setLoading(false) }
   }, [checkAuth, toast])
@@ -1134,6 +1221,7 @@ export default function AdminPage() {
         {tab === 'orders' && <OrdersTab orders={orders} onRetry={retryOrder} retrying={retrying} />}
         {tab === 'crashes' && <CrashTab reports={crashes} onSelect={selectCrash} selected={selectedCrash} />}
         {tab === 'coupons' && <CouponsTab coupons={coupons} setCoupons={setCoupons} />}
+        {tab === 'products' && <ProductsTab />}
         {tab === 'server' && <ServerTab />}
         {tab === 'rcon' && <RconTab />}
       </div>

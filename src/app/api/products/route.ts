@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
-import { products } from '@/lib/products'
+import { getActiveProducts } from '@/lib/productStore'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const active = products.filter(p => p.active).sort((a, b) => a.order - b.order)
-  return NextResponse.json(active)
+  return NextResponse.json(await getActiveProducts())
 }

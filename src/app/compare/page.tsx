@@ -1,9 +1,11 @@
-import { products } from '@/lib/products'
+import { getActiveProducts } from '@/lib/productStore'
 import Link from 'next/link'
 
 export const metadata = {
   title: 'Сравнение рангов — NATUX WORLD',
 }
+
+export const dynamic = 'force-dynamic'
 
 const KEY_PERKS = [
   { label: 'Приват', fn: (p: string[]) => p.find(x => x.includes('Приват'))?.match(/\d+|лимит/i)?.[0] ?? '—' },
@@ -31,8 +33,8 @@ function CellValue({ val }: { val: string }) {
   return <span style={{ color: '#fff', fontFamily: '"JetBrains Mono", monospace', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{val}</span>
 }
 
-export default function ComparePage() {
-  const sorted = products.filter(p => p.active).sort((a, b) => a.order - b.order)
+export default async function ComparePage() {
+  const sorted = await getActiveProducts()
 
   return (
     <div className="cmp-root max-w-7xl mx-auto px-4 py-12">
