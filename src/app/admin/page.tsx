@@ -625,7 +625,7 @@ function SessionsTab({ tokens }: { tokens: GameToken[] }) {
 }
 
 // ── Orders Tab ─────────────────────────────────────────────────────────────────
-function OrdersTab({ orders, onRetry, retrying }: { orders: Order[]; onRetry: (id: string) => void; retrying: string | null }) {
+function OrdersTab({ orders, onRetry, retrying, onRefund, refunding }: { orders: Order[]; onRetry: (id: string) => void; retrying: string | null; onRefund: (id: string) => void; refunding: string | null }) {
   const [filter, setFilter] = useState('all')
   const filtered = filter === 'all' ? orders : orders.filter(o => o.status === filter)
   const stats = {
@@ -660,7 +660,12 @@ function OrdersTab({ orders, onRetry, retrying }: { orders: Order[]; onRetry: (i
             <Td className="text-xs text-site-muted">{o.variantDurationLabel}</Td>
             <Td className="whitespace-nowrap">{o.price} р{o.originalPrice && o.originalPrice !== o.price && <span className="ml-1 text-xs text-site-muted line-through">{o.originalPrice}</span>}</Td>
             <Td><span className={ORDER_STATUS_COLOR[o.status] ?? 'text-site-muted'}>{ORDER_STATUS_LABEL[o.status] ?? o.status}</span>{o.couponCode && <div className="text-[10px] text-green-400">{o.couponCode}</div>}</Td>
-            <Td>{o.status === 'delivery_failed' && <button onClick={() => onRetry(o.id)} disabled={retrying === o.id} className="px-2 py-1 text-xs border border-site-accent/50 text-site-accent hover:bg-site-accent/10 rounded disabled:opacity-40 transition-colors">{retrying === o.id ? '...' : 'Повторить'}</button>}</Td>
+            <Td>
+              <div className="flex gap-1.5">
+                {o.status === 'delivery_failed' && <button onClick={() => onRetry(o.id)} disabled={retrying === o.id} className="px-2 py-1 text-xs border border-site-accent/50 text-site-accent hover:bg-site-accent/10 rounded disabled:opacity-40 transition-colors">{retrying === o.id ? '...' : 'Повторить'}</button>}
+                {['paid', 'delivered', 'delivery_failed', 'delivery_pending'].includes(o.status) && <button onClick={() => onRefund(o.id)} disabled={refunding === o.id} className="px-2 py-1 text-xs border border-red-500/40 text-red-400 hover:bg-red-500/10 rounded disabled:opacity-40 transition-colors">{refunding === o.id ? '...' : 'Возврат'}</button>}
+              </div>
+            </Td>
           </Tr>
         ))}
       </Table>
@@ -1139,6 +1144,7 @@ export default function AdminPage() {
   const [selectedCrash, setSelectedCrash] = useState<CrashReport | null>(null)
   const [coupons, setCoupons] = useState<Coupon[]>([])
   const [retrying, setRetrying] = useState<string | null>(null)
+  const [refunding, setRefunding] = useState<string | null>(null)
   const [selectedUser, setSelectedUser] = useState<string | null>(null)
   const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([])
   const [sseStatus, setSseStatus] = useState<'connecting' | 'live' | 'off'>('connecting')
@@ -1181,6 +1187,18 @@ export default function AdminPage() {
     try { const r = await fetch(`/api/admin/orders/${id}/retry-delivery`, { method: 'POST' }); if (r.ok) { const { order } = await r.json(); setOrders(prev => prev.map(o => o.id === id ? order : o)); toast(order.status === 'delivered' ? 'Донат выдан!' : 'Ошибка выдачи', order.status === 'delivered' ? 'success' : 'error') } }
     catch { toast('Ошибка', 'error') } finally { setRetrying(null) }
   }
+  const refundOrder = async (id: string) => {
+    if (!confirm('Вернуть заказ? Ранг будет отозван через RCON, статус → refunded. Деньги возвращаются вручную.')) return
+    setRefunding(id)
+    try {
+      const r = await fetch(`/api/admin/orders/${id}/refund`, { method: 'POST' })
+      if (r.ok) {
+        const { order, rconOk } = await r.json()
+        setOrders(prev => prev.map(o => o.id === id ? order : o))
+        toast(rconOk ? 'Возврат оформлен, ранг отозван' : 'Заказ возвращён, но RCON-отзыв не прошёл', rconOk ? 'success' : 'error')
+      } else { const d = await r.json(); toast(d.error ?? 'Ошибка', 'error') }
+    } catch { toast('Ошибка', 'error') } finally { setRefunding(null) }
+  }
   const updateUser = (update: Partial<AdminUser>) => setUsers(prev => prev.map(u => u.id === update.id ? { ...u, ...update } : u))
   const logout = async () => { await fetch('/api/admin/logout', { method: 'POST' }); router.push('/admin/login') }
 
@@ -1218,7 +1236,7 @@ export default function AdminPage() {
         {tab === 'audit' && <AuditTab />}
         {tab === 'activity' && <ActivityTab events={events} />}
         {tab === 'sessions' && <SessionsTab tokens={tokens} />}
-        {tab === 'orders' && <OrdersTab orders={orders} onRetry={retryOrder} retrying={retrying} />}
+        {tab === 'orders' && <OrdersTab orders={orders} onRetry={retryOrder} retrying={retrying} onRefund={refundOrder} refunding={refunding} />}
         {tab === 'crashes' && <CrashTab reports={crashes} onSelect={selectCrash} selected={selectedCrash} />}
         {tab === 'coupons' && <CouponsTab coupons={coupons} setCoupons={setCoupons} />}
         {tab === 'products' && <ProductsTab />}
