@@ -4,10 +4,23 @@ import { requireAdmin } from '@/lib/adminAuth'
 import { buildCommands, executeRcon } from '@/lib/rcon'
 import { getProductById } from '@/lib/productStore'
 import { logAdminAction } from '@/lib/adminAudit'
+import bcrypt from 'bcryptjs'
 
 export const dynamic = 'force-dynamic'
 
 type Ctx = { params: { id: string } }
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const USERNAME_RE = /^[a-zA-Z0-9_]{3,16}$/
+
+// 12-char temp password (admin relays it to the user out of band).
+function genTempPassword(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
+  let out = ''
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(12))
+  for (const b of bytes) out += alphabet[b % alphabet.length]
+  return out
+}
 
 export async function GET(req: NextRequest, { params }: Ctx) {
   if (!(await requireAdmin(req))) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
@@ -22,7 +35,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   })
   if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const [orders, logins, tokens, gameEvents] = await Promise.all([
+  const [orders, logins, tokens, gameEvents, gameEventsAndIps] = await Promise.all([
     prisma.order.findMany({
       where: { username: user.username },
       orderBy: { createdAt: 'desc' },
@@ -49,7 +62,17 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       orderBy: { createdAt: 'desc' },
       take: 300,
     }),
+    prisma.loginEvent.groupBy({
+      by: ['ip'],
+      where: { userId: user.id },
+      _count: { ip: true },
+      _max: { createdAt: true },
+    }),
   ])
+
+  const ipHistory = (gameEventsAndIps as { ip: string; _count: { ip: number }; _max: { createdAt: Date | null } }[])
+    .map(r => ({ ip: r.ip, count: r._count.ip, lastSeen: r._max.createdAt }))
+    .sort((a, b) => (b.lastSeen?.getTime() ?? 0) - (a.lastSeen?.getTime() ?? 0))
 
   return NextResponse.json({
     ...user,
@@ -61,6 +84,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       createdAt: t.createdAt,
     })),
     gameEvents,
+    ipHistory,
   })
 }
 
@@ -68,8 +92,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   if (!(await requireAdmin(req))) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
 
   const body = await req.json()
-  const { action, banReason, productId, duration } = body as {
+  const { action, banReason, productId, duration, email, username } = body as {
     action: string; banReason?: string; productId?: string; duration?: string
+    email?: string; username?: string
   }
 
   const user = await prisma.user.findUnique({ where: { id: params.id } })
@@ -119,6 +144,59 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     })
     await logAdminAction(req, 'user.force-unverify', { target: user.username, ok: true })
     return NextResponse.json({ ok: true, user: updated })
+  }
+
+  if (action === 'set-email') {
+    if (!email || !EMAIL_RE.test(email)) return NextResponse.json({ error: 'Некорректный email' }, { status: 400 })
+    const clash = await prisma.user.findUnique({ where: { email } })
+    if (clash && clash.id !== params.id) return NextResponse.json({ error: 'Email уже занят' }, { status: 409 })
+    // New email must be re-verified; bump tokenVersion to drop existing sessions.
+    const updated = await prisma.user.update({
+      where: { id: params.id },
+      data: { email, emailVerified: false, verifyCode: null, verifyCodeExpires: null, tokenVersion: { increment: 1 } },
+    })
+    await logAdminAction(req, 'user.set-email', { target: user.username, params: { email }, ok: true })
+    return NextResponse.json({ ok: true, user: updated })
+  }
+
+  if (action === 'set-username') {
+    if (!username || !USERNAME_RE.test(username)) return NextResponse.json({ error: 'Ник 3-16 символов: A-Z a-z 0-9 _' }, { status: 400 })
+    const clash = await prisma.user.findUnique({ where: { username } })
+    if (clash && clash.id !== params.id) return NextResponse.json({ error: 'Ник уже занят' }, { status: 409 })
+    // username is the in-game / yggdrasil identity. Orders reference it by value,
+    // so migrate the old order rows to the new name to keep the user's history.
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: params.id }, data: { username } }),
+      prisma.order.updateMany({ where: { username: user.username }, data: { username } }),
+      prisma.gameEvent.updateMany({ where: { username: user.username }, data: { username } }),
+    ])
+    await logAdminAction(req, 'user.set-username', { target: user.username, params: { from: user.username, to: username }, ok: true })
+    return NextResponse.json({ ok: true })
+  }
+
+  if (action === 'reset-password') {
+    const tempPassword = genTempPassword()
+    const passwordHash = await bcrypt.hash(tempPassword, 10)
+    await prisma.user.update({
+      where: { id: params.id },
+      data: { passwordHash, tokenVersion: { increment: 1 } }, // bump = logout everywhere
+    })
+    await prisma.gameToken.deleteMany({ where: { userId: params.id } })
+    // Never log the password itself.
+    await logAdminAction(req, 'user.reset-password', { target: user.username, ok: true })
+    return NextResponse.json({ ok: true, tempPassword })
+  }
+
+  if (action === 'reset-2fa') {
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: params.id },
+        data: { twoFactorEnabled: false, twoFactorMethod: null, totpSecretEnc: null, twoFactorCode: null, twoFactorCodeExpires: null },
+      }),
+      prisma.twoFactorBackupCode.deleteMany({ where: { userId: params.id } }),
+    ])
+    await logAdminAction(req, 'user.reset-2fa', { target: user.username, ok: true })
+    return NextResponse.json({ ok: true })
   }
 
   if (action === 'give-rank') {

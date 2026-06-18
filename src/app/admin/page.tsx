@@ -29,6 +29,7 @@ interface UserDetail extends Omit<AdminUser, 'orders' | 'lastLogin'> {
   logins: LoginEventRow[]
   tokens: { accessToken: string; hasServerId: boolean; createdAt: string }[]
   gameEvents: GameEventRow[]
+  ipHistory: { ip: string; count: number; lastSeen: string | null }[]
 }
 interface OrderSummary {
   id: string; publicId: string; productName: string; variantDurationLabel: string
@@ -200,6 +201,9 @@ function UserModal({ userId, onClose, onUpdate }: { userId: string; onClose: () 
   const [rankDuration, setRankDuration] = useState('30d')
   const [givingRank, setGivingRank] = useState(false)
   const [showRankForm, setShowRankForm] = useState(false)
+  const [editField, setEditField] = useState<'email' | 'username' | null>(null)
+  const [editVal, setEditVal] = useState('')
+  const [tempPw, setTempPw] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`/api/admin/users/${userId}`).then(r => r.json()).then(d => { setUser(d); setLoading(false) })
@@ -219,6 +223,24 @@ function UserModal({ userId, onClose, onUpdate }: { userId: string; onClose: () 
       setUser(fresh)
       onUpdate({ id: userId, bannedAt: fresh.bannedAt, banReason: fresh.banReason, tokenVersion: fresh.tokenVersion, emailVerified: fresh.emailVerified })
     } catch { toast('Ошибка', 'error') } finally { setActing(null); setShowBanForm(false) }
+  }
+
+  const saveEdit = async () => {
+    if (!editField) return
+    const act = editField === 'email' ? 'set-email' : 'set-username'
+    if (editField === 'username' && !confirm('Ник — игровая идентичность (вход на сервер). Сменить? Заказы и игровые события будут перенесены на новый ник.')) return
+    await action(act, editField === 'email' ? { email: editVal } : { username: editVal })
+    setEditField(null); setEditVal('')
+  }
+
+  const resetPassword = async () => {
+    if (!confirm('Сбросить пароль? Текущий перестанет работать, все сессии завершатся. Будет выдан временный пароль.')) return
+    setActing('reset-password')
+    try {
+      const r = await fetch(`/api/admin/users/${userId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset-password' }) })
+      const d = await r.json()
+      if (r.ok && d.tempPassword) { setTempPw(d.tempPassword); toast('Пароль сброшен', 'success') } else toast(d.error ?? 'Ошибка', 'error')
+    } catch { toast('Ошибка', 'error') } finally { setActing(null) }
   }
 
   const giveRank = async () => {
@@ -326,7 +348,36 @@ function UserModal({ userId, onClose, onUpdate }: { userId: string; onClose: () 
                   className={`px-3 py-2 text-xs border rounded transition-colors ${showRankForm ? 'border-site-accent text-site-accent bg-site-accent/10' : 'border-site-accent/50 text-site-accent hover:bg-site-accent/10'}`}>
                   Выдать ранг
                 </button>
+                <button onClick={() => { setEditField('email'); setEditVal(user.email) }} disabled={!!acting}
+                  className="px-3 py-2 text-xs border border-site-border text-site-muted hover:text-site-text rounded disabled:opacity-40 transition-colors">Изменить email</button>
+                <button onClick={() => { setEditField('username'); setEditVal(user.username) }} disabled={!!acting}
+                  className="px-3 py-2 text-xs border border-site-border text-site-muted hover:text-site-text rounded disabled:opacity-40 transition-colors">Изменить ник</button>
+                <button onClick={resetPassword} disabled={!!acting}
+                  className="px-3 py-2 text-xs border border-orange-500/50 text-orange-400 hover:bg-orange-500/10 rounded disabled:opacity-40 transition-colors">{acting === 'reset-password' ? '...' : 'Сбросить пароль'}</button>
+                <button onClick={() => action('reset-2fa')} disabled={!!acting}
+                  className="px-3 py-2 text-xs border border-purple-500/50 text-purple-400 hover:bg-purple-500/10 rounded disabled:opacity-40 transition-colors">{acting === 'reset-2fa' ? '...' : 'Сбросить 2FA'}</button>
               </div>
+
+              {/* Edit email / username form */}
+              {editField && (
+                <div className="flex gap-2">
+                  <input value={editVal} onChange={e => setEditVal(e.target.value)}
+                    placeholder={editField === 'email' ? 'Новый email' : 'Новый ник'}
+                    className="flex-1 bg-site-block border border-site-accent/50 rounded px-3 py-2 text-sm focus:outline-none focus:border-site-accent transition-colors" />
+                  <button onClick={saveEdit} disabled={!!acting || !editVal.trim()}
+                    className="px-4 py-2 text-xs bg-site-accent text-white rounded hover:bg-site-accent/80 disabled:opacity-40 transition-colors font-medium">Сохранить</button>
+                  <button onClick={() => { setEditField(null); setEditVal('') }}
+                    className="px-3 py-2 text-xs border border-site-border text-site-muted hover:text-site-text rounded transition-colors">Отмена</button>
+                </div>
+              )}
+
+              {/* Temp password (shown once) */}
+              {tempPw && (
+                <div className="bg-orange-500/5 border border-orange-500/30 rounded p-3 flex items-center justify-between gap-3">
+                  <div className="text-xs text-orange-300">Временный пароль (передай игроку, больше не покажется): <span className="font-mono font-bold select-all">{tempPw}</span></div>
+                  <button onClick={() => setTempPw(null)} className="text-orange-300/60 hover:text-orange-300 text-sm">×</button>
+                </div>
+              )}
 
               {/* Ban form */}
               {showBanForm && (
@@ -467,16 +518,32 @@ function UserModal({ userId, onClose, onUpdate }: { userId: string; onClose: () 
 
         {/* ── ACTIVITY TAB ── */}
         {uTab === 'activity' && (
-          <Table cols={['Время', 'Событие', 'IP', 'UA']}>
-            {user.logins.map(l => (
-              <Tr key={l.id}>
-                <Td className="text-xs text-site-muted whitespace-nowrap">{fmtDate(l.createdAt)}</Td>
-                <Td><span className={`px-2 py-0.5 rounded text-xs ${KIND_BADGE[l.kind] ?? 'text-site-muted bg-site-border/30'}`}>{l.kind}</span></Td>
-                <Td className="font-mono text-xs">{l.ip}</Td>
-                <Td className="text-xs text-site-muted max-w-[200px] truncate">{l.userAgent || '—'}</Td>
-              </Tr>
-            ))}
-          </Table>
+          <div className="space-y-5">
+            {user.ipHistory && user.ipHistory.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-site-muted text-xs uppercase tracking-wider">История IP ({user.ipHistory.length})</div>
+                <div className="flex flex-wrap gap-2">
+                  {user.ipHistory.map(h => (
+                    <span key={h.ip} className="flex items-center gap-2 px-2 py-1 text-xs font-mono bg-site-border/30 rounded">
+                      <span className="text-site-text">{h.ip}</span>
+                      <span className="text-site-muted">×{h.count}</span>
+                      {h.lastSeen && <span className="text-site-muted/60">{fmtDate(h.lastSeen)}</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <Table cols={['Время', 'Событие', 'IP', 'UA']}>
+              {user.logins.map(l => (
+                <Tr key={l.id}>
+                  <Td className="text-xs text-site-muted whitespace-nowrap">{fmtDate(l.createdAt)}</Td>
+                  <Td><span className={`px-2 py-0.5 rounded text-xs ${KIND_BADGE[l.kind] ?? 'text-site-muted bg-site-border/30'}`}>{l.kind}</span></Td>
+                  <Td className="font-mono text-xs">{l.ip}</Td>
+                  <Td className="text-xs text-site-muted max-w-[200px] truncate">{l.userAgent || '—'}</Td>
+                </Tr>
+              ))}
+            </Table>
+          </div>
         )}
 
       </div>
