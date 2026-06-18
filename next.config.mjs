@@ -2,7 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
-  serverExternalPackages: ['ssh2'],
+  experimental: {
+    serverComponentsExternalPackages: ['ssh2'],
+  },
   async headers() {
     return [
       {
