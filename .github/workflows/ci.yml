@@ -35,4 +35,8 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script_stop: true
-          script: echo deploy
+          script: |
+            cd /home/agfa/.openclaw/workspace/natux-world
+            git pull origin main
+            docker compose up --build -d
+            docker compose exec -T app npx prisma migrate deploy || true
