@@ -6,7 +6,6 @@ const NAV_LINKS = [
   { href: '/leaderboard', label: 'Лидерборд' },
   { href: '/rules', label: 'Правила' },
   { href: '/join', label: 'Подключиться' },
-  { href: '/compare', label: 'Сравнение рангов' },
   { href: '/map', label: 'Карта' },
 ]
 
