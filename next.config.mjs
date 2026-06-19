@@ -8,6 +8,13 @@ const nextConfig = {
     serverComponentsExternalPackages: ['ssh2'],
   },
   async headers() {
+    // Next.js dev (HMR / React Refresh) evaluates strings as JS and opens a
+    // websocket, so dev needs 'unsafe-eval' and ws: in the CSP. Production keeps
+    // the strict policy.
+    const isDev = process.env.NODE_ENV !== 'production'
+    const scriptSrc = `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`
+    const connectSrc = `connect-src 'self'${isDev ? ' ws: http: https:' : ''}`
+    const csp = `default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; ${scriptSrc}; ${connectSrc}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`
     return [
       {
         source: '/(.*)',
@@ -17,7 +24,7 @@ const nextConfig = {
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
           { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
-          { key: 'Content-Security-Policy', value: "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" },
+          { key: 'Content-Security-Policy', value: csp },
         ],
       },
     ]

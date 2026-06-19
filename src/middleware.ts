@@ -23,9 +23,11 @@ export async function middleware(req: NextRequest) {
   const isAdmin = pathname.startsWith('/admin') || pathname.startsWith('/api/admin')
   if (!isAdmin) return NextResponse.next()
 
-  // IP whitelist — return 404 to avoid revealing admin existence
+  // IP whitelist — return 404 to avoid revealing admin existence.
+  // Local dev has no proxy headers (browser → localhost), so skip the IP gate
+  // outside production. Prod behaviour is unchanged.
   const realIp = req.headers.get('x-real-ip') ?? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-  if (!realIp || !ADMIN_ALLOWED_IPS.includes(realIp)) {
+  if (process.env.NODE_ENV === 'production' && (!realIp || !ADMIN_ALLOWED_IPS.includes(realIp))) {
     return new NextResponse(null, { status: 404 })
   }
 
