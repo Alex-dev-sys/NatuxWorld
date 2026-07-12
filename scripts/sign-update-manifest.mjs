@@ -17,21 +17,33 @@ if (!privateKeyPem) throw new Error('UPDATE_SIGNING_PRIVATE_KEY is required');
 const privateKey = createPrivateKey(privateKeyPem);
 if (privateKey.asymmetricKeyType !== 'ed25519') throw new Error('Update signing key must be Ed25519');
 
-const expected = `NATUX WORLD-Setup-${version}-x64.exe`;
-const files = await readdir(releaseDir);
-const artifacts = files.filter((name) => name === expected);
-if (artifacts.length !== 1) {
-  throw new Error(`Expected exactly one Windows update artifact named ${expected}`);
+// electron-builder owns the published filename (including its sanitisation of
+// product names), so the signed record must be derived from its latest.yml.
+// This prevents a harmless-looking filename difference from blocking a valid
+// update, while still binding the exact file and SHA-512 in the signature.
+const latestYml = await readFile(path.join(releaseDir, 'latest.yml'), 'utf8');
+const latestVersion = latestYml.match(/^version:\s*(\S+)\s*$/m)?.[1];
+const artifact = latestYml.match(/^\s*-\s+url:\s*(\S+)\s*$/m)?.[1];
+const updaterSha512 = latestYml.match(/^\s+sha512:\s*([A-Za-z0-9+/]+={0,2})\s*$/m)?.[1];
+if (latestVersion !== version || !artifact || !/^[^/\\]+\.exe$/i.test(artifact) || !updaterSha512) {
+  throw new Error('latest.yml does not contain a valid Windows update entry');
 }
 
-const artifact = artifacts[0];
+const files = await readdir(releaseDir);
+if (!files.includes(artifact)) {
+  throw new Error(`Update artifact from latest.yml is missing: ${artifact}`);
+}
 const bytes = await readFile(path.join(releaseDir, artifact));
+const actualSha512 = createHash('sha512').update(bytes).digest('base64');
+if (actualSha512 !== updaterSha512) {
+  throw new Error('Update artifact SHA-512 does not match latest.yml');
+}
 const manifest = {
   schemaVersion: 1,
   repository,
   version,
   artifact,
-  sha512: createHash('sha512').update(bytes).digest('base64'),
+  sha512: actualSha512,
 };
 const rawManifest = JSON.stringify(manifest);
 const signature = sign(null, Buffer.from(rawManifest, 'utf8'), privateKey).toString('base64');
