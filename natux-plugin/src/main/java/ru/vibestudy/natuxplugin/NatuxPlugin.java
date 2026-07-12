@@ -10,6 +10,10 @@ public class NatuxPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        // Preserve an operator's existing API key/settings while appending defaults
+        // introduced by newer plugin releases (notably the anti-cheat section).
+        getConfig().options().copyDefaults(true);
+        saveConfig();
 
         String apiUrl = getConfig().getString("api.url", "http://127.0.0.1:3000/api/game-event");
         String apiKey = getConfig().getString("api.key", "");
@@ -21,6 +25,7 @@ public class NatuxPlugin extends JavaPlugin {
         sender = new ApiSender(this, apiUrl, apiKey);
 
         getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
+        getServer().getPluginManager().registerEvents(new AntiCheatListener(this), this);
 
         // Flush buffer on schedule
         getServer().getScheduler().runTaskTimerAsynchronously(this, () -> {
@@ -40,4 +45,18 @@ public class NatuxPlugin extends JavaPlugin {
     }
 
     public EventBuffer getBuffer() { return buffer; }
+
+    /** Persist anti-cheat evidence through the same authenticated event pipeline as game activity. */
+    public void pushAntiCheatEvent(org.bukkit.entity.Player player, String check, String detail, int level) {
+        org.bukkit.Location loc = player.getLocation();
+        String world = loc.getWorld() != null ? loc.getWorld().getName() : "";
+        buffer.add(new GameEvent(
+                player.getName(),
+                "anticheat",
+                check.toUpperCase() + " VL=" + level,
+                world,
+                loc.getX(), loc.getY(), loc.getZ(),
+                detail
+        ));
+    }
 }

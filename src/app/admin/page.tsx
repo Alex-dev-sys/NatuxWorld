@@ -116,6 +116,7 @@ const GAME_KIND_STYLE: Record<string, string> = {
   quit: 'text-site-muted bg-site-border/20',
   death: 'text-red-400 bg-red-400/10',
   kill: 'text-purple-400 bg-purple-400/10',
+  anticheat: 'text-red-300 bg-red-500/15',
 }
 const ORDER_STATUS_LABEL: Record<string, string> = {
   created: 'Создан', waiting_payment: 'Ожидает', paid: 'Оплачен',
@@ -442,7 +443,7 @@ function UserModal({ userId, onClose, onUpdate }: { userId: string; onClose: () 
               <>
                 {/* Filter */}
                 <div className="flex flex-wrap gap-2">
-                  {['all', 'command', 'chat', 'block_break', 'block_place', 'kill', 'death', 'join', 'quit'].map(k => {
+                  {['all', 'anticheat', 'command', 'chat', 'block_break', 'block_place', 'kill', 'death', 'join', 'quit'].map(k => {
                     const cnt = k === 'all' ? user.gameEvents.length : user.gameEvents.filter(e => e.kind === k).length
                     if (cnt === 0 && k !== 'all') return null
                     return (
