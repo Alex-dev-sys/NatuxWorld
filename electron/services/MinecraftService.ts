@@ -13,6 +13,7 @@ import {
 } from './MojangService';
 import { getLibrariesDir } from '../utils/paths';
 import type { User } from './AuthService';
+import { BRAND, BRAND_URLS } from '../../brand.config';
 
 export function classpathSeparator(platform: NodeJS.Platform = process.platform): string {
   return platform === 'win32' ? ';' : ':';
@@ -82,7 +83,7 @@ export function buildGameValues(input: {
     assets_index_name: input.assetIndex,
     user_type: 'msa',
     natives_directory: input.nativesDir,
-    launcher_name: 'NATUX WORLD',
+    launcher_name: BRAND.name,
     launcher_version: '1.0.0',
     classpath: input.classpath ?? '',
   };
@@ -136,7 +137,7 @@ export class MinecraftService {
     const memory = Math.max(512, Math.min(65536, Math.floor(Number(input.memory) || 4096)));
     const jvmArgs = [
       // authlib-injector must be the first JVM arg so it patches Mojang auth before anything else runs.
-      ...(input.authlibJarPath ? [`-javaagent:${input.authlibJarPath}=https://vibestudy.ru/api/yggdrasil`] : []),
+      ...(input.authlibJarPath ? [`-javaagent:${input.authlibJarPath}=${BRAND_URLS.yggdrasil}`] : []),
       `-Xmx${memory}M`,
       `-Xms${Math.min(memory, 1024)}M`,
       `-Djava.library.path=${input.nativesDir}`,

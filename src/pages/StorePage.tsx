@@ -2,8 +2,9 @@ import { motion } from 'framer-motion';
 import { ExternalLink } from 'lucide-react';
 import { bridge } from '../services/electron-bridge';
 import { useLang, pick } from '../i18n';
+import { BRAND_URLS } from '../../brand.config';
 
-const SHOP_URL = 'https://vibestudy.ru/shop';
+const SHOP_URL = BRAND_URLS.shop;
 
 const ru = {
   title: 'ДОНАТ-МАГАЗИН',

@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import https from 'node:https';
 import { SettingsService } from './SettingsService';
+import { BRAND_URLS } from '../../brand.config';
 
 export type CrashKind = 'launch-error' | 'game-crash';
 
@@ -15,7 +16,7 @@ export interface CrashReport {
   logs: string[];
 }
 
-const ENDPOINT = 'https://vibestudy.ru/api/crash-report';
+const ENDPOINT = BRAND_URLS.crashReport;
 
 /**
  * Sends anonymous crash reports to the backend, but ONLY when the user has opted in

@@ -6,6 +6,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { Tooltip } from './ui/Tooltip';
 import { ProfileMenu } from './ProfileMenu';
 import { useLang, pick } from '../i18n';
+import { BRAND } from '../../brand.config';
 
 const ru = {
   copyIp: 'Скопировать IP',
@@ -28,12 +29,12 @@ export function TitleBar() {
       <div className="titlebar-no-drag flex items-center gap-2">
         <div className="flex h-7 items-center gap-2 rounded-lg bg-white/[0.03] px-2.5 ring-1 ring-white/[0.06]">
           <span className="h-1.5 w-1.5 rounded-full bg-success shadow-[0_0_8px_rgba(0,255,127,0.8)]" />
-          <span className="text-[11px] font-medium text-white/70">NATUX WORLD</span>
+          <span className="text-[11px] font-medium text-white/70">{BRAND.name}</span>
           <span className="text-[10px] text-muted">·</span>
-          <span className="text-[10px] text-muted">mc.vibestudy.ru</span>
+          <span className="text-[10px] text-muted">{BRAND.serverHost}</span>
           <button
             onClick={async () => {
-              await navigator.clipboard.writeText('mc.vibestudy.ru');
+              await navigator.clipboard.writeText(BRAND.serverHost);
               markIpCopied();
             }}
             className="ml-1 text-muted hover:text-white"

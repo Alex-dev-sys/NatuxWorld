@@ -20,6 +20,7 @@ import { ForgeService } from './ForgeService';
 import { MinecraftService, type LaunchHandle } from './MinecraftService';
 import { SettingsService } from './SettingsService';
 import { CrashReportService } from './CrashReportService';
+import { BRAND } from '../../brand.config';
 import {
   getAssetObjectPath,
   getAssetsDir,
@@ -514,7 +515,7 @@ export class LauncherService extends EventEmitter {
 
   private async fetchSiteApi<T>(path: string): Promise<T> {
     return new Promise((resolve, reject) => {
-      const req = https.get(`https://vibestudy.ru${path}`, { timeout: 6000 }, (res) => {
+      const req = https.get(`${BRAND.siteOrigin}${path}`, { timeout: 6000 }, (res) => {
         let data = '';
         res.on('data', (chunk) => { data += chunk; });
         res.on('end', () => {
@@ -554,7 +555,7 @@ export class LauncherService extends EventEmitter {
       }>('/api/server/status');
       const ping = Date.now() - t0;
       return {
-        ip: 'mc.vibestudy.ru',
+        ip: BRAND.serverHost,
         version: data.version || '1.20.1+',
         mode: 'Анархия · PvP · Выживание',
         map: 'world_anarchy',
@@ -565,7 +566,7 @@ export class LauncherService extends EventEmitter {
       };
     } catch {
       return {
-        ip: 'mc.vibestudy.ru',
+        ip: BRAND.serverHost,
         version: '1.20.1+',
         mode: 'Анархия · PvP · Выживание',
         map: 'world_anarchy',
