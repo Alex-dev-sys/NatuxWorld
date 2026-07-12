@@ -20,6 +20,7 @@ import { useSettingsStore } from './store/useSettingsStore';
 import { AppBackdrop } from './components/AppBackdrop';
 import { useAccountStore } from './store/useAccountStore';
 import { AuthGate } from './components/auth/AuthGate';
+import { OnboardingWizard } from './components/OnboardingWizard';
 import { useLang, pick } from './i18n';
 
 const ru = { loading: 'Загрузка…' };
@@ -108,6 +109,7 @@ export default function App() {
         <Footer />
       </div>
       <SettingsModal />
+      <OnboardingWizard />
       <UpdateToast />
     </div>
   );
