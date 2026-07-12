@@ -1,4 +1,5 @@
 import type { NatuxAPI } from '../types/electron';
+import { BRAND } from '../../brand.config';
 
 const noop = () => () => {};
 
@@ -38,8 +39,8 @@ const fallback: NatuxAPI = {
   server: {
     getStatus: async () => ({ online: true, players: 142, maxPlayers: 500, ping: 52, tps: 20.0 }),
     getInfo: async () => ({
-      ip: 'mc.vibestudy.ru',
-      version: '1.21.1 Forge',
+      ip: BRAND.serverHost,
+      version: BRAND.minecraftVersionLabel,
       mode: 'Анархия',
       map: 'world_anarchy',
       difficulty: 'Hard',

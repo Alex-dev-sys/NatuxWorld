@@ -3,6 +3,7 @@ import { Server, Copy, Check, ChevronDown, Lock, Unlock, Map as MapIcon, ShieldA
 import { useEffect, useState } from 'react';
 import { useServerStatus } from '../hooks/useServerStatus';
 import { useLang, pick } from '../i18n';
+import { BRAND } from '../../brand.config';
 
 const ru = {
   ip: 'IP адрес', mode: 'Режим', anarchy: 'Анархия', version: 'Версия',
@@ -50,7 +51,7 @@ export function ServerInfo() {
         onClick={copyIp}
         className="group inline-flex items-center gap-1.5 text-white hover:text-primary transition"
       >
-        <span className="font-mono text-sm">{info?.ip ?? 'mc.vibestudy.ru'}</span>
+        <span className="font-mono text-sm">{info?.ip ?? BRAND.serverHost}</span>
         {copied ? (
           <Check className="h-3.5 w-3.5 text-success" />
         ) : (
@@ -59,7 +60,7 @@ export function ServerInfo() {
       </button>,
     ],
     [t.mode, <span key="mode">{info?.mode ?? t.anarchy}</span>],
-    [t.version, <span key="ver">{info?.version ?? '1.21.1 Forge'}</span>],
+    [t.version, <span key="ver">{info?.version ?? BRAND.minecraftVersionLabel}</span>],
     [
       t.tps,
       <span key="tps" className="text-success">

@@ -2,6 +2,7 @@ import { app, safeStorage } from 'electron';
 import fsp from 'node:fs/promises';
 import https from 'node:https';
 import path from 'node:path';
+import { BRAND_URLS } from '../../brand.config';
 
 export interface AccountUser {
   id: string;
@@ -34,7 +35,7 @@ export class AccountApiError extends Error {
 
 export class AccountService {
   private readonly file = path.join(app.getPath('userData'), 'account.json');
-  private readonly base = 'https://vibestudy.ru/api/auth';
+  private readonly base = BRAND_URLS.authApi;
   private volatileSession: StoredSession | null = null;
 
   async loadStored(): Promise<StoredSession | null> {

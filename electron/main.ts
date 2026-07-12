@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerIpcHandlers, updater, launcher, settings as settingsService } from './ipc/handlers';
+import { BRAND } from '../brand.config';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -22,7 +23,7 @@ function createWindow(): void {
     transparent: false,
     resizable: true,
     backgroundColor: '#070707',
-    title: 'NATUX WORLD',
+    title: BRAND.name,
     icon: path.join(process.env.APP_ROOT ?? '', 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -101,7 +102,7 @@ function registerWindowControls(win: BrowserWindow): void {
 // Connect endpoints the app legitimately talks to (auth backend, Mojang/Forge, GitHub).
 const CONNECT_SRC = [
   "'self'",
-  'https://vibestudy.ru',
+  BRAND.siteOrigin,
   'https://*.mojang.com',
   'https://*.minecraftforge.net',
   'https://piston-meta.mojang.com',
