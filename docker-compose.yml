@@ -63,6 +63,12 @@ services:
       MC_SSH_KEY_B64: ${MC_SSH_KEY_B64}
     expose:
       - "3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
 
   nginx:
     image: nginx:alpine
@@ -75,7 +81,8 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - /var/www/certbot:/var/www/certbot:ro
     depends_on:
-      - app
+      app:
+        condition: service_healthy
 
 volumes:
   postgres_data:

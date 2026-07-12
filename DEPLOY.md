@@ -82,9 +82,36 @@ docker compose up -d --build
 docker compose ps          # все сервисы running
 docker compose logs app    # логи приложения
 docker compose logs nginx  # логи nginx
+curl -fsS https://natuxworld.ru/api/health
 ```
 
 Открой https://natuxworld.ru — сайт должен работать.
+Эндпоинт `/api/health` обязан вернуть `{"status":"ok","database":"ok"}`. Если он вернул 503,
+не открывай сайт пользователям: сначала восстанови подключение приложения к PostgreSQL.
+
+## 7. Резервные копии PostgreSQL (обязательно)
+
+Скрипт создаёт сжатый дамп, хранит его вне Git и удаляет копии старше 14 дней:
+
+```bash
+chmod +x scripts/backup-postgres.sh
+./scripts/backup-postgres.sh
+```
+
+Проверь, что файл появился в `backups/postgres/`, и скопируй его в отдельное хранилище
+(например, S3/облако). Один диск VPS не является резервной копией.
+
+Ежедневный запуск в 03:30 по UTC через `crontab -e`:
+
+```cron
+30 3 * * * cd /srv/natux && /srv/natux/scripts/backup-postgres.sh >> /var/log/natux-backup.log 2>&1
+```
+
+Для проверки восстановления на отдельной тестовой БД:
+
+```bash
+gunzip -c backups/postgres/natux-<date>.sql.gz | docker compose exec -T postgres psql -U natux -d natux_test
+```
 
 ---
 

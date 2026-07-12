@@ -16,3 +16,4 @@ pnpm-debug.log*
 tsconfig.tsbuildinfo
 ecosystem.config.js
 nginx-vibestudy-patch.conf
+/backups/
