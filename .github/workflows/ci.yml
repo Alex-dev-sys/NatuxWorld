@@ -53,16 +53,6 @@ jobs:
       - run: npm test
       - run: npm run build
 
-  deploy:
-    needs: ci
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    steps:
-      - name: Deploy to vibestudy.ru
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script_stop: true
-          script: echo "trigger"
+  # Production deployment is performed by the connected Vercel project after a
+  # successful push to main. Keep this workflow limited to verifiable CI work;
+  # the former SSH job only ran `echo "trigger"` and could not deploy anything.
