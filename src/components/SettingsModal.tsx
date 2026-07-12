@@ -24,6 +24,10 @@ const ru = {
   closeOnLaunch: 'Закрывать лаунчер при запуске', closeOnLaunchHint: 'Освобождает ОЗУ',
   language: 'Язык интерфейса',
   autoUpdate: 'Авто-обновление', autoUpdateHint: 'Применится при следующем запуске',
+  checkUpdates: 'Проверить обновления', checkUpdatesHint: 'Проверяет GitHub Release и подпись',
+  checkingUpdates: 'Проверяем…', updatesCurrent: 'У вас последняя версия',
+  updateAvailable: (v: string) => `Доступна v${v}`,
+  updateCheckFailed: (message: string) => `Ошибка: ${message}`,
   autoLaunch: 'Автозапуск игры', autoLaunchHint: 'Сразу нажимать ИГРАТЬ при старте',
   crashReports: 'Отчёты о крашах', crashReportsHint: 'Анонимно слать логи при вылете — помогает чинить баги',
   logs: 'Логи', logsHint: 'Открыть страницу логов', open: 'Открыть',
@@ -44,6 +48,10 @@ const en: typeof ru = {
   closeOnLaunch: 'Close launcher on launch', closeOnLaunchHint: 'Frees up RAM',
   language: 'Interface language',
   autoUpdate: 'Auto-update', autoUpdateHint: 'Applied on next start',
+  checkUpdates: 'Check for updates', checkUpdatesHint: 'Checks the GitHub Release and signature',
+  checkingUpdates: 'Checking…', updatesCurrent: 'You have the latest version',
+  updateAvailable: (v: string) => `v${v} is available`,
+  updateCheckFailed: (message: string) => `Error: ${message}`,
   autoLaunch: 'Auto-launch game', autoLaunchHint: 'Press PLAY automatically on start',
   crashReports: 'Crash reports', crashReportsHint: 'Send anonymous logs on crash — helps fix bugs',
   logs: 'Logs', logsHint: 'Open the logs page', open: 'Open',
@@ -259,7 +267,24 @@ function LauncherTab() {
   const appVersion = useLauncherStore((s) => s.appVersion);
   const navigate = useNavigate();
   const [confirm, setConfirm] = useState(false);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [updateCheckMessage, setUpdateCheckMessage] = useState<string | null>(null);
   const t = pick(useLang(), TR);
+
+  const checkUpdates = async () => {
+    setCheckingUpdates(true);
+    setUpdateCheckMessage(null);
+    try {
+      const result = await bridge.updater.check();
+      if (result.error) setUpdateCheckMessage(t.updateCheckFailed(result.error));
+      else if (result.available) setUpdateCheckMessage(t.updateAvailable(String(result.version ?? '')));
+      else setUpdateCheckMessage(t.updatesCurrent);
+    } catch (err) {
+      setUpdateCheckMessage(t.updateCheckFailed(String((err as Error)?.message ?? err)));
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
 
   return (
     <>
@@ -275,6 +300,13 @@ function LauncherTab() {
 
       <Row icon={<RefreshCw className="h-4 w-4" />} label={t.autoUpdate} hint={t.autoUpdateHint}>
         <Toggle value={settings?.autoUpdate ?? true} onChange={(v) => update({ autoUpdate: v })} />
+      </Row>
+
+      <Row icon={<RefreshCw className="h-4 w-4" />} label={t.checkUpdates} hint={updateCheckMessage ?? t.checkUpdatesHint}>
+        <button onClick={checkUpdates} disabled={checkingUpdates}
+          className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs ring-1 ring-white/10 hover:bg-white/[0.1] disabled:cursor-wait disabled:opacity-60">
+          {checkingUpdates ? t.checkingUpdates : t.checkUpdates}
+        </button>
       </Row>
 
       <Row icon={<Rocket className="h-4 w-4" />} label={t.autoLaunch} hint={t.autoLaunchHint}>

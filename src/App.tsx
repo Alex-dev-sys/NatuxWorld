@@ -58,9 +58,16 @@ export default function App() {
   }, [settings?.autoLaunch, accountStatus]);
 
   if (accountStatus !== 'authed') {
-    return accountStatus === 'checking'
-      ? <div className="grid h-screen w-screen place-items-center bg-bg text-muted">{t.loading}</div>
-      : <AuthGate />;
+    return (
+      <>
+        {accountStatus === 'checking'
+          ? <div className="grid h-screen w-screen place-items-center bg-bg text-muted">{t.loading}</div>
+          : <AuthGate />}
+        {/* Updates must be visible before login too: users should never have to
+            authenticate merely to receive a security or launcher update. */}
+        <UpdateToast />
+      </>
+    );
   }
 
   return (

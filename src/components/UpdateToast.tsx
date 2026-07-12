@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Download, RefreshCw, X } from 'lucide-react';
+import { AlertTriangle, Download, RefreshCw, X } from 'lucide-react';
 import { bridge } from '../services/electron-bridge';
 import type { UpdateEvent } from '../../electron/services/UpdateService';
 import { useLang, pick } from '../i18n';
@@ -10,6 +10,7 @@ const ru = {
   available: (v: string) => `v${v} доступна`,
   downloading: (v: string) => `Загрузка v${v}…`,
   ready: (v: string) => `v${v} готова к установке`,
+  error: (message: string) => `Не удалось проверить обновление: ${message}`,
   install: 'Перезапустить и установить',
   download: 'Скачать с сайта',
 };
@@ -18,6 +19,7 @@ const en: typeof ru = {
   available: (v: string) => `v${v} available`,
   downloading: (v: string) => `Downloading v${v}…`,
   ready: (v: string) => `v${v} ready to install`,
+  error: (message: string) => `Could not check for updates: ${message}`,
   install: 'Restart and install',
   download: 'Download from site',
 };
@@ -28,6 +30,7 @@ type State =
   | { phase: 'available'; version: string }
   | { phase: 'downloading'; version: string; percent: number }
   | { phase: 'ready'; version: string }
+  | { phase: 'error'; message: string }
   // macOS remains manual until Developer ID signing/notarization is configured.
   | { phase: 'manual'; version: string; url: string };
 
@@ -58,6 +61,8 @@ export function UpdateToast() {
             setDismissed(false);
             return { phase: 'ready', version: event.version };
           case 'error':
+            setDismissed(false);
+            return { phase: 'error', message: event.message };
           case 'not-available':
             return { phase: 'idle' };
           default:
@@ -84,6 +89,8 @@ export function UpdateToast() {
           <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/30">
             {state.phase === 'downloading' ? (
               <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : state.phase === 'error' ? (
+              <AlertTriangle className="h-4 w-4 text-red-400" />
             ) : (
               <Download className="h-4 w-4" />
             )}
@@ -97,6 +104,7 @@ export function UpdateToast() {
               {state.phase === 'downloading' && t.downloading(state.version)}
               {state.phase === 'ready' && t.ready(state.version)}
               {state.phase === 'manual' && t.available(state.version)}
+              {state.phase === 'error' && t.error(state.message)}
             </div>
             {state.phase === 'downloading' && (
               <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-white/[0.06]">

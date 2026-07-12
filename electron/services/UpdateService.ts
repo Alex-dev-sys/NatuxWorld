@@ -12,6 +12,7 @@ export interface UpdateInfo {
   version?: string;
   notes?: string;
   url?: string;
+  error?: string;
 }
 
 export type UpdateEvent =
@@ -114,8 +115,9 @@ export class UpdateService {
       this.lastInfo = { available: info.version !== app.getVersion(), version: info.version, notes };
       return this.lastInfo;
     } catch (err) {
-      this.emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });
-      return { available: false };
+      const message = err instanceof Error ? err.message : String(err);
+      this.emit({ type: 'error', message });
+      return { available: false, error: message };
     }
   }
 
