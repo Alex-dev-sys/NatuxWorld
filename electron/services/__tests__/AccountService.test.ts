@@ -1,10 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
+import https from 'node:https';
+import path from 'node:path';
 
+const encryptionAvailable = vi.hoisted(() => vi.fn(() => true));
 vi.mock('electron', () => ({
   app: { getPath: () => '/tmp/natux-test' },
   safeStorage: {
-    isEncryptionAvailable: () => true,
+    isEncryptionAvailable: encryptionAvailable,
     encryptString: (s: string) => Buffer.from(s, 'utf-8'),
     decryptString: (b: Buffer) => b.toString('utf-8'),
   },
@@ -26,13 +29,13 @@ vi.mock('node:fs/promises', () => ({
 beforeEach(() => {
   for (const k of Object.keys(files)) delete files[k];
   vi.clearAllMocks();
+  encryptionAvailable.mockReturnValue(true);
 });
 
 function mockHttps(status: number, body: unknown) {
-  const https = require('node:https');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  vi.spyOn(https, 'request').mockImplementation(((_url: string, _opts: unknown, cb: (res: any) => void) => {
-    const res = new EventEmitter() as EventEmitter & { statusCode: number; setEncoding: () => void };
+  type MockResponse = EventEmitter & { statusCode: number; setEncoding: () => void };
+  vi.spyOn(https, 'request').mockImplementation(((_url: string, _opts: unknown, cb: (res: MockResponse) => void) => {
+    const res = new EventEmitter() as MockResponse;
     res.statusCode = status;
     res.setEncoding = () => undefined;
     const req = new EventEmitter() as EventEmitter & { write: () => void; end: () => void };
@@ -43,7 +46,7 @@ function mockHttps(status: number, body: unknown) {
       res.emit('end');
     };
     return req;
-  }) as any);
+  }) as unknown as typeof https.request);
 }
 
 describe('AccountService HTTP', () => {
@@ -102,5 +105,25 @@ describe('AccountService token storage', () => {
     await svc.saveStored({ token: 't1', user: { id: 'u1', username: 'Steve', email: 'a@b.ru' } });
     await svc.clearStored();
     expect(await svc.loadStored()).toBeNull();
+  });
+
+  it('keeps the session in memory when the OS keychain is unavailable', async () => {
+    encryptionAvailable.mockReturnValue(false);
+    const { AccountService } = await import('../AccountService');
+    const svc = new AccountService();
+    await svc.saveStored({ token: 'memory-token', user: { id: 'u1', username: 'Steve', email: 'a@b.ru' } });
+    expect((await svc.loadStored())?.token).toBe('memory-token');
+    expect(Object.keys(files)).toHaveLength(0);
+  });
+
+  it('rejects and removes a legacy plaintext token file', async () => {
+    const { AccountService } = await import('../AccountService');
+    const svc = new AccountService();
+    const accountFile = path.join('/tmp/natux-test', 'account.json');
+    files[accountFile] = JSON.stringify({
+      token: 'plaintext', user: { id: 'u1', username: 'Steve', email: 'a@b.ru' }, enc: false,
+    });
+    expect(await svc.loadStored()).toBeNull();
+    expect(files[accountFile]).toBeUndefined();
   });
 });

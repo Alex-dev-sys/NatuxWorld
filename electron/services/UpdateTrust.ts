@@ -1,0 +1,108 @@
+import { verify } from 'node:crypto';
+
+export const UPDATE_REPOSITORY = 'Alex-dev-sys/NatuxWorld';
+export const UPDATE_MANIFEST_URL =
+  'https://github.com/Alex-dev-sys/NatuxWorld/releases/latest/download/natux-update.json';
+export const UPDATE_SIGNATURE_URL = `${UPDATE_MANIFEST_URL}.sig`;
+
+export const UPDATE_SIGNING_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAOrUKMFQrBqWq9utev5Qb1bgJ2libkYuLZsnhPODwF8E=
+-----END PUBLIC KEY-----`;
+
+export interface SignedUpdateManifest {
+  schemaVersion: 1;
+  repository: typeof UPDATE_REPOSITORY;
+  version: string;
+  artifact: string;
+  sha512: string;
+}
+
+export interface UpdateCandidate {
+  version: string;
+  files: Array<{ url: string; sha512?: string }>;
+}
+
+const VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const ARTIFACT_RE = /^[^/\\]{1,200}\.exe$/i;
+const SHA512_RE = /^[A-Za-z0-9+/]{86}==$/;
+const ED25519_SIGNATURE_RE = /^[A-Za-z0-9+/]{86}==$/;
+const MAX_MANIFEST_BYTES = 16 * 1024;
+const MAX_SIGNATURE_BYTES = 1024;
+
+function assertManifest(value: unknown): asserts value is SignedUpdateManifest {
+  if (!value || typeof value !== 'object') throw new Error('Update manifest is not an object');
+  const manifest = value as Record<string, unknown>;
+  if (manifest.schemaVersion !== 1) throw new Error('Unsupported update manifest version');
+  if (manifest.repository !== UPDATE_REPOSITORY) throw new Error('Update repository mismatch');
+  if (typeof manifest.version !== 'string' || !VERSION_RE.test(manifest.version)) {
+    throw new Error('Invalid update version');
+  }
+  if (typeof manifest.artifact !== 'string' || !ARTIFACT_RE.test(manifest.artifact)) {
+    throw new Error('Invalid update artifact');
+  }
+  if (typeof manifest.sha512 !== 'string' || !SHA512_RE.test(manifest.sha512)) {
+    throw new Error('Invalid update SHA-512');
+  }
+}
+
+export function verifyUpdateManifest(
+  rawManifest: string,
+  rawSignature: string,
+  publicKey = UPDATE_SIGNING_PUBLIC_KEY,
+): SignedUpdateManifest {
+  if (Buffer.byteLength(rawManifest, 'utf8') > MAX_MANIFEST_BYTES) {
+    throw new Error('Update manifest is too large');
+  }
+  const signature = rawSignature.trim();
+  if (Buffer.byteLength(signature, 'utf8') > MAX_SIGNATURE_BYTES || !ED25519_SIGNATURE_RE.test(signature)) {
+    throw new Error('Invalid update signature encoding');
+  }
+  const valid = verify(null, Buffer.from(rawManifest, 'utf8'), publicKey, Buffer.from(signature, 'base64'));
+  if (!valid) throw new Error('Update manifest signature verification failed');
+
+  const parsed: unknown = JSON.parse(rawManifest);
+  assertManifest(parsed);
+  return parsed;
+}
+
+function artifactName(url: string): string | null {
+  try {
+    const pathname = new URL(url, 'https://updates.invalid').pathname;
+    const encoded = pathname.split('/').pop();
+    return encoded ? decodeURIComponent(encoded) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function matchesUpdateCandidate(
+  candidate: UpdateCandidate,
+  manifest: SignedUpdateManifest,
+): boolean {
+  if (candidate.version !== manifest.version || !Array.isArray(candidate.files)) return false;
+  return candidate.files.some(
+    (file) => artifactName(file.url) === manifest.artifact && file.sha512 === manifest.sha512,
+  );
+}
+
+async function fetchSmallText(url: string, maxBytes: number): Promise<string> {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/octet-stream' },
+    redirect: 'follow',
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) throw new Error(`Update trust file returned HTTP ${response.status}`);
+  const declaredLength = Number(response.headers.get('content-length') ?? 0);
+  if (declaredLength > maxBytes) throw new Error('Update trust file is too large');
+  const text = await response.text();
+  if (Buffer.byteLength(text, 'utf8') > maxBytes) throw new Error('Update trust file is too large');
+  return text;
+}
+
+export async function fetchTrustedUpdateManifest(): Promise<SignedUpdateManifest> {
+  const [manifest, signature] = await Promise.all([
+    fetchSmallText(UPDATE_MANIFEST_URL, MAX_MANIFEST_BYTES),
+    fetchSmallText(UPDATE_SIGNATURE_URL, MAX_SIGNATURE_BYTES),
+  ]);
+  return verifyUpdateManifest(manifest, signature);
+}

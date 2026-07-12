@@ -8,7 +8,7 @@
 
 <br>
 
-![Electron](https://img.shields.io/badge/Electron-33-47848F?logo=electron&logoColor=white)
+![Electron](https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss&logoColor=white)
@@ -27,7 +27,7 @@
 | 👤 **Аккаунты** | Регистрация + подтверждение по e-mail + вход через `vibestudy.ru`. Ник аккаунта = ник в игре |
 | ⚙️ **Гибкие настройки** | Две вкладки **Игра** / **Лаунчер**: память (с привязкой к ОЗУ системы), выбор Java, разрешение, fullscreen, JVM-аргументы, авто-апдейт, автозапуск |
 | 📜 **Логи в реальном времени** | Поток логов установки и игры с батчингом, чтобы UI не фризил при загрузке |
-| 🔄 **Авто-обновления** | `electron-updater` тянет новые версии с GitHub Releases |
+| 🔄 **Безопасные обновления** | Windows автоматически загружает только обновления с корректной Ed25519-подписью; macOS остаётся ручной до notarization |
 
 ---
 
@@ -70,7 +70,7 @@ xattr -cr "/Applications/NATUX WORLD.app"
 Правый клик (или Ctrl + клик) по иконке **NATUX WORLD** в Applications → **Открыть** → в диалоге ещё раз **Открыть**. Работает, если macOS не пишет «приложение повреждено» — в этом случае используй команду выше.
 </details>
 
-> ⚠️ Авто-обновления (`electron-updater`) на macOS требуют подписанной сборки — пока она не подписана, обновляйся вручную, скачивая новый `.dmg` из Releases.
+> ⚠️ Windows проверяет отдельную Ed25519-подпись манифеста и SHA-512 установщика перед загрузкой. Это защищает канал обновления бесплатно, но не убирает предупреждение SmartScreen. На macOS обновление остаётся ручным до Developer ID/notarization.
 
 ---
 
@@ -90,7 +90,7 @@ xattr -cr "/Applications/NATUX WORLD.app"
 
 ## 🧱 Стек
 
-**Electron 33** · **React 19** · **React Router 7** · **TypeScript (strict)** · **TailwindCSS 3** · **Framer Motion** · **Zustand** · **Vitest**
+**Electron 43** · **React 19** · **React Router 7** · **TypeScript (strict)** · **TailwindCSS 3** · **Framer Motion** · **Zustand** · **Vitest**
 
 ---
 
@@ -197,7 +197,10 @@ git commit -am "release: v1.8.4" && git push
 
 1. Прогоняет `typecheck` + `test` (релиз падает, если тесты красные).
 2. Собирает и публикует `.exe` / `.dmg` в GitHub Release через `electron-builder --publish always`.
-3. **Только после успешной публикации** создаёт и пушит тег `vX.Y.Z`.
+3. Подписывает Windows update-манифест секретом `UPDATE_SIGNING_PRIVATE_KEY` и публикует подпись в Release.
+4. **Только после успешной публикации** создаёт и пушит тег `vX.Y.Z`.
+
+Закрытый Ed25519-ключ хранится только в GitHub Actions secret `UPDATE_SIGNING_PRIVATE_KEY`; в приложение встроен лишь публичный ключ. При утрате закрытого ключа автоматические Windows-обновления необходимо перевести на новую пару ключей отдельным релизом.
 
 Порядок «тег после публикации» защищает от бага v1.8.0, когда упавшая публикация оставляла тег и все повторные запуски считали версию уже выпущенной (`release=false`).
 
