@@ -23,12 +23,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22.12.0
           cache: npm
@@ -135,7 +135,7 @@ jobs:
           gh release upload ${{ steps.ver.outputs.tag }} SHA256SUMS-windows.txt --clobber
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: natux-world-windows-${{ steps.ver.outputs.version }}
           path: |
@@ -156,12 +156,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22.12.0
           cache: npm
@@ -204,7 +204,7 @@ jobs:
           gh release upload "v${{ needs.build.outputs.version }}" SHA256SUMS-macos.txt --clobber
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: natux-world-macos-${{ needs.build.outputs.version }}
           path: release/*.dmg
