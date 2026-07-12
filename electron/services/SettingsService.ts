@@ -15,6 +15,8 @@ export interface LauncherSettings {
   autoLaunch: boolean;
   /** Opt-in: send anonymous crash logs to the backend on launch error / game crash. */
   crashReports: boolean;
+  /** The welcome flow is shown once after the player has signed in. */
+  onboardingCompleted: boolean;
 }
 
 const DEFAULTS: LauncherSettings = {
@@ -28,6 +30,7 @@ const DEFAULTS: LauncherSettings = {
   autoUpdate: true,
   autoLaunch: false,
   crashReports: false,
+  onboardingCompleted: false,
 };
 
 export class SettingsService {
