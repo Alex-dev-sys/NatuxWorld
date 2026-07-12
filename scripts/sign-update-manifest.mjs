@@ -30,14 +30,20 @@ if (latestVersion !== version || !artifact || !/^[^/\\]+\.exe$/i.test(artifact) 
 }
 
 const files = await readdir(releaseDir);
-if (!files.includes(artifact)) {
-  throw new Error(`Update artifact from latest.yml is missing: ${artifact}`);
+// electron-builder may sanitize the asset name when uploading it, while keeping
+// the local installer name intact. Find the local source by the updater's
+// authoritative SHA-512 instead of assuming both filenames are identical.
+const matchingArtifacts = [];
+for (const file of files.filter((name) => name.toLowerCase().endsWith('.exe'))) {
+  const bytes = await readFile(path.join(releaseDir, file));
+  if (createHash('sha512').update(bytes).digest('base64') === updaterSha512) {
+    matchingArtifacts.push(file);
+  }
 }
-const bytes = await readFile(path.join(releaseDir, artifact));
-const actualSha512 = createHash('sha512').update(bytes).digest('base64');
-if (actualSha512 !== updaterSha512) {
-  throw new Error('Update artifact SHA-512 does not match latest.yml');
+if (matchingArtifacts.length !== 1) {
+  throw new Error('Could not identify exactly one local installer matching latest.yml SHA-512');
 }
+const actualSha512 = updaterSha512;
 const manifest = {
   schemaVersion: 1,
   repository,
