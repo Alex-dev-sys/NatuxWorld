@@ -93,6 +93,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Sign and publish trusted update manifest
+        if: steps.ver.outputs.release == 'true'
+        shell: pwsh
+        env:
+          UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/sign-update-manifest.mjs
+          gh release upload ${{ steps.ver.outputs.tag }} release/natux-update.json release/natux-update.json.sig --clobber
+
       - name: Package (no publish)
         if: steps.ver.outputs.release == 'false'
         run: npx electron-builder --win --x64 --publish never
@@ -132,6 +142,8 @@ jobs:
             release/*.exe
             release/*.blockmap
             release/latest*.yml
+            release/natux-update.json
+            release/natux-update.json.sig
           if-no-files-found: warn
           retention-days: 14
 

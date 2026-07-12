@@ -13,13 +13,13 @@
 - username/server валидируются на IPC-границе, control characters удаляются из argfile;
 - при недоступном OS keychain токен остаётся только в памяти, legacy plaintext storage удаляется;
 - version JSON и artifacts проверяются опубликованными хешами;
-- неподписанные обновления переведены в ручной режим на Windows и macOS.
+- Windows-обновления проверяются по отдельной Ed25519-подписи и SHA-512 до загрузки; macOS остаётся в ручном режиме.
 
 Открытые организационные риски:
 
 1. Windows/macOS artifacts всё ещё требуют code signing/notarization.
 2. GitHub Actions следует закрепить по полным commit SHA и убрать непиннутую установку ImageMagick из release job.
-3. После получения сертификатов можно вернуть in-app update только вместе с publisher verification.
+3. Windows SmartScreen всё равно требует Authenticode/Store для доверенного имени издателя; macOS in-app update требует Developer ID/notarization.
 
 Ниже сохранён исходный аудит как исторический журнал; его пункты нельзя считать текущим списком открытых дефектов без сверки со статусом выше.
 

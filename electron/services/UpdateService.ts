@@ -1,5 +1,10 @@
 import { app, BrowserWindow } from 'electron';
 import pkg from 'electron-updater';
+import {
+  fetchTrustedUpdateManifest,
+  matchesUpdateCandidate,
+  type SignedUpdateManifest,
+} from './UpdateTrust';
 const { autoUpdater } = pkg;
 
 export interface UpdateInfo {
@@ -12,7 +17,7 @@ export interface UpdateInfo {
 export type UpdateEvent =
   | { type: 'checking' }
   | { type: 'available'; version: string; notes?: string }
-  // Unsigned builds use a manual, user-visible download flow on every OS.
+  // macOS stays manual until Developer ID signing/notarization is configured.
   | { type: 'manual'; version: string; notes?: string; url: string }
   | { type: 'not-available'; version: string }
   | { type: 'progress'; percent: number; bytesPerSecond: number; transferred: number; total: number }
@@ -21,26 +26,27 @@ export type UpdateEvent =
 
 const CHANNEL = 'updater:event';
 
-// Until both Windows and macOS artifacts are code-signed, silently installing a
-// GitHub release would make repository/CI compromise an unauthenticated RCE path.
-// Keep updates explicit on every OS; switch this only together with publisher
-// verification and notarization in electron-builder.
-const MANUAL_UPDATE = true;
+// Windows updates are authenticated independently from Authenticode with an
+// Ed25519-signed manifest. macOS still requires Developer ID notarization.
+const MANUAL_UPDATE = process.platform !== 'win32';
 const RELEASES_URL = 'https://github.com/Alex-dev-sys/NatuxWorld/releases/latest';
 
 export class UpdateService {
   private window: BrowserWindow | null = null;
   private wired = false;
   private lastInfo: UpdateInfo = { available: false };
+  private trustedManifest: SignedUpdateManifest | null = null;
+  private downloadingVersion: string | null = null;
 
   attach(win: BrowserWindow): void {
     this.window = win;
     if (this.wired) return;
     this.wired = true;
 
-    // Unsigned artifacts are never downloaded or installed silently.
-    autoUpdater.autoDownload = !MANUAL_UPDATE;
-    autoUpdater.autoInstallOnAppQuit = !MANUAL_UPDATE;
+    // Download only after update-available metadata matches the signed manifest.
+    autoUpdater.autoDownload = false;
+    // Keep installation behind the explicit "Restart and install" button.
+    autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.allowPrerelease = false;
 
     autoUpdater.on('checking-for-update', () => this.emit({ type: 'checking' }));
@@ -50,9 +56,19 @@ export class UpdateService {
       this.lastInfo = { available: true, version: info.version, notes };
       if (MANUAL_UPDATE) {
         this.emit({ type: 'manual', version: info.version, notes, url: RELEASES_URL });
-      } else {
-        this.emit({ type: 'available', version: info.version, notes });
+        return;
       }
+      if (!this.trustedManifest || !matchesUpdateCandidate(info, this.trustedManifest)) {
+        this.emit({ type: 'error', message: 'Update metadata does not match the signed manifest' });
+        return;
+      }
+      this.emit({ type: 'available', version: info.version, notes });
+      if (this.downloadingVersion === info.version) return;
+      this.downloadingVersion = info.version;
+      void autoUpdater.downloadUpdate().catch((err: unknown) => {
+        this.downloadingVersion = null;
+        this.emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+      });
     });
 
     autoUpdater.on('update-not-available', (info) => {
@@ -71,6 +87,10 @@ export class UpdateService {
     });
 
     autoUpdater.on('update-downloaded', (info) => {
+      if (!MANUAL_UPDATE && info.version !== this.trustedManifest?.version) {
+        this.emit({ type: 'error', message: 'Downloaded update version is not trusted' });
+        return;
+      }
       this.emit({ type: 'downloaded', version: info.version });
     });
 
@@ -82,6 +102,11 @@ export class UpdateService {
   async check(): Promise<UpdateInfo> {
     if (!app.isPackaged) return { available: false, version: app.getVersion() };
     try {
+      if (!MANUAL_UPDATE) {
+        // Fail closed: electron-updater is never allowed to download before this
+        // detached signature and the release SHA-512 have been verified.
+        this.trustedManifest = await fetchTrustedUpdateManifest();
+      }
       const result = await autoUpdater.checkForUpdates();
       const info = result?.updateInfo;
       if (!info) return this.lastInfo;
@@ -95,7 +120,7 @@ export class UpdateService {
   }
 
   installNow(): void {
-    // Unsigned builds always send the user to the release page instead.
+    // Windows reaches this point only after signed-manifest verification.
     if (!app.isPackaged || MANUAL_UPDATE) return;
     autoUpdater.quitAndInstall(false, true);
   }
