@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import https from 'node:https';
+import path from 'node:path';
 
 const encryptionAvailable = vi.hoisted(() => vi.fn(() => true));
 vi.mock('electron', () => ({
@@ -118,10 +119,11 @@ describe('AccountService token storage', () => {
   it('rejects and removes a legacy plaintext token file', async () => {
     const { AccountService } = await import('../AccountService');
     const svc = new AccountService();
-    files['/tmp/natux-test/account.json'] = JSON.stringify({
+    const accountFile = path.join('/tmp/natux-test', 'account.json');
+    files[accountFile] = JSON.stringify({
       token: 'plaintext', user: { id: 'u1', username: 'Steve', email: 'a@b.ru' }, enc: false,
     });
     expect(await svc.loadStored()).toBeNull();
-    expect(files['/tmp/natux-test/account.json']).toBeUndefined();
+    expect(files[accountFile]).toBeUndefined();
   });
 });
