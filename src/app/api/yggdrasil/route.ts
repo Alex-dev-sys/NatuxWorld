@@ -1,4 +1,5 @@
 import { getPublicKeyPem } from '@/lib/yggdrasil'
+import { BRAND } from '@/lib/brand'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,12 +9,12 @@ export async function GET() {
 
   return Response.json({
     meta: {
-      serverName: 'NATUX WORLD',
+      serverName: BRAND.name,
       implementationName: 'natux-yggdrasil',
       implementationVersion: '1.0.0',
       'feature.non_email_login': true,
     },
-    skinDomains: ['vibestudy.ru'],
+    skinDomains: [BRAND.siteDomain],
     signaturePublickey,
   })
 }

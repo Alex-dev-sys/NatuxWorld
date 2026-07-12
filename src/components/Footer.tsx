@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { BRAND } from '@/lib/brand'
 
 const NAV_LINKS = [
   { href: '/shop', label: 'Магазин' },
@@ -78,7 +79,7 @@ export default function Footer() {
                 className="text-site-accent text-[11px] tracking-wider cursor-blink"
                 style={{ fontFamily: '"JetBrains Mono", monospace' }}
               >
-                mc.vibestudy.ru
+                {BRAND.serverHost}
               </span>
             </div>
           </div>
@@ -174,7 +175,7 @@ export default function Footer() {
               className="text-[#3A1017] text-[10px] tracking-[0.3em] uppercase"
               style={{ fontFamily: '"JetBrains Mono", monospace' }}
             >
-              © 2025 vibestudy.ru — <span className="text-site-accent/40">CLASSIFIED</span>
+              © 2025 {BRAND.siteDomain} — <span className="text-site-accent/40">CLASSIFIED</span>
             </p>
           </div>
           <p

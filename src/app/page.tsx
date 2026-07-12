@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from 'react'
 import ServerStatus from '@/components/ServerStatus'
 import TopDonors from '@/components/TopDonors'
 import type { ServerStatus as ServerStatusType } from '@/lib/types'
+import { BRAND } from '@/lib/brand'
 
 const MONO = { fontFamily: '"JetBrains Mono", monospace' }
 const DISPLAY = { fontFamily: '"Bebas Neue", sans-serif' }
@@ -16,7 +17,7 @@ const GRAIN_BG =
 
 function CopyIPButton() {
   const [copied, setCopied] = useState(false)
-  const ip = 'mc.vibestudy.ru'
+  const ip = BRAND.serverHost
 
   const copy = () => {
     navigator.clipboard.writeText(ip).then(() => {

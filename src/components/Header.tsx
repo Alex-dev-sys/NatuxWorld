@@ -4,6 +4,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
+import { BRAND } from '@/lib/brand'
 
 const navItems = [
   { href: '/', label: 'Главная' },
@@ -34,7 +35,7 @@ export default function Header() {
             <span className="hdr-bracket hdr-bracket--tl" />
             <span className="hdr-bracket hdr-bracket--br" />
             {/* Аватарка-логотип */}
-            <Image src="/logo.png" alt="NATUX WORLD" width={38} height={38} className="block" priority />
+            <Image src="/logo.png" alt={BRAND.name} width={38} height={38} className="block" priority />
             {/* Glow behind logo */}
             <div className="absolute inset-0 bg-site-accent/20 blur-sm scale-150 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
           </div>

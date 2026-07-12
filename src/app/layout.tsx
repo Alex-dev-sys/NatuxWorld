@@ -4,28 +4,29 @@ import Header from '@/components/Header'
 import Footer from '@/components/Footer'
 import PageTransition from '@/components/PageTransition'
 import { ToastProvider } from '@/components/Toast'
+import { BRAND } from '@/lib/brand'
 
 export const viewport: Viewport = {
   themeColor: '#070707',
 }
 
 export const metadata: Metadata = {
-  metadataBase: new URL(`https://${process.env.NEXT_PUBLIC_SITE_DOMAIN ?? 'vibestudy.ru'}`),
+  metadataBase: new URL(BRAND.siteOrigin),
   title: {
-    default: 'NATUX WORLD — Minecraft Server',
-    template: '%s — NATUX WORLD',
+    default: `${BRAND.name} — Minecraft Server`,
+    template: `%s — ${BRAND.name}`,
   },
-  description: 'Minecraft сервер NATUX WORLD. Анархия, PvP, донат-магазин. IP: mc.vibestudy.ru',
+  description: `Minecraft сервер ${BRAND.name}. Анархия, PvP, донат-магазин. IP: ${BRAND.serverHost}`,
   keywords: 'minecraft, server, natux, pvp, anarchy, donate',
   icons: {
     icon: '/logo.png',
     apple: '/logo.png',
   },
   openGraph: {
-    title: 'NATUX WORLD — Minecraft Server',
-    description: 'Анархичный Minecraft-сервер без правил. IP: mc.vibestudy.ru',
-    siteName: 'NATUX WORLD',
-    images: [{ url: '/logo.png', width: 1080, height: 1080, alt: 'NATUX WORLD' }],
+    title: `${BRAND.name} — Minecraft Server`,
+    description: `Анархичный Minecraft-сервер без правил. IP: ${BRAND.serverHost}`,
+    siteName: BRAND.name,
+    images: [{ url: '/logo.png', width: 1080, height: 1080, alt: BRAND.name }],
   },
 }
 

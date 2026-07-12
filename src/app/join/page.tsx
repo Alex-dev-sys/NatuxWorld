@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from 'react'
 import ServerStatus from '@/components/ServerStatus'
+import { BRAND } from '@/lib/brand'
 
-const IP = 'mc.vibestudy.ru'
+const IP = BRAND.serverHost
 
 const MONO = '"JetBrains Mono", monospace'
 const DISPLAY = '"Bebas Neue", sans-serif'
