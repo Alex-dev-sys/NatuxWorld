@@ -39,7 +39,7 @@ const fallback: NatuxAPI = {
     getStatus: async () => ({ online: true, players: 142, maxPlayers: 500, ping: 52, tps: 20.0 }),
     getInfo: async () => ({
       ip: 'mc.vibestudy.ru',
-      version: '1.21.6 Forge',
+      version: '1.21.1 Forge',
       mode: 'Анархия',
       map: 'world_anarchy',
       difficulty: 'Hard',

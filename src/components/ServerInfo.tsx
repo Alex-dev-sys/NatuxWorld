@@ -59,7 +59,7 @@ export function ServerInfo() {
       </button>,
     ],
     [t.mode, <span key="mode">{info?.mode ?? t.anarchy}</span>],
-    [t.version, <span key="ver">{info?.version ?? '1.21.6 Forge'}</span>],
+    [t.version, <span key="ver">{info?.version ?? '1.21.1 Forge'}</span>],
     [
       t.tps,
       <span key="tps" className="text-success">

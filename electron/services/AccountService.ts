@@ -35,8 +35,10 @@ export class AccountApiError extends Error {
 export class AccountService {
   private readonly file = path.join(app.getPath('userData'), 'account.json');
   private readonly base = 'https://vibestudy.ru/api/auth';
+  private volatileSession: StoredSession | null = null;
 
   async loadStored(): Promise<StoredSession | null> {
+    if (this.volatileSession) return this.volatileSession;
     try {
       const raw = await fsp.readFile(this.file, 'utf-8');
       const parsed = JSON.parse(raw) as StoredSession & { enc?: boolean };
@@ -50,7 +52,11 @@ export class AccountService {
           return null;
         }
       }
-      return { token: parsed.token, user: parsed.user };
+      // Versions before safeStorage hardening could leave a plaintext token.
+      // Never keep accepting that legacy format indefinitely: remove it and
+      // require one fresh login so the replacement is encrypted.
+      await fsp.unlink(this.file).catch(() => undefined);
+      return null;
     } catch {
       return null;
     }
@@ -59,6 +65,7 @@ export class AccountService {
   async saveStored(session: StoredSession): Promise<void> {
     // No OS keychain (e.g. Linux without a secret service) → don't persist the token in
     // plaintext at all; the session simply lives until the app closes.
+    this.volatileSession = session;
     if (!safeStorage.isEncryptionAvailable()) return;
     await fsp.mkdir(path.dirname(this.file), { recursive: true });
     const payload = {
@@ -71,6 +78,7 @@ export class AccountService {
   }
 
   async clearStored(): Promise<void> {
+    this.volatileSession = null;
     try {
       await fsp.unlink(this.file);
     } catch {

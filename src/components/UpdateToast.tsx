@@ -28,7 +28,7 @@ type State =
   | { phase: 'available'; version: string }
   | { phase: 'downloading'; version: string; percent: number }
   | { phase: 'ready'; version: string }
-  // macOS: unsigned build can't self-install, so we link to the release page.
+  // Unsigned builds cannot safely self-install, so we link to the release page.
   | { phase: 'manual'; version: string; url: string };
 
 export function UpdateToast() {

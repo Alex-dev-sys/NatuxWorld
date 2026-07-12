@@ -8,7 +8,7 @@
 
 <br>
 
-![Electron](https://img.shields.io/badge/Electron-33-47848F?logo=electron&logoColor=white)
+![Electron](https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![Tailwind](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss&logoColor=white)
@@ -27,7 +27,7 @@
 | 👤 **Аккаунты** | Регистрация + подтверждение по e-mail + вход через `vibestudy.ru`. Ник аккаунта = ник в игре |
 | ⚙️ **Гибкие настройки** | Две вкладки **Игра** / **Лаунчер**: память (с привязкой к ОЗУ системы), выбор Java, разрешение, fullscreen, JVM-аргументы, авто-апдейт, автозапуск |
 | 📜 **Логи в реальном времени** | Поток логов установки и игры с батчингом, чтобы UI не фризил при загрузке |
-| 🔄 **Авто-обновления** | `electron-updater` тянет новые версии с GitHub Releases |
+| 🔄 **Безопасные обновления** | Проверяет GitHub Releases и предлагает ручное скачивание, пока сборки не подписаны |
 
 ---
 
@@ -70,7 +70,7 @@ xattr -cr "/Applications/NATUX WORLD.app"
 Правый клик (или Ctrl + клик) по иконке **NATUX WORLD** в Applications → **Открыть** → в диалоге ещё раз **Открыть**. Работает, если macOS не пишет «приложение повреждено» — в этом случае используй команду выше.
 </details>
 
-> ⚠️ Авто-обновления (`electron-updater`) на macOS требуют подписанной сборки — пока она не подписана, обновляйся вручную, скачивая новый `.dmg` из Releases.
+> ⚠️ Пока Windows/macOS сборки не подписаны, лаунчер только уведомляет о релизе и открывает страницу скачивания. Тихая установка отключена на всех ОС как защита supply chain.
 
 ---
 
@@ -90,7 +90,7 @@ xattr -cr "/Applications/NATUX WORLD.app"
 
 ## 🧱 Стек
 
-**Electron 33** · **React 19** · **React Router 7** · **TypeScript (strict)** · **TailwindCSS 3** · **Framer Motion** · **Zustand** · **Vitest**
+**Electron 43** · **React 19** · **React Router 7** · **TypeScript (strict)** · **TailwindCSS 3** · **Framer Motion** · **Zustand** · **Vitest**
 
 ---
 

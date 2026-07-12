@@ -12,8 +12,7 @@ export interface UpdateInfo {
 export type UpdateEvent =
   | { type: 'checking' }
   | { type: 'available'; version: string; notes?: string }
-  // macOS only: in-app install is impossible (Squirrel.Mac refuses unsigned updates),
-  // so the user is pointed at the release page to download the new dmg manually.
+  // Unsigned builds use a manual, user-visible download flow on every OS.
   | { type: 'manual'; version: string; notes?: string; url: string }
   | { type: 'not-available'; version: string }
   | { type: 'progress'; percent: number; bytesPerSecond: number; transferred: number; total: number }
@@ -22,10 +21,11 @@ export type UpdateEvent =
 
 const CHANNEL = 'updater:event';
 
-// macOS builds are unsigned (no Apple Developer ID), and Squirrel.Mac rejects unsigned
-// auto-updates with a code-signature error. So on mac we never download/quitAndInstall —
-// we just detect the new version and send the user to the release page.
-const MANUAL_UPDATE = process.platform === 'darwin';
+// Until both Windows and macOS artifacts are code-signed, silently installing a
+// GitHub release would make repository/CI compromise an unauthenticated RCE path.
+// Keep updates explicit on every OS; switch this only together with publisher
+// verification and notarization in electron-builder.
+const MANUAL_UPDATE = true;
 const RELEASES_URL = 'https://github.com/Alex-dev-sys/NatuxWorld/releases/latest';
 
 export class UpdateService {
@@ -38,9 +38,7 @@ export class UpdateService {
     if (this.wired) return;
     this.wired = true;
 
-    // On mac, never auto-download or install-on-quit: the install step can't succeed
-    // unsigned, and a half-downloaded update only wastes bandwidth and shows a broken
-    // "ready to install" toast. Windows keeps the full silent-download flow.
+    // Unsigned artifacts are never downloaded or installed silently.
     autoUpdater.autoDownload = !MANUAL_UPDATE;
     autoUpdater.autoInstallOnAppQuit = !MANUAL_UPDATE;
     autoUpdater.allowPrerelease = false;
@@ -97,7 +95,7 @@ export class UpdateService {
   }
 
   installNow(): void {
-    // No in-app install on mac (unsigned) — the renderer opens the release page instead.
+    // Unsigned builds always send the user to the release page instead.
     if (!app.isPackaged || MANUAL_UPDATE) return;
     autoUpdater.quitAndInstall(false, true);
   }
