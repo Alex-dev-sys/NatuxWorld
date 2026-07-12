@@ -7,7 +7,7 @@ import type { Duration } from '@/lib/types'
 
 // Refund = mark the order refunded + revoke the granted rank via RCON.
 // No money is moved here; the actual payout is handled out of band.
-const REFUNDABLE = new Set(['paid', 'delivered', 'delivery_failed', 'delivery_pending'])
+const REFUNDABLE = new Set(['paid', 'delivered', 'delivery_failed', 'delivery_pending', 'refund_failed'])
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   if (!(await requireAdmin(req))) return NextResponse.json({ error: 'Не авторизован' }, { status: 401 })
@@ -38,7 +38,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     rconError = err instanceof Error ? err.message : String(err)
   }
 
-  const updated = await updateOrder(order.publicId, { status: 'refunded', deliveryError: rconOk ? undefined : rconError })
-  await logAdminAction(req, 'order.refund', { target: order.publicId, params: { username: order.username, rank: order.productId, rconOk }, ok: true })
+  const updated = await updateOrder(order.publicId, {
+    status: rconOk ? 'refunded' : 'refund_failed',
+    deliveryError: rconOk ? undefined : rconError,
+  })
+  await logAdminAction(req, 'order.refund', {
+    target: order.publicId,
+    params: { username: order.username, rank: order.productId, rconOk },
+    ok: rconOk,
+  })
   return NextResponse.json({ order: updated, rconOk, rconError })
 }

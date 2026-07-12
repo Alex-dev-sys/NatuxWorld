@@ -17,6 +17,9 @@ export async function POST(req: NextRequest) {
   const user = await prisma.user.findUnique({ where: { id: claims.sub } })
   if (!user || user.tokenVersion !== claims.tv) return apiError('token_invalid', 'Сессия истекла', 401)
 
-  await prisma.user.update({ where: { id: user.id }, data: { tokenVersion: { increment: 1 } } })
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: user.id }, data: { tokenVersion: { increment: 1 } } }),
+    prisma.gameToken.deleteMany({ where: { userId: user.id } }),
+  ])
   return Response.json({ ok: true })
 }

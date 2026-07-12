@@ -7,6 +7,7 @@ import { clientIp } from '@/lib/clientIp'
 import { isLockedOut } from '@/lib/lockout'
 import { logLoginEvent } from '@/lib/auth'
 import { verifyAppPassword } from '@/lib/appPassword'
+import { deleteExpiredGameTokens } from '@/lib/gameTokens'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
   const user = await prisma.user.findUnique({
     where: isEmail ? { email: username } : { username },
   })
-  if (!user || !user.emailVerified) {
+  if (!user || !user.emailVerified || user.bannedAt) {
     return Response.json({ error: 'ForbiddenOperationException', errorMessage: 'Invalid credentials' }, { status: 403 })
   }
 
@@ -64,8 +65,14 @@ export async function POST(req: NextRequest) {
   const accessToken = randomToken()
   const resolvedClientToken = clientToken ?? randomToken()
 
+  await deleteExpiredGameTokens(user.id)
   await prisma.gameToken.create({
-    data: { accessToken, clientToken: resolvedClientToken, userId: user.id },
+    data: {
+      accessToken,
+      clientToken: resolvedClientToken,
+      userId: user.id,
+      tokenVersion: user.tokenVersion,
+    },
   })
 
   const profile = buildProfile(user.username)

@@ -45,14 +45,15 @@ describe('admin order refund route', () => {
     expect(auditCreate.mock.calls[0][0].data.action).toBe('order.refund')
   })
 
-  it('still marks refunded when RCON revoke fails', async () => {
+  it('marks refund_failed when RCON revoke fails', async () => {
     process.env.RCON_MOCK_FAIL = 'true'
     store.getOrderById.mockResolvedValue(order('delivered'))
-    store.updateOrder.mockResolvedValue({ ...order('refunded') })
+    store.updateOrder.mockResolvedValue({ ...order('refund_failed') })
     const res = await POST(req(), ctx('o1'))
     const data = await res.json()
     expect(res.status).toBe(200)
     expect(data.rconOk).toBe(false)
-    expect(store.updateOrder.mock.calls[0][1].status).toBe('refunded')
+    expect(store.updateOrder.mock.calls[0][1].status).toBe('refund_failed')
+    expect(auditCreate.mock.calls[0][0].data.ok).toBe(false)
   })
 })

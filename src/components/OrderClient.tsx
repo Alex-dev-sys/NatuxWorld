@@ -13,6 +13,7 @@ const STATUS_LABELS: Record<string, string> = {
   delivery_pending: 'Ожидает выдачи',
   delivered: 'Выдан ✓',
   delivery_failed: 'Ошибка выдачи',
+  refund_failed: 'Ошибка отзыва привилегии',
   cancelled: 'Отменён',
   refunded: 'Возврат',
 }
@@ -24,6 +25,7 @@ const STATUS_COLORS: Record<string, string> = {
   delivery_pending: 'text-yellow-400',
   delivered: 'text-site-success',
   delivery_failed: 'text-site-danger',
+  refund_failed: 'text-site-danger',
   cancelled: 'text-site-muted',
   refunded: 'text-site-muted',
 }
@@ -31,7 +33,7 @@ const STATUS_COLORS: Record<string, string> = {
 function getPaymentStatus(status: string): string {
   if (['paid', 'delivery_pending', 'delivered', 'delivery_failed'].includes(status)) return 'paid'
   if (status === 'cancelled') return 'cancelled'
-  if (status === 'refunded') return 'refunded'
+  if (status === 'refunded' || status === 'refund_failed') return 'refunded'
   return 'waiting_payment'
 }
 
@@ -58,7 +60,7 @@ export default function OrderClient({ initialOrder }: { initialOrder: Order }) {
   const [paying, setPaying] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
 
-  const isTerminal = ['delivered', 'cancelled', 'refunded'].includes(order.status)
+  const isTerminal = ['delivered', 'cancelled', 'refunded', 'refund_failed'].includes(order.status)
   const isWaiting = ['created', 'waiting_payment'].includes(order.status)
   const isPending = !isTerminal
 

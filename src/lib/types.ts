@@ -8,6 +8,7 @@ export type OrderStatus =
   | 'delivered'
   | 'delivery_failed'
   | 'cancelled'
+  | 'refund_failed'
   | 'refunded'
 
 export interface ProductVariant {
@@ -57,6 +58,9 @@ export interface Order {
   paidAt?: string
   deliveredAt?: string
   deliveryError?: string
+  /** Immutable command templates captured when the order is created. */
+  fulfillmentCommands?: string[]
+  /** Commands actually executed, retained for customer/admin diagnostics. */
   rconCommands?: string[]
   couponCode?: string
   originalPrice?: number

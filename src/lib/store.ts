@@ -20,6 +20,7 @@ function mapOrder(row: {
   paidAt: Date | null
   deliveredAt: Date | null
   deliveryError: string | null
+  fulfillmentCommands: string[]
   rconCommands: string[]
   retryCount: number
 }): Order {
@@ -40,6 +41,7 @@ function mapOrder(row: {
     paidAt: row.paidAt?.toISOString(),
     deliveredAt: row.deliveredAt?.toISOString(),
     deliveryError: row.deliveryError ?? undefined,
+    fulfillmentCommands: row.fulfillmentCommands,
     rconCommands: row.rconCommands,
   }
 }
@@ -83,6 +85,7 @@ export async function saveOrder(order: Order): Promise<void> {
       paidAt: order.paidAt ? new Date(order.paidAt) : null,
       deliveredAt: order.deliveredAt ? new Date(order.deliveredAt) : null,
       deliveryError: order.deliveryError ?? null,
+      fulfillmentCommands: order.fulfillmentCommands ?? [],
       rconCommands: order.rconCommands ?? [],
     },
   })
@@ -119,6 +122,7 @@ export async function updateOrder(
   if (updates.paidAt !== undefined) data.paidAt = updates.paidAt ? new Date(updates.paidAt) : null
   if (updates.deliveredAt !== undefined) data.deliveredAt = updates.deliveredAt ? new Date(updates.deliveredAt) : null
   if (updates.deliveryError !== undefined) data.deliveryError = updates.deliveryError ?? null
+  if (updates.fulfillmentCommands !== undefined) data.fulfillmentCommands = updates.fulfillmentCommands ?? []
   if (updates.rconCommands !== undefined) data.rconCommands = updates.rconCommands ?? []
 
   try {

@@ -30,6 +30,28 @@ export function bearerUserId(headers: Headers): string | null {
   try { return verifyToken(token).sub } catch { return null }
 }
 
+/**
+ * Resolve a currently valid user session. Unlike bearerUserId, this enforces
+ * server-side revocation and account state, so it is safe for security-sensitive
+ * mutations such as 2FA and app-password management.
+ */
+export async function authenticatedUser(headers: Headers) {
+  const h = headers.get('authorization') ?? ''
+  const token = h.startsWith('Bearer ') ? h.slice(7) : null
+  if (!token) return null
+  let claims: { sub: string; tv: number }
+  try { claims = verifyToken(token) } catch { return null }
+  const { prisma } = await import('@/lib/db')
+  const user = await prisma.user.findUnique({ where: { id: claims.sub } })
+  if (
+    !user ||
+    user.tokenVersion !== claims.tv ||
+    !user.emailVerified ||
+    user.bannedAt
+  ) return null
+  return user
+}
+
 export function generateCode(): string {
   return String(randomInt(100000, 1000000))
 }

@@ -120,10 +120,11 @@ const GAME_KIND_STYLE: Record<string, string> = {
 const ORDER_STATUS_LABEL: Record<string, string> = {
   created: 'Создан', waiting_payment: 'Ожидает', paid: 'Оплачен',
   delivery_pending: 'Выдача...', delivered: 'Выдан',
-  delivery_failed: 'Ошибка', cancelled: 'Отменён', refunded: 'Возврат',
+  delivery_failed: 'Ошибка', cancelled: 'Отменён',
+  refund_failed: 'Ошибка отзыва', refunded: 'Возврат',
 }
 const ORDER_STATUS_COLOR: Record<string, string> = {
-  delivered: 'text-green-400', delivery_failed: 'text-red-400',
+  delivered: 'text-green-400', delivery_failed: 'text-red-400', refund_failed: 'text-red-400',
   waiting_payment: 'text-yellow-400', delivery_pending: 'text-yellow-400',
 }
 
@@ -730,7 +731,7 @@ function OrdersTab({ orders, onRetry, retrying, onRefund, refunding }: { orders:
             <Td>
               <div className="flex gap-1.5">
                 {o.status === 'delivery_failed' && <button onClick={() => onRetry(o.id)} disabled={retrying === o.id} className="px-2 py-1 text-xs border border-site-accent/50 text-site-accent hover:bg-site-accent/10 rounded disabled:opacity-40 transition-colors">{retrying === o.id ? '...' : 'Повторить'}</button>}
-                {['paid', 'delivered', 'delivery_failed', 'delivery_pending'].includes(o.status) && <button onClick={() => onRefund(o.id)} disabled={refunding === o.id} className="px-2 py-1 text-xs border border-red-500/40 text-red-400 hover:bg-red-500/10 rounded disabled:opacity-40 transition-colors">{refunding === o.id ? '...' : 'Возврат'}</button>}
+                {['paid', 'delivered', 'delivery_failed', 'delivery_pending', 'refund_failed'].includes(o.status) && <button onClick={() => onRefund(o.id)} disabled={refunding === o.id} className="px-2 py-1 text-xs border border-red-500/40 text-red-400 hover:bg-red-500/10 rounded disabled:opacity-40 transition-colors">{refunding === o.id ? '...' : o.status === 'refund_failed' ? 'Повторить отзыв' : 'Возврат'}</button>}
               </div>
             </Td>
           </Tr>
@@ -1255,14 +1256,14 @@ export default function AdminPage() {
     catch { toast('Ошибка', 'error') } finally { setRetrying(null) }
   }
   const refundOrder = async (id: string) => {
-    if (!confirm('Вернуть заказ? Ранг будет отозван через RCON, статус → refunded. Деньги возвращаются вручную.')) return
+    if (!confirm('Отозвать ранг через RCON? Денежный возврат выполняется отдельно вручную.')) return
     setRefunding(id)
     try {
       const r = await fetch(`/api/admin/orders/${id}/refund`, { method: 'POST' })
       if (r.ok) {
         const { order, rconOk } = await r.json()
         setOrders(prev => prev.map(o => o.id === id ? order : o))
-        toast(rconOk ? 'Возврат оформлен, ранг отозван' : 'Заказ возвращён, но RCON-отзыв не прошёл', rconOk ? 'success' : 'error')
+        toast(rconOk ? 'Ранг отозван; можно выполнить денежный возврат' : 'RCON-отзыв не прошёл — повторите операцию', rconOk ? 'success' : 'error')
       } else { const d = await r.json(); toast(d.error ?? 'Ошибка', 'error') }
     } catch { toast('Ошибка', 'error') } finally { setRefunding(null) }
   }

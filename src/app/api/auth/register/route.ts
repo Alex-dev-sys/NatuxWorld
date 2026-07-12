@@ -4,12 +4,13 @@ import { nanoid } from 'nanoid'
 import { prisma } from '@/lib/db'
 import { rateLimit } from '@/lib/ratelimit'
 import { generateCode, codeExpiry, sendVerificationEmail, apiError, logLoginEvent } from '@/lib/auth'
+import { clientIp } from '@/lib/clientIp'
 
 const USERNAME_RE = /^[A-Za-z0-9_]{3,16}$/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get('x-forwarded-for') ?? 'unknown'
+  const ip = clientIp(req)
   const userAgent = req.headers.get('user-agent') ?? ''
 
   if (!rateLimit(`register:${ip}`, 5, 60_000)) {

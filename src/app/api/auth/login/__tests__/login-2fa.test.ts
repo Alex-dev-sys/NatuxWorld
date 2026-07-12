@@ -43,7 +43,7 @@ describe('POST /api/auth/login/2fa (TOTP)', () => {
 
   it('issues a JWT for a valid TOTP code', async () => {
     const secret = generateTotpSecret()
-    findUnique.mockResolvedValue({ id: 'u_1', username: 'u', email: 'e@e.com', tokenVersion: 0, twoFactorEnabled: true, twoFactorMethod: 'totp', totpSecretEnc: encryptSecret(secret), twoFactorCode: null })
+    findUnique.mockResolvedValue({ id: 'u_1', username: 'u', email: 'e@e.com', emailVerified: true, bannedAt: null, tokenVersion: 0, twoFactorEnabled: true, twoFactorMethod: 'totp', totpSecretEnc: encryptSecret(secret), twoFactorCode: null })
     const res = await POST(req({ challenge: signChallenge('u_1'), code: authenticator.generate(secret) }))
     expect(res.status).toBe(200)
     expect((await res.json()).token).toBeTruthy()
@@ -51,7 +51,7 @@ describe('POST /api/auth/login/2fa (TOTP)', () => {
 
   it('rejects a wrong code', async () => {
     const secret = generateTotpSecret()
-    findUnique.mockResolvedValue({ id: 'u_1', tokenVersion: 0, twoFactorEnabled: true, twoFactorMethod: 'totp', totpSecretEnc: encryptSecret(secret), twoFactorCode: null })
+    findUnique.mockResolvedValue({ id: 'u_1', emailVerified: true, bannedAt: null, tokenVersion: 0, twoFactorEnabled: true, twoFactorMethod: 'totp', totpSecretEnc: encryptSecret(secret), twoFactorCode: null })
     const res = await POST(req({ challenge: signChallenge('u_1'), code: '000000' }))
     expect(res.status).toBe(401)
   })
@@ -62,7 +62,7 @@ describe('POST /api/auth/login/2fa (TOTP)', () => {
   })
 
   it('accepts an unused backup code', async () => {
-    findUnique.mockResolvedValue({ id: 'u_1', username: 'u', email: 'e@e.com', tokenVersion: 0, twoFactorEnabled: true, twoFactorMethod: 'totp', totpSecretEnc: encryptSecret(generateTotpSecret()), twoFactorCode: null })
+    findUnique.mockResolvedValue({ id: 'u_1', username: 'u', email: 'e@e.com', emailVerified: true, bannedAt: null, tokenVersion: 0, twoFactorEnabled: true, twoFactorMethod: 'totp', totpSecretEnc: encryptSecret(generateTotpSecret()), twoFactorCode: null })
     bcFindFirst.mockResolvedValue({ id: 'bc1' })
     bcUpdate.mockResolvedValue({})
     const res = await POST(req({ challenge: signChallenge('u_1'), code: 'abcd-efgh' }))

@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { clientIp } from '@/lib/clientIp'
 import { validateCoupon } from '@/lib/couponStore'
 import { rateLimit } from '@/lib/ratelimit'
 
 export async function GET(req: NextRequest) {
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
-    req.headers.get('x-real-ip') ??
-    'unknown'
+  const ip = clientIp(req)
   if (!rateLimit(`coupon:${ip}`, 20, 60_000)) {
     return NextResponse.json({ error: 'Слишком много запросов' }, { status: 429 })
   }

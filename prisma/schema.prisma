@@ -65,6 +65,7 @@ model GameToken {
   accessToken String   @id
   clientToken String
   userId      String
+  tokenVersion Int     @default(0)
   serverId    String?
   createdAt   DateTime @default(now())
 
@@ -136,6 +137,7 @@ model Order {
   paidAt               DateTime?
   deliveredAt          DateTime?
   deliveryError        String?
+  fulfillmentCommands String[]
   rconCommands         String[]
   retryCount           Int       @default(0)
 }

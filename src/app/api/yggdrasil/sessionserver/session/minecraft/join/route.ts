@@ -2,11 +2,13 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { offlineUuid } from '@/lib/yggdrasil'
 import { logLoginEvent } from '@/lib/auth'
+import { isUsableGameToken } from '@/lib/gameTokens'
+import { clientIp } from '@/lib/clientIp'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get('x-forwarded-for') ?? 'unknown'
+  const ip = clientIp(req)
 
   let body: unknown
   try { body = await req.json() } catch { return new Response(null, { status: 403 }) }
@@ -18,7 +20,10 @@ export async function POST(req: NextRequest) {
   if (!token) return new Response(null, { status: 403 })
 
   const user = await prisma.user.findUnique({ where: { id: token.userId } })
-  if (!user) return new Response(null, { status: 403 })
+  if (!user || !isUsableGameToken(token, user)) {
+    await prisma.gameToken.deleteMany({ where: { accessToken } })
+    return new Response(null, { status: 403 })
+  }
 
   // Verify that the profile UUID matches this user's offline UUID.
   if (offlineUuid(user.username) !== selectedProfile) return new Response(null, { status: 403 })

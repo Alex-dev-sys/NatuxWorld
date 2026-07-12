@@ -2,9 +2,10 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { rateLimit } from '@/lib/ratelimit'
 import { signToken, formatUser, apiError, logLoginEvent } from '@/lib/auth'
+import { clientIp } from '@/lib/clientIp'
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get('x-forwarded-for') ?? 'unknown'
+  const ip = clientIp(req)
   const userAgent = req.headers.get('user-agent') ?? ''
 
   let body: unknown

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyToken, apiError } from '@/lib/auth'
 import { offlineUuid, randomToken } from '@/lib/yggdrasil'
+import { deleteExpiredGameTokens } from '@/lib/gameTokens'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,13 +15,16 @@ export async function POST(req: NextRequest) {
   try { claims = verifyToken(bearer) } catch { return apiError('token_invalid', 'Сессия истекла', 401) }
 
   const user = await prisma.user.findUnique({ where: { id: claims.sub } })
-  if (!user || !user.emailVerified || user.tokenVersion !== claims.tv) {
+  if (!user || !user.emailVerified || user.bannedAt || user.tokenVersion !== claims.tv) {
     return apiError('unauthorized', 'Аккаунт не верифицирован', 403)
   }
 
   const accessToken = randomToken()
   const clientToken = randomToken()
-  await prisma.gameToken.create({ data: { accessToken, clientToken, userId: user.id } })
+  await deleteExpiredGameTokens(user.id)
+  await prisma.gameToken.create({
+    data: { accessToken, clientToken, userId: user.id, tokenVersion: user.tokenVersion },
+  })
 
   return Response.json({
     accessToken,

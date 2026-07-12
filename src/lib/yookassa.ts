@@ -11,6 +11,16 @@ export interface YooKassaPayment {
   }
 }
 
+export interface VerifiedYooKassaPayment {
+  id: string
+  status: string
+  paid?: boolean
+  description?: string
+  amount?: { value?: string; currency?: string }
+  metadata?: { publicId?: string }
+  recipient?: { account_id?: string; gateway_id?: string }
+}
+
 interface CreatePaymentParams {
   amountRub: number
   orderId: string
@@ -92,16 +102,18 @@ export async function createPayment(
  * YooKassa does not sign notifications — the only safe verification is
  * calling their API directly with our credentials.
  */
-export async function verifyPayment(paymentId: string): Promise<boolean> {
+export async function verifyPayment(paymentId: string): Promise<VerifiedYooKassaPayment | null> {
   try {
     const res = await fetch(`${API_URL}/${paymentId}`, {
       headers: { Authorization: authHeader() },
       cache: 'no-store',
     })
-    if (!res.ok) return false
-    const data = (await res.json()) as { status?: string; paid?: boolean }
-    return data.status === 'succeeded' || data.paid === true
+    if (!res.ok) return null
+    const data = (await res.json()) as VerifiedYooKassaPayment
+    if (data.id !== paymentId) return null
+    if (data.status !== 'succeeded' || data.paid !== true) return null
+    return data
   } catch {
-    return false
+    return null
   }
 }

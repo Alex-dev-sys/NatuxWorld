@@ -36,9 +36,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No payment object' }, { status: 400 })
   }
 
-  // Verify by re-fetching the payment from YooKassa API
-  const verified = await verifyPayment(payment.id)
-  if (!verified) {
+  // YooKassa notifications are not signed. Treat the notification as a wake-up
+  // signal only and use the authenticated API response as the sole source of truth.
+  const verifiedPayment = await verifyPayment(payment.id)
+  if (!verifiedPayment) {
     return NextResponse.json({ error: 'Payment not confirmed by YooKassa' }, { status: 403 })
   }
 
@@ -49,12 +50,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'Already processed' })
   }
 
-  // Find order by publicId from metadata, or fall back to description parsing.
-  let publicId = payment.metadata?.publicId
-  if (!publicId && payment.description) {
-    const match = payment.description.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
-    if (match) publicId = match[0]
-  }
+  // Never trust metadata/description from the caller-controlled webhook body.
+  const publicId = verifiedPayment.metadata?.publicId
   if (!publicId) {
     return NextResponse.json({ error: 'No publicId' }, { status: 400 })
   }
@@ -62,6 +59,14 @@ export async function POST(req: NextRequest) {
   const order = (await getOrder(publicId)) ?? (await getOrderById(publicId))
   if (!order) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+  }
+
+  const expectedAmount = order.price.toFixed(2)
+  if (
+    verifiedPayment.amount?.currency !== 'RUB' ||
+    verifiedPayment.amount?.value !== expectedAmount
+  ) {
+    return NextResponse.json({ error: 'Payment amount or currency mismatch' }, { status: 403 })
   }
 
   // Атомарный захват: при конкурентных ретраях RCON выполнится только один раз.

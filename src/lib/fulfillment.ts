@@ -6,11 +6,17 @@ import { updateOrder } from './store'
 import type { Order } from './types'
 
 export async function fulfillOrder(order: Order): Promise<Order | null> {
-  const product = await getProductById(order.productId)
-  const variant = product?.variants.find(v => v.duration === order.variantDuration)
+  let templates = order.fulfillmentCommands ?? []
 
-  // Без варианта нечего выдавать — нельзя помечать заказ выполненным.
-  if (!variant) {
+  // Backward compatibility for orders created before fulfillment snapshots existed.
+  // New orders never consult the mutable catalog during delivery.
+  if (templates.length === 0) {
+    const product = await getProductById(order.productId)
+    const variant = product?.variants.find(v => v.duration === order.variantDuration)
+    templates = variant?.commands ?? []
+  }
+
+  if (templates.length === 0) {
     return updateOrder(order.publicId, {
       status: 'delivery_failed',
       deliveryError: `Вариант товара не найден: ${order.productId}/${order.variantDuration}`,
@@ -18,7 +24,7 @@ export async function fulfillOrder(order: Order): Promise<Order | null> {
     })
   }
 
-  const commands = buildCommands(variant.commands, {
+  const commands = buildCommands(templates, {
     username: order.username,
     rank: order.productId,
     duration: order.variantDurationLabel,

@@ -9,6 +9,7 @@ import { rateLimit } from '@/lib/ratelimit'
 import { createInvoice, type CryptoAsset } from '@/lib/cryptobot'
 import { createPayment } from '@/lib/yookassa'
 import type { Coupon, Order, Duration } from '@/lib/types'
+import { clientIp } from '@/lib/clientIp'
 
 const NICK_RE = /^[a-zA-Z0-9_]{3,16}$/
 const DURATIONS: Duration[] = ['30d', '90d', 'forever']
@@ -45,10 +46,7 @@ async function buildYooKassaUrl(order: Order): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
-    req.headers.get('x-real-ip') ??
-    'unknown'
+  const ip = clientIp(req)
 
   if (!rateLimit(`orders:${ip}`, 10, 60_000)) {
     return NextResponse.json(
@@ -143,6 +141,9 @@ export async function POST(req: NextRequest) {
     couponCode: coupon?.code,
     username: username.trim(),
     status: 'waiting_payment',
+    // A paid order must always deliver exactly what the buyer checked out with,
+    // even if an admin edits or removes the catalog item before the webhook arrives.
+    fulfillmentCommands: [...variant.commands],
     createdAt: new Date().toISOString(),
   }
 
@@ -197,6 +198,9 @@ export async function POST(req: NextRequest) {
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Не удалось создать счёт на оплату'
+    // Do not leave an order that can never be paid looking actionable forever.
+    // A new checkout creates a fresh order and payment idempotency key.
+    await updateOrder(order.publicId, { status: 'cancelled', deliveryError: message })
     return NextResponse.json({ error: message }, { status: 502 })
   }
 

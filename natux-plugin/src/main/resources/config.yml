@@ -22,3 +22,6 @@ flush_interval: 5
 
 # Max events per batch
 batch_size: 100
+
+# Hard memory bound. When full, the oldest telemetry is discarded.
+max_queue: 10000

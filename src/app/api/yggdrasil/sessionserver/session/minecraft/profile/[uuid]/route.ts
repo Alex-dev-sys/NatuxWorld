@@ -10,7 +10,10 @@ export async function GET(_req: NextRequest, { params }: { params: { uuid: strin
   // Find user whose offline UUID matches the requested UUID.
   // We can't query by computed value, so find all users and compare.
   // In practice this is rare (admin tools / skin fetch), so no perf concern.
-  const users = await prisma.user.findMany({ select: { username: true } })
+  const users = await prisma.user.findMany({
+    where: { emailVerified: true, bannedAt: null },
+    select: { username: true },
+  })
   const match = users.find((u) => offlineUuid(u.username) === uuid)
   if (!match) return new Response(null, { status: 204 })
 

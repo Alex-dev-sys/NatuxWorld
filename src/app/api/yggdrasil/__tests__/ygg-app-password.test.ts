@@ -4,11 +4,15 @@ const findUnique = vi.fn()
 const apFindMany = vi.fn()
 const apUpdateMany = vi.fn()
 const gtCreate = vi.fn()
+const gtDeleteMany = vi.fn()
 vi.mock('@/lib/db', () => ({
   prisma: {
     user: { findUnique: (...a: unknown[]) => findUnique(...a) },
     appPassword: { findMany: (...a: unknown[]) => apFindMany(...a), updateMany: (...a: unknown[]) => apUpdateMany(...a) },
-    gameToken: { create: (...a: unknown[]) => gtCreate(...a) },
+    gameToken: {
+      create: (...a: unknown[]) => gtCreate(...a),
+      deleteMany: (...a: unknown[]) => gtDeleteMany(...a),
+    },
   },
 }))
 vi.mock('@/lib/lockout', () => ({ isLockedOut: vi.fn().mockResolvedValue(false) }))
@@ -25,12 +29,13 @@ function req(username: string, password: string) {
 describe('yggdrasil + 2FA app-password', () => {
   beforeEach(() => {
     ;(globalThis as { __rateLimit?: unknown }).__rateLimit = undefined
-    findUnique.mockReset(); apFindMany.mockReset(); apUpdateMany.mockResolvedValue({}); gtCreate.mockResolvedValue({})
+    findUnique.mockReset(); apFindMany.mockReset(); apUpdateMany.mockResolvedValue({});
+    gtCreate.mockResolvedValue({}); gtDeleteMany.mockResolvedValue({ count: 0 })
   })
 
   it('accepts a valid app-password and rejects the main password for a 2FA user', async () => {
     const app = generateAppPassword()
-    findUnique.mockResolvedValue({ id: 'u_1', username: 'u', emailVerified: true, twoFactorEnabled: true, passwordHash: await bcrypt.hash('MAIN-password', 10) })
+    findUnique.mockResolvedValue({ id: 'u_1', username: 'u', emailVerified: true, bannedAt: null, tokenVersion: 0, twoFactorEnabled: true, passwordHash: await bcrypt.hash('MAIN-password', 10) })
     apFindMany.mockResolvedValue([{ hash: await hashAppPassword(app) }])
     expect((await POST(req('u', app))).status).toBe(200)
 
@@ -39,7 +44,7 @@ describe('yggdrasil + 2FA app-password', () => {
   })
 
   it('non-2FA user still uses the main password', async () => {
-    findUnique.mockResolvedValue({ id: 'u_2', username: 'v', emailVerified: true, twoFactorEnabled: false, passwordHash: await bcrypt.hash('mainpw', 10) })
+    findUnique.mockResolvedValue({ id: 'u_2', username: 'v', emailVerified: true, bannedAt: null, tokenVersion: 0, twoFactorEnabled: false, passwordHash: await bcrypt.hash('mainpw', 10) })
     expect((await POST(req('v', 'mainpw'))).status).toBe(200)
   })
 })

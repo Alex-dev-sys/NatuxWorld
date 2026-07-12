@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   if (names.length === 0) return Response.json([])
 
   const users = await prisma.user.findMany({
-    where: { username: { in: names } },
+    where: { username: { in: names }, emailVerified: true, bannedAt: null },
     select: { username: true },
   })
 

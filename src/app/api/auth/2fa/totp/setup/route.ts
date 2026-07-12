@@ -1,17 +1,16 @@
 import { NextRequest } from 'next/server'
 import QRCode from 'qrcode'
 import { prisma } from '@/lib/db'
-import { apiError, bearerUserId } from '@/lib/auth'
+import { apiError, authenticatedUser } from '@/lib/auth'
 import { generateTotpSecret, otpauthUri } from '@/lib/totp'
 import { encryptSecret } from '@/lib/twofaCrypto'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
-  const userId = bearerUserId(req.headers)
-  if (!userId) return apiError('token_invalid', 'Сессия истекла', 401)
-  const user = await prisma.user.findUnique({ where: { id: userId } })
+  const user = await authenticatedUser(req.headers)
   if (!user) return apiError('token_invalid', 'Сессия истекла', 401)
+  const userId = user.id
 
   const secret = generateTotpSecret()
   // Store as pending secret (enabled only after /enable confirms a code).

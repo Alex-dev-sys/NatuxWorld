@@ -15,8 +15,9 @@ public class NatuxPlugin extends JavaPlugin {
         String apiKey = getConfig().getString("api.key", "");
         int flushInterval = getConfig().getInt("flush_interval", 5);
         int batchSize = getConfig().getInt("batch_size", 100);
+        int maxQueue = getConfig().getInt("max_queue", 10000);
 
-        buffer = new EventBuffer(batchSize);
+        buffer = new EventBuffer(batchSize, maxQueue);
         sender = new ApiSender(this, apiUrl, apiKey);
 
         getServer().getPluginManager().registerEvents(new PlayerListener(this), this);

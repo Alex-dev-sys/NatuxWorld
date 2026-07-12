@@ -29,7 +29,9 @@ export async function POST(req: NextRequest) {
   }
 
   const user = await prisma.user.findUnique({ where: { id: userId } })
-  if (!user || !user.twoFactorEnabled) return apiError('unauthorized', 'Недоступно', 403)
+  if (!user || !user.twoFactorEnabled || !user.emailVerified || user.bannedAt) {
+    return apiError('unauthorized', 'Недоступно', 403)
+  }
   if (await isLockedOut(user.id)) return apiError('rate_limited', 'Слишком много попыток, попробуйте позже', 429)
 
   const trimmed = code.trim()

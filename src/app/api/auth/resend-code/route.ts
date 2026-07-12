@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server'
+import { clientIp } from '@/lib/clientIp'
 import { prisma } from '@/lib/db'
 import { rateLimit } from '@/lib/ratelimit'
 import { generateCode, codeExpiry, sendVerificationEmail, apiError } from '@/lib/auth'
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get('x-forwarded-for') ?? 'unknown'
+  const ip = clientIp(req)
 
   if (!rateLimit(`resend-ip:${ip}`, 5, 60_000)) {
     return apiError('rate_limited', 'Слишком много попыток, подождите', 429)

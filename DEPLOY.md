@@ -34,6 +34,11 @@ nano .env
 - `ADMIN_PASSWORD` — пароль для входа в /admin
 - `ADMIN_SECRET` — случайная строка ≥32 символов (`openssl rand -hex 32`)
 - `JWT_SECRET` — случайная строка ≥32 символов (`openssl rand -hex 32`)
+- `ADMIN_TOTP_SECRET` — TOTP secret обязательного второго фактора администратора
+- `ADMIN_ALLOWED_IPS` — разрешённые IP админ-панели через запятую
+- `TWOFA_ENC_KEY` — 32 байта hex (`openssl rand -hex 32`)
+- `GAME_API_KEY` — ключ Paper-плагина
+- `YGGDRASIL_PRIVATE_KEY` — RSA private key authlib-injector
 - `RCON_PASSWORD` — пароль RCON из server.properties Minecraft
 - `PAYMENT_PROVIDER` — `mock`, `yookassa`, `cryptobot` или `multi`
 

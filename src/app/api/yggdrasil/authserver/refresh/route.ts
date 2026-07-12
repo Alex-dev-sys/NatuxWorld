@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { buildProfile, randomToken } from '@/lib/yggdrasil'
+import { isUsableGameToken } from '@/lib/gameTokens'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,12 +19,22 @@ export async function POST(req: NextRequest) {
   }
 
   const user = await prisma.user.findUnique({ where: { id: old.userId } })
-  if (!user) return Response.json({ error: 'ForbiddenOperationException', errorMessage: 'Invalid token' }, { status: 403 })
+  if (!user || !isUsableGameToken(old, user)) {
+    await prisma.gameToken.deleteMany({ where: { accessToken } })
+    return Response.json({ error: 'ForbiddenOperationException', errorMessage: 'Invalid token' }, { status: 403 })
+  }
 
   const newToken = randomToken()
   await prisma.$transaction([
     prisma.gameToken.delete({ where: { accessToken } }),
-    prisma.gameToken.create({ data: { accessToken: newToken, clientToken: old.clientToken, userId: old.userId } }),
+    prisma.gameToken.create({
+      data: {
+        accessToken: newToken,
+        clientToken: old.clientToken,
+        userId: old.userId,
+        tokenVersion: user.tokenVersion,
+      },
+    }),
   ])
 
   const profile = buildProfile(user.username)

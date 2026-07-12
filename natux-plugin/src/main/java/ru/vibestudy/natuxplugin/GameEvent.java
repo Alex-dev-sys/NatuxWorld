@@ -19,19 +19,4 @@ public class GameEvent {
         this.extra = extra != null ? extra : "";
     }
 
-    public String toJson() {
-        return String.format(
-            "{\"username\":%s,\"kind\":%s,\"message\":%s,\"world\":%s,\"x\":%s,\"y\":%s,\"z\":%s,\"extra\":%s}",
-            jsonStr(username), jsonStr(kind), jsonStr(message), jsonStr(world),
-            x == null ? "null" : String.format("%.1f", x),
-            y == null ? "null" : String.format("%.1f", y),
-            z == null ? "null" : String.format("%.1f", z),
-            jsonStr(extra)
-        );
-    }
-
-    private static String jsonStr(String s) {
-        if (s == null) return "null";
-        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\"";
-    }
 }

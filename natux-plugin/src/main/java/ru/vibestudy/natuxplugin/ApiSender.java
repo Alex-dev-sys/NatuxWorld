@@ -1,16 +1,18 @@
 package ru.vibestudy.natuxplugin;
 
+import com.google.gson.Gson;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Collections;
 
 public class ApiSender {
     private final NatuxPlugin plugin;
     private final String apiUrl;
     private final String apiKey;
+    private final Gson gson = new Gson();
 
     public ApiSender(NatuxPlugin plugin, String apiUrl, String apiKey) {
         this.plugin = plugin;
@@ -24,9 +26,7 @@ public class ApiSender {
         if (events.isEmpty()) return;
 
         try {
-            String body = "{\"events\":[" +
-                events.stream().map(GameEvent::toJson).collect(Collectors.joining(",")) +
-                "]}";
+            String body = gson.toJson(Collections.singletonMap("events", events));
 
             URL url = new URL(apiUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -44,10 +44,15 @@ public class ApiSender {
             int status = conn.getResponseCode();
             if (status != 200) {
                 plugin.getLogger().warning("API returned " + status + " for " + events.size() + " events");
+                buffer.restore(events);
             }
             conn.disconnect();
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to send events: " + e.getMessage());
+            buffer.restore(events);
         }
+
+        long dropped = buffer.drainDroppedCount();
+        if (dropped > 0) plugin.getLogger().warning("Event queue overflow: dropped " + dropped + " events");
     }
 }
