@@ -1,7 +1,6 @@
 // src/lib/store.ts
 import { prisma } from './db'
-import { redeemCoupon } from './couponStore'
-import type { Order, OrderStatus, Duration } from './types'
+import type { Order, OrderStatus, Duration, PublicOrder } from './types'
 
 function mapOrder(row: {
   id: string
@@ -16,6 +15,8 @@ function mapOrder(row: {
   username: string
   status: string
   paymentId: string | null
+  paymentAsset: string | null
+  paymentAmount: string | null
   createdAt: Date
   paidAt: Date | null
   deliveredAt: Date | null
@@ -37,12 +38,31 @@ function mapOrder(row: {
     username: row.username,
     status: row.status as OrderStatus,
     paymentId: row.paymentId ?? undefined,
+    paymentAsset: row.paymentAsset === 'TON' || row.paymentAsset === 'USDT' ? row.paymentAsset : undefined,
+    paymentAmount: row.paymentAmount ?? undefined,
     createdAt: row.createdAt.toISOString(),
     paidAt: row.paidAt?.toISOString(),
     deliveredAt: row.deliveredAt?.toISOString(),
     deliveryError: row.deliveryError ?? undefined,
     fulfillmentCommands: row.fulfillmentCommands,
     rconCommands: row.rconCommands,
+  }
+}
+
+export function toPublicOrder(order: Order): PublicOrder {
+  return {
+    publicId: order.publicId,
+    productName: order.productName,
+    variantDuration: order.variantDuration,
+    variantDurationLabel: order.variantDurationLabel,
+    price: order.price,
+    username: order.username,
+    status: order.status,
+    createdAt: order.createdAt,
+    paidAt: order.paidAt,
+    deliveredAt: order.deliveredAt,
+    couponCode: order.couponCode,
+    originalPrice: order.originalPrice,
   }
 }
 
@@ -81,6 +101,8 @@ export async function saveOrder(order: Order): Promise<void> {
       username: order.username,
       status: order.status,
       paymentId: order.paymentId ?? null,
+      paymentAsset: order.paymentAsset ?? null,
+      paymentAmount: order.paymentAmount ?? null,
       createdAt: new Date(order.createdAt),
       paidAt: order.paidAt ? new Date(order.paidAt) : null,
       deliveredAt: order.deliveredAt ? new Date(order.deliveredAt) : null,
@@ -91,25 +113,33 @@ export async function saveOrder(order: Order): Promise<void> {
   })
 }
 
-// Атомарный «захват» заказа на выдачу: переводит created/waiting_payment в
-// delivery_pending одним updateMany. Конкурентные вебхуки получат count === 0
-// и не выполнят RCON повторно.
+/** Atomically claims an order and consumes its coupon, or changes nothing. */
 export async function claimOrderForDelivery(
   publicId: string,
   paymentId: string
 ): Promise<Order | null> {
-  const { count } = await prisma.order.updateMany({
-    where: { publicId, status: { in: ['created', 'waiting_payment'] } },
-    data: { status: 'delivery_pending', paidAt: new Date(), paymentId },
-  })
-  if (count === 0) return null
-  const order = (await getOrder(publicId)) ?? null
-  // Лимит купона списываем по факту оплаты. Если код исчерпался между
-  // созданием заказа и оплатой, заказ всё равно выдаётся — деньги получены.
-  if (order?.couponCode) {
-    await redeemCoupon(order.couponCode).catch(() => false)
+  class CouponLimitError extends Error {}
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const { count } = await tx.order.updateMany({
+        where: { publicId, status: { in: ['created', 'waiting_payment'] } },
+        data: { status: 'delivery_pending', paidAt: new Date(), paymentId },
+      })
+      if (count === 0) return null
+
+      const row = await tx.order.findUnique({ where: { publicId } })
+      if (!row) return null
+      if (row.couponCode) {
+        const redeemed = await tx.$executeRaw`UPDATE "Coupon" SET "usedCount" = "usedCount" + 1 WHERE "code" = ${row.couponCode} AND "active" = true AND ("maxUses" IS NULL OR "usedCount" < "maxUses") AND ("expiresAt" IS NULL OR "expiresAt" > NOW())`
+        if (redeemed !== 1) throw new CouponLimitError('Coupon is no longer available')
+      }
+      return mapOrder(row)
+    })
+  } catch (error) {
+    if (error instanceof CouponLimitError) return null
+    throw error
   }
-  return order
 }
 
 export async function updateOrder(
@@ -119,6 +149,8 @@ export async function updateOrder(
   const data: Record<string, unknown> = {}
   if (updates.status !== undefined) data.status = updates.status
   if (updates.paymentId !== undefined) data.paymentId = updates.paymentId
+  if (updates.paymentAsset !== undefined) data.paymentAsset = updates.paymentAsset ?? null
+  if (updates.paymentAmount !== undefined) data.paymentAmount = updates.paymentAmount ?? null
   if (updates.paidAt !== undefined) data.paidAt = updates.paidAt ? new Date(updates.paidAt) : null
   if (updates.deliveredAt !== undefined) data.deliveredAt = updates.deliveredAt ? new Date(updates.deliveredAt) : null
   if (updates.deliveryError !== undefined) data.deliveryError = updates.deliveryError ?? null

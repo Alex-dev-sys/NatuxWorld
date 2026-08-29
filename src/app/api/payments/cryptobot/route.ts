@@ -62,6 +62,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
 
+  if (
+    inv.asset !== order.paymentAsset ||
+    inv.amount !== order.paymentAmount
+  ) {
+    return NextResponse.json({ error: 'Payment asset or amount mismatch' }, { status: 403 })
+  }
+
   // Атомарный захват: при конкурентных ретраях RCON выполнится только один раз.
   const claimed = await claimOrderForDelivery(order.publicId, paymentId)
   if (!claimed) {

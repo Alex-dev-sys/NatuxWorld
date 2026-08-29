@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import type { Order } from '@/lib/types'
+import type { PublicOrder } from '@/lib/types'
 import { useToast } from '@/components/Toast'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -54,9 +54,9 @@ function Badge({ status }: { status: string }) {
 
 // ─── main ─────────────────────────────────────────────────────────────────────
 
-export default function OrderClient({ initialOrder }: { initialOrder: Order }) {
+export default function OrderClient({ initialOrder }: { initialOrder: PublicOrder }) {
   const { toast } = useToast()
-  const [order, setOrder] = useState<Order>(initialOrder)
+  const [order, setOrder] = useState<PublicOrder>(initialOrder)
   const [paying, setPaying] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -69,7 +69,7 @@ export default function OrderClient({ initialOrder }: { initialOrder: Order }) {
     try {
       const res = await fetch(`/api/orders/${order.publicId}`)
       if (res.ok) {
-        const data: Order = await res.json()
+        const data: PublicOrder = await res.json()
         setOrder(data)
         if (!silent && data.status !== order.status) {
           toast('Статус заказа обновлён', 'info')
@@ -95,7 +95,7 @@ export default function OrderClient({ initialOrder }: { initialOrder: Order }) {
       const res = await fetch('/api/payments/webhook/mock', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.id }),
+        body: JSON.stringify({ publicId: order.publicId }),
       })
       const data = await res.json()
       if (!res.ok) {

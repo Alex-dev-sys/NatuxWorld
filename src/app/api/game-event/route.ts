@@ -29,8 +29,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'rate_limited' }, { status: 429 })
   }
 
+  const contentLength = Number(req.headers.get('content-length') ?? 0)
+  if (contentLength > 256 * 1024) {
+    return NextResponse.json({ error: 'payload_too_large' }, { status: 413 })
+  }
+
   let body: { events?: Array<Record<string, unknown>> }
-  try { body = await req.json() } catch {
+  try {
+    const rawBody = await req.text()
+    if (rawBody.length > 256 * 1024) return NextResponse.json({ error: 'payload_too_large' }, { status: 413 })
+    body = JSON.parse(rawBody) as { events?: Array<Record<string, unknown>> }
+  } catch {
     return NextResponse.json({ error: 'invalid_json' }, { status: 400 })
   }
 

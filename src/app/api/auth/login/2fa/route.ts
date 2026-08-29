@@ -47,13 +47,11 @@ export async function POST(req: NextRequest) {
 
   // Backup code fallback (works for either method).
   if (!ok) {
-    const match = await prisma.twoFactorBackupCode.findFirst({
+    const consumed = await prisma.twoFactorBackupCode.updateMany({
       where: { userId: user.id, codeHash: hashBackupCode(trimmed), usedAt: null },
+      data: { usedAt: new Date() },
     })
-    if (match) {
-      await prisma.twoFactorBackupCode.update({ where: { id: match.id }, data: { usedAt: new Date() } })
-      ok = true
-    }
+    ok = consumed.count === 1
   }
 
   if (!ok) {

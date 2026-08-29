@@ -70,6 +70,8 @@ describe('admin user PATCH — Phase 4 actions', () => {
     const data = db.user.update.mock.calls[0][0].data
     expect(data.twoFactorEnabled).toBe(false)
     expect(data.totpSecretEnc).toBeNull()
+    expect(data.tokenVersion).toEqual({ increment: 1 })
     expect(db.twoFactorBackupCode.deleteMany).toHaveBeenCalledOnce()
+    expect(db.gameToken.deleteMany).toHaveBeenCalledOnce()
   })
 })

@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import type { Order } from '@/lib/types'
+import type { PublicOrder } from '@/lib/types'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -168,7 +168,7 @@ function PayButton({ loading, onClick, label }: { loading: boolean; onClick: () 
 // ─── ymoney panel ────────────────────────────────────────────────────────────
 
 function YMoneyPanel({ order, loading, setLoading, setError }: {
-  order: Order
+  order: PublicOrder
   loading: boolean
   setLoading: (v: boolean) => void
   setError: (v: string | null) => void
@@ -334,7 +334,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 type Method = 'card' | 'sbp' | 'ymoney'
 
-export default function PaymentClient({ order }: { order: Order }) {
+export default function PaymentClient({ order }: { order: PublicOrder }) {
   const router = useRouter()
   const [method, setMethod] = useState<Method>('card')
   const [cardNum, setCardNum] = useState('')
@@ -357,7 +357,7 @@ export default function PaymentClient({ order }: { order: Order }) {
       const res = await fetch('/api/payments/webhook/mock', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.id }),
+        body: JSON.stringify({ publicId: order.publicId }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error ?? 'Ошибка оплаты'); setLoading(false); return }

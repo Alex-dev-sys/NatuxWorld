@@ -2,8 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const findUnique = vi.fn()
 const update = vi.fn()
-const bcFindFirst = vi.fn()
-const bcUpdate = vi.fn()
+const bcUpdateMany = vi.fn()
 vi.mock('@/lib/db', () => ({
   prisma: {
     user: {
@@ -11,8 +10,7 @@ vi.mock('@/lib/db', () => ({
       update: (...a: unknown[]) => update(...a),
     },
     twoFactorBackupCode: {
-      findFirst: (...a: unknown[]) => bcFindFirst(...a),
-      update: (...a: unknown[]) => bcUpdate(...a),
+      updateMany: (...a: unknown[]) => bcUpdateMany(...a),
     },
   },
 }))
@@ -38,7 +36,7 @@ describe('POST /api/auth/login/2fa (TOTP)', () => {
     process.env.TWOFA_ENC_KEY = 'a'.repeat(64)
     ;(globalThis as { __rateLimit?: unknown }).__rateLimit = undefined
     findUnique.mockReset(); update.mockReset(); update.mockResolvedValue({})
-    bcFindFirst.mockReset(); bcFindFirst.mockResolvedValue(null)
+    bcUpdateMany.mockReset(); bcUpdateMany.mockResolvedValue({ count: 0 })
   })
 
   it('issues a JWT for a valid TOTP code', async () => {
@@ -63,10 +61,9 @@ describe('POST /api/auth/login/2fa (TOTP)', () => {
 
   it('accepts an unused backup code', async () => {
     findUnique.mockResolvedValue({ id: 'u_1', username: 'u', email: 'e@e.com', emailVerified: true, bannedAt: null, tokenVersion: 0, twoFactorEnabled: true, twoFactorMethod: 'totp', totpSecretEnc: encryptSecret(generateTotpSecret()), twoFactorCode: null })
-    bcFindFirst.mockResolvedValue({ id: 'bc1' })
-    bcUpdate.mockResolvedValue({})
+    bcUpdateMany.mockResolvedValue({ count: 1 })
     const res = await POST(req({ challenge: signChallenge('u_1'), code: 'abcd-efgh' }))
     expect(res.status).toBe(200)
-    expect(bcUpdate).toHaveBeenCalled() // marked used
+    expect(bcUpdateMany).toHaveBeenCalled() // marked used atomically
   })
 })

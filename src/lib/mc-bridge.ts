@@ -5,11 +5,15 @@ export type McBridgeCommand = 'status' | 'start' | 'stop' | 'restart' | `console
 function getConfig() {
   const keyB64 = process.env.MC_SSH_KEY_B64
   if (!keyB64) throw new Error('MC_SSH_KEY_B64 not set')
+  const fingerprint = process.env.MC_SSH_HOST_KEY_FINGERPRINT
+  if (!fingerprint) throw new Error('MC_SSH_HOST_KEY_FINGERPRINT not set')
   return {
     host: process.env.MC_SSH_HOST ?? 'host.docker.internal',
     port: 22,
     username: process.env.MC_SSH_USER ?? 'agfa',
     privateKey: Buffer.from(keyB64, 'base64'),
+    hostHash: 'sha256',
+    hostVerifier: (received: string) => received === fingerprint,
   }
 }
 
@@ -32,17 +36,41 @@ export function mcBridge(command: McBridgeCommand): Promise<string> {
   return new Promise((resolve, reject) => {
     const conn = new Client()
     let output = ''
+    let settled = false
+    const timeout = setTimeout(() => {
+      if (settled) return
+      settled = true
+      conn.end()
+      reject(new Error('Minecraft SSH command timed out'))
+    }, 15_000)
+    const fail = (error: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      conn.end()
+      reject(error)
+    }
 
     conn.on('ready', () => {
       conn.exec(command, (err, stream) => {
-        if (err) { conn.end(); return reject(err) }
-        stream.on('data', (chunk: Buffer) => { output += chunk.toString() })
-        stream.stderr.on('data', (chunk: Buffer) => { output += chunk.toString() })
-        stream.on('close', () => { conn.end(); resolve(output.trim()) })
+        if (err) return fail(err)
+        const append = (chunk: Buffer) => {
+          if (output.length >= 1_048_576) return fail(new Error('Minecraft SSH output exceeded limit'))
+          output += chunk.toString().slice(0, 1_048_576 - output.length)
+        }
+        stream.on('data', append)
+        stream.stderr.on('data', append)
+        stream.on('close', () => {
+          if (settled) return
+          settled = true
+          clearTimeout(timeout)
+          conn.end()
+          resolve(output.trim())
+        })
       })
     })
 
-    conn.on('error', reject)
+    conn.on('error', fail)
     conn.connect({ ...getConfig(), readyTimeout: 5000 })
   })
 }

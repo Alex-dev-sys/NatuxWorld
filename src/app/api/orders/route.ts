@@ -10,6 +10,7 @@ import { createInvoice, type CryptoAsset } from '@/lib/cryptobot'
 import { createPayment } from '@/lib/yookassa'
 import type { Coupon, Order, Duration } from '@/lib/types'
 import { clientIp } from '@/lib/clientIp'
+import { getPaymentProvider } from '@/lib/paymentConfig'
 
 const NICK_RE = /^[a-zA-Z0-9_]{3,16}$/
 const DURATIONS: Duration[] = ['30d', '90d', 'forever']
@@ -24,7 +25,7 @@ function buildMockPaymentUrl(order: Order): string {
   return `${siteOrigin()}/pay/${order.publicId}`
 }
 
-async function buildCryptoBotUrl(order: Order, asset: CryptoAsset): Promise<string> {
+async function buildCryptoBotUrl(order: Order, asset: CryptoAsset): Promise<{ url: string; asset: CryptoAsset; amount: string }> {
   const invoice = await createInvoice({
     asset,
     amountRub: order.price,
@@ -32,7 +33,10 @@ async function buildCryptoBotUrl(order: Order, asset: CryptoAsset): Promise<stri
     description: `Ранг ${order.productName} (${order.variantDurationLabel}) на NATUX WORLD`,
     paidBtnUrl: `${siteOrigin()}/order/${order.publicId}`,
   })
-  return invoice.pay_url
+  if ((invoice.asset !== 'TON' && invoice.asset !== 'USDT') || !/^\d+(\.\d{1,2})?$/.test(invoice.amount)) {
+    throw new Error('CryptoBot returned an invalid payment quote')
+  }
+  return { url: invoice.pay_url, asset: invoice.asset, amount: invoice.amount }
 }
 
 async function buildYooKassaUrl(order: Order): Promise<string> {
@@ -166,7 +170,11 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const provider = process.env.PAYMENT_PROVIDER ?? 'mock'
+  const provider = getPaymentProvider()
+  if (!provider) {
+    await updateOrder(order.publicId, { status: 'cancelled', deliveryError: 'Payment provider is not configured' })
+    return NextResponse.json({ error: 'Payment provider is not configured' }, { status: 503 })
+  }
 
   // The buyer wants crypto if they picked TON/USDT (via paymentMethod or asset);
   // otherwise they chose card/СБП (paymentMethod === 'card').
@@ -183,14 +191,19 @@ export async function POST(req: NextRequest) {
     resolvedProvider = 'yookassa'
   } else if (provider === 'multi') {
     resolvedProvider = wantsCrypto ? 'cryptobot' : 'yookassa'
-  } else {
+  } else if (provider === 'mock') {
     resolvedProvider = 'mock'
+  } else {
+    return NextResponse.json({ error: 'Unsupported payment provider' }, { status: 503 })
   }
 
   let paymentUrl: string
   try {
     if (resolvedProvider === 'cryptobot') {
-      paymentUrl = await buildCryptoBotUrl(order, cryptoAsset)
+      const invoice = await buildCryptoBotUrl(order, cryptoAsset)
+      paymentUrl = invoice.url
+      const quoted = await updateOrder(order.publicId, { paymentAsset: invoice.asset, paymentAmount: invoice.amount })
+      if (!quoted) throw new Error('Failed to save payment quote')
     } else if (resolvedProvider === 'yookassa') {
       paymentUrl = await buildYooKassaUrl(order)
     } else {

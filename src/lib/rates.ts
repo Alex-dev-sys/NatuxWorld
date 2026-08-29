@@ -12,8 +12,6 @@ export interface RatesWithMeta extends Rates {
 }
 
 const TTL_MS = 5 * 60 * 1000
-const FALLBACK: Rates = { ton: 300, usdt: 90 }
-
 const COINGECKO_URL =
   'https://api.coingecko.com/api/v3/simple/price?ids=the-open-network,tether&vs_currencies=rub'
 
@@ -54,8 +52,8 @@ async function fetchRates(): Promise<Rates> {
 
 /**
  * Returns current TON/USDT prices in RUB.
- * Cached in-memory for 5 minutes. On fetch error falls back to the last known
- * rate (if any) or a static fallback.
+ * Cached in-memory for 5 minutes. A failed refresh is returned to the caller
+ * instead of silently creating an invoice at an unsafe/stale price.
  */
 export async function getRates(): Promise<Rates> {
   const now = Date.now()
@@ -73,15 +71,6 @@ export async function getRates(): Promise<Rates> {
       const rates = await fetchRates()
       cache = { rates, fetchedAt: Date.now() }
       return rates
-    } catch {
-      // Use last known rate if available, otherwise static fallback.
-      if (cache) {
-        // refresh fetchedAt so we don't hammer the API on repeated failures
-        cache = { rates: cache.rates, fetchedAt: Date.now() }
-        return cache.rates
-      }
-      cache = { rates: FALLBACK, fetchedAt: Date.now() }
-      return FALLBACK
     } finally {
       inflight = null
     }

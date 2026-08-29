@@ -133,6 +133,8 @@ model Order {
   username             String
   status               String    @default("waiting_payment")
   paymentId            String?   @unique
+  paymentAsset         String?
+  paymentAmount        String?
   createdAt            DateTime  @default(now())
   paidAt               DateTime?
   deliveredAt          DateTime?

@@ -51,7 +51,7 @@ function mockRconResponse(cmd: string): string {
 }
 
 async function tryRcon(commands: string[]): Promise<RconResult> {
-  if (process.env.PAYMENT_PROVIDER === 'mock' || process.env.RCON_MOCK === 'true') {
+  if (process.env.RCON_MOCK === 'true') {
     console.log('[MOCK RCON] Commands:', commands)
     if (process.env.RCON_MOCK_FAIL === 'true') {
       return { success: false, commands, error: 'Connection refused (mock fail mode)' }

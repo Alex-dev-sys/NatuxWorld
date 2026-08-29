@@ -13,20 +13,24 @@ export async function POST(req: NextRequest) {
   const userId = user.id
   const { code } = (await req.json().catch(() => ({}))) as { code?: string }
   if (!code) return apiError('bad_request', 'Код обязателен', 400)
-
   if (!user.twoFactorEnabled) return apiError('bad_request', '2FA не включена', 400)
 
-  let ok = user.twoFactorMethod === 'totp' && !!user.totpSecretEnc && verifyTotp(code, decryptSecret(user.totpSecretEnc))
-  if (!ok) {
-    const match = await prisma.twoFactorBackupCode.findFirst({ where: { userId, codeHash: hashBackupCode(code), usedAt: null } })
-    ok = !!match
-  }
-  if (!ok) return apiError('bad_credentials', 'Неверный код', 401)
-
   const codes = generateBackupCodes()
-  await prisma.$transaction([
-    prisma.twoFactorBackupCode.deleteMany({ where: { userId } }),
-    prisma.twoFactorBackupCode.createMany({ data: codes.map((c) => ({ userId, codeHash: hashBackupCode(c) })) }),
-  ])
+  const isTotp = user.twoFactorMethod === 'totp' && !!user.totpSecretEnc && verifyTotp(code, decryptSecret(user.totpSecretEnc))
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (!isTotp) {
+        const consumed = await tx.twoFactorBackupCode.updateMany({
+          where: { userId, codeHash: hashBackupCode(code), usedAt: null },
+          data: { usedAt: new Date() },
+        })
+        if (consumed.count !== 1) throw new Error('invalid backup code')
+      }
+      await tx.twoFactorBackupCode.deleteMany({ where: { userId } })
+      await tx.twoFactorBackupCode.createMany({ data: codes.map((c) => ({ userId, codeHash: hashBackupCode(c) })) })
+    })
+  } catch {
+    return apiError('bad_credentials', 'Неверный код', 401)
+  }
   return Response.json({ ok: true, backupCodes: codes })
 }

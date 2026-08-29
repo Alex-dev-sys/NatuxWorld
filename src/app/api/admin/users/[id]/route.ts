@@ -191,9 +191,10 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     await prisma.$transaction([
       prisma.user.update({
         where: { id: params.id },
-        data: { twoFactorEnabled: false, twoFactorMethod: null, totpSecretEnc: null, twoFactorCode: null, twoFactorCodeExpires: null },
+        data: { twoFactorEnabled: false, twoFactorMethod: null, totpSecretEnc: null, twoFactorCode: null, twoFactorCodeExpires: null, tokenVersion: { increment: 1 } },
       }),
       prisma.twoFactorBackupCode.deleteMany({ where: { userId: params.id } }),
+      prisma.gameToken.deleteMany({ where: { userId: params.id } }),
     ])
     await logAdminAction(req, 'user.reset-2fa', { target: user.username, ok: true })
     return NextResponse.json({ ok: true })

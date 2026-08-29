@@ -12,7 +12,12 @@ export async function POST(req: NextRequest) {
   try { body = await req.json() } catch {
     return apiError('validation_failed', 'Проверьте правильность данных', 422)
   }
-  const { email, code } = body as Record<string, string>
+  const email = typeof body === 'object' && body !== null && 'email' in body && typeof body.email === 'string'
+    ? body.email.trim().toLowerCase()
+    : ''
+  const code = typeof body === 'object' && body !== null && 'code' in body && typeof body.code === 'string'
+    ? body.code.trim()
+    : ''
   if (!email || !code) return apiError('code_invalid', 'Неверный код', 400)
 
   if (!rateLimit(`verify:${ip}:${email}`, 5, 60_000)) {
@@ -20,7 +25,7 @@ export async function POST(req: NextRequest) {
   }
 
   const user = await prisma.user.findUnique({ where: { email } })
-  if (!user || !user.verifyCode) {
+  if (!user || user.emailVerified || !user.verifyCode) {
     await logLoginEvent({ ip, userAgent, kind: 'fail' })
     return apiError('code_invalid', 'Неверный код', 400)
   }
@@ -35,11 +40,24 @@ export async function POST(req: NextRequest) {
     return apiError('code_invalid', 'Неверный код', 400)
   }
 
-  const updated = await prisma.user.update({
-    where: { email },
+  // Consume the code and verify the account in one conditional write. This
+  // prevents two concurrent requests from both receiving a session.
+  const consumed = await prisma.user.updateMany({
+    where: {
+      email,
+      emailVerified: false,
+      verifyCode: code,
+      verifyCodeExpires: { gt: new Date() },
+    },
     data: { emailVerified: true, verifyCode: null, verifyCodeExpires: null },
   })
+  if (consumed.count !== 1) {
+    await logLoginEvent({ userId: user.id, ip, userAgent, kind: 'fail' })
+    return apiError('code_invalid', 'Неверный код', 400)
+  }
 
+  const updated = await prisma.user.findUnique({ where: { email } })
+  if (!updated) return apiError('code_invalid', 'Неверный код', 400)
   await logLoginEvent({ userId: updated.id, ip, userAgent, kind: 'verify' })
   const token = signToken(updated.id, updated.tokenVersion)
   return Response.json({ token, user: formatUser(updated) })

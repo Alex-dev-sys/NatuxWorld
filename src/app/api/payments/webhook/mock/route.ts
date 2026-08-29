@@ -1,12 +1,13 @@
 // src/app/api/payments/webhook/mock/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { getOrder, getOrderById, claimOrderForDelivery } from '@/lib/store'
+import { getOrder, claimOrderForDelivery } from '@/lib/store'
 import { fulfillOrder } from '@/lib/fulfillment'
+import { isMockPaymentsEnabled } from '@/lib/paymentConfig'
 
 export async function POST(req: NextRequest) {
   // Мок-вебхук доступен ТОЛЬКО при PAYMENT_PROVIDER=mock: иначе любой желающий
   // мог бы пометить чужой заказ оплаченным и получить ранг бесплатно.
-  if ((process.env.PAYMENT_PROVIDER ?? 'mock') !== 'mock') {
+  if (!isMockPaymentsEnabled()) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
@@ -15,10 +16,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { orderId, publicId } = body as { orderId?: string; publicId?: string }
+  const { publicId } = body as { publicId?: string }
 
-  const key = publicId ?? orderId
-  const order = key ? (await getOrder(key)) ?? (await getOrderById(key)) : undefined
+  const order = publicId ? await getOrder(publicId) : undefined
   if (!order) {
     return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 })
   }

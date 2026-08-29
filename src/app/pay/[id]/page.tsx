@@ -3,11 +3,13 @@ import { notFound, redirect } from 'next/navigation'
 import { getOrder } from '@/lib/store'
 import PaymentClient from '@/components/PaymentClient'
 import type { Metadata } from 'next'
+import { isMockPaymentsEnabled } from '@/lib/paymentConfig'
+import { toPublicOrder } from '@/lib/store'
 
 export const metadata: Metadata = { title: 'Оплата' }
 
 export default async function PayPage({ params }: { params: { id: string } }) {
-  if ((process.env.PAYMENT_PROVIDER ?? 'mock') !== 'mock') notFound()
+  if (!isMockPaymentsEnabled()) notFound()
 
   const order = await getOrder(params.id)
   if (!order) notFound()
@@ -23,7 +25,7 @@ export default async function PayPage({ params }: { params: { id: string } }) {
       >
         ТЕСТОВЫЙ РЕЖИМ — оплата не настоящая. Не вводите данные реальной карты.
       </div>
-      <PaymentClient order={order} />
+      <PaymentClient order={toPublicOrder(order)} />
     </>
   )
 }
