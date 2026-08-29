@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "skills": {
+    "excalidraw-diagram": {
+      "source": "coleam00/excalidraw-diagram-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "fc91249969c7c1adc1f810ddfe10f18e206b78609467bb4955248e9138932e8a"
+    },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "skillPath": "skills/frontend-design/SKILL.md",
+      "computedHash": "063a0e6448123cd359ad0044cc46b0e490cc7964d45ef4bb9fd842bd2ffbca67"
+    },
+    "remotion-best-practices": {
+      "source": "remotion-dev/skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion/SKILL.md",
+      "computedHash": "006f8413941b59eff54a7ce64851b8a2fb79e7a3a5f1a895e97a48f01482553d"
+    },
+    "shannon": {
+      "source": "unicodeveloper/shannon",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "5dbcc124e13135a2d8feabdb0149c130f46440a0685c24ab17bf01fb6ab60770"
+    }
+  }
+}

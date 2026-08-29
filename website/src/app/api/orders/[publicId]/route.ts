@@ -1,0 +1,14 @@
+// src/app/api/orders/[publicId]/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { getOrder, toPublicOrder } from '@/lib/store'
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: { publicId: string } }
+) {
+  const order = await getOrder(params.publicId)
+  if (!order) {
+    return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 })
+  }
+  return NextResponse.json(toPublicOrder(order))
+}

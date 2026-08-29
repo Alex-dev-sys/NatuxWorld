@@ -1,0 +1,189 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                 String    @id
+  username           String    @unique
+  email              String    @unique
+  passwordHash       String
+  emailVerified      Boolean   @default(false)
+  tokenVersion       Int       @default(0)
+  verifyCode         String?
+  verifyCodeExpires  DateTime?
+  bannedAt           DateTime?
+  banReason          String?
+  twoFactorEnabled     Boolean   @default(false)
+  twoFactorMethod      String?
+  totpSecretEnc        String?
+  twoFactorCode        String?
+  twoFactorCodeExpires DateTime?
+  backupCodes          TwoFactorBackupCode[]
+  appPasswords         AppPassword[]
+  createdAt          DateTime  @default(now())
+}
+
+model TwoFactorBackupCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model AppPassword {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label      String
+  hash       String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId])
+}
+
+model Coupon {
+  code        String    @id
+  type        String
+  value       Int
+  description String    @default("")
+  maxUses     Int?
+  usedCount   Int       @default(0)
+  expiresAt   DateTime?
+  active      Boolean   @default(true)
+}
+
+model GameToken {
+  accessToken String   @id
+  clientToken String
+  userId      String
+  tokenVersion Int     @default(0)
+  serverId    String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([serverId])
+}
+
+model LoginEvent {
+  id        String   @id @default(uuid())
+  userId    String?
+  ip        String
+  userAgent String   @default("")
+  kind      String   // login | verify | register | fail
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model GameEvent {
+  id        String   @id @default(uuid())
+  userId    String?
+  username  String
+  kind      String   // command | block_break | block_place | chat | join | quit | death | kill
+  message   String   @default("")
+  world     String   @default("")
+  x         Float?
+  y         Float?
+  z         Float?
+  extra     String   @default("") // block type, victim name, etc.
+  createdAt DateTime @default(now())
+
+  @@index([username])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([kind])
+}
+
+model CrashReport {
+  id        String   @id @default(uuid())
+  kind      String
+  stage     String
+  message   String
+  exitCode  Int?
+  logs      String[]
+  version   String   @default("")
+  platform  String   @default("")
+  arch      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([kind])
+}
+
+model Order {
+  id                   String    @id @default(uuid())
+  publicId             String    @unique @default(uuid())
+  productId            String
+  productName          String
+  variantDuration      String
+  variantDurationLabel String
+  price                Int
+  originalPrice        Int?
+  couponCode           String?
+  username             String
+  status               String    @default("waiting_payment")
+  paymentId            String?   @unique
+  paymentAsset         String?
+  paymentAmount        String?
+  createdAt            DateTime  @default(now())
+  paidAt               DateTime?
+  deliveredAt          DateTime?
+  deliveryError        String?
+  fulfillmentCommands String[]
+  rconCommands         String[]
+  retryCount           Int       @default(0)
+}
+
+model AdminAudit {
+  id        String   @id @default(cuid())
+  action    String
+  target    String?
+  params    Json
+  ip        String
+  ok        Boolean
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action])
+}
+
+model Product {
+  id          String           @id
+  slug        String           @unique
+  name        String
+  description  String
+  color       String
+  order       Int
+  active      Boolean          @default(true)
+  badge       String?
+  popular     Boolean          @default(false)
+  perks       String[]
+  variants    ProductVariant[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([order])
+}
+
+model ProductVariant {
+  id            String   @id @default(uuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  duration      String
+  durationLabel String
+  price         Int
+  commands      String[]
+  order         Int      @default(0)
+
+  @@index([productId])
+}

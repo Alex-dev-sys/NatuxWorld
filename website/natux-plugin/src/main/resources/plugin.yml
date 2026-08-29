@@ -1,0 +1,11 @@
+name: NatuxPlugin
+version: 1.0.0
+main: ru.vibestudy.natuxplugin.NatuxPlugin
+api-version: '1.21'
+description: NATUX WORLD — activity tracker plugin
+authors: [natux]
+
+commands:
+  natux:
+    description: NatuxPlugin admin command
+    permission: natux.admin

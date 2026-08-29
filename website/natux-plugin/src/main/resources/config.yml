@@ -1,0 +1,54 @@
+api:
+  url: "http://127.0.0.1:3000/api/game-event"
+  key: "CHANGE_ME"
+
+# Events to track (set to false to disable)
+track:
+  commands: true
+  chat: true
+  block_break: true
+  block_place: true
+  join: true
+  quit: true
+  death: true
+  kill: true
+
+# Block/place events only for blocks in this list (empty = all blocks)
+# Add block type names to filter noise (e.g. CHEST, DIAMOND_ORE, etc.)
+important_blocks: []
+
+# Server-side baseline anti-cheat. It does not trust the launcher or client files.
+# Start with these conservative values, watch the "anticheat" events in the admin
+# panel, then adjust them only if your gameplay or custom items truly require it.
+anticheat:
+  enabled: true
+  bypass_permission: "natux.anticheat.bypass"
+  # Ignore normal joins, server teleports and respawns for this many ticks.
+  teleport_grace_ticks: 60
+  # A player is warned only after repeated violations. This version never auto-bans.
+  warning_threshold: 3
+  warning_interval: 3
+  reset_after_seconds: 60
+  # Limit evidence sent to the site so a cheater cannot flood telemetry.
+  log_cooldown_seconds: 5
+  movement:
+    # Blocks moved in one server tick; a sprint is about 0.3.
+    max_horizontal_per_move: 1.15
+    max_upward_per_move: 1.35
+    # Consecutive near-stationary airborne ticks before a fly flag.
+    hover_ticks: 40
+  combat:
+    # Eye-to-hitbox distance. Kept generous for latency and player hitboxes.
+    max_reach: 4.5
+    cancel_reach: true
+    # Evidence only: high CPS is logged but attacks are never cancelled for it.
+    max_cps: 18
+
+# Batch flush interval in seconds
+flush_interval: 5
+
+# Max events per batch
+batch_size: 100
+
+# Hard memory bound. When full, the oldest telemetry is discarded.
+max_queue: 10000
