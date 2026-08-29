@@ -1,8 +1,23 @@
-name: CI
+name: Website CI
 
+# Scoped to the website/ subtree so launcher-only changes don't run this, and
+# website-only changes don't run the launcher release workflow (see build.yml).
 on:
   push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - '.github/workflows/website.yml'
   pull_request:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - '.github/workflows/website.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: website-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   plugin:
@@ -10,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: natux-plugin
+        working-directory: website/natux-plugin
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v5
@@ -21,7 +36,11 @@ jobs:
       - run: mvn --batch-mode --no-transfer-progress verify
 
   ci:
+    name: Site
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
     services:
       postgres:
         image: postgres:16
@@ -45,6 +64,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: website/package-lock.json
       - run: npm ci
       - run: npx prisma generate
       - run: npx prisma migrate deploy

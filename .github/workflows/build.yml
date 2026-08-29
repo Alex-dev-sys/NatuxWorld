@@ -1,10 +1,19 @@
 name: Build
 
+# The launcher lives at the repo root; the site lives in website/ and is built
+# by website.yml. Ignoring website/** keeps site-only changes from triggering a
+# launcher package + release.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'website/**'
+      - '.github/workflows/website.yml'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - 'website/**'
+      - '.github/workflows/website.yml'
   workflow_dispatch:
 
 concurrency:
