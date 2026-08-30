@@ -2,11 +2,15 @@
  * Single build-time source of truth for the launcher brand and its public API.
  * Change these values before producing a branded build for another server.
  */
+declare const __NATUX_LOCAL_MODE__: boolean;
+
+const localMode = typeof __NATUX_LOCAL_MODE__ !== 'undefined' && __NATUX_LOCAL_MODE__;
+
 export const BRAND = Object.freeze({
   name: 'NATUX WORLD',
-  siteOrigin: 'https://vibestudy.ru',
-  siteDomain: 'vibestudy.ru',
-  serverHost: 'mc.vibestudy.ru',
+  siteOrigin: localMode ? 'http://127.0.0.1:3000' : 'https://vibestudy.ru',
+  siteDomain: localMode ? '127.0.0.1:3000' : 'vibestudy.ru',
+  serverHost: localMode ? '127.0.0.1' : 'mc.vibestudy.ru',
   shopPath: '/shop',
   minecraftVersionLabel: '1.21.1 Forge',
 });

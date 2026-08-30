@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
+import http from 'node:http';
 import path from 'node:path';
 import https from 'node:https';
 import yauzl from 'yauzl';
@@ -515,7 +516,9 @@ export class LauncherService extends EventEmitter {
 
   private async fetchSiteApi<T>(path: string): Promise<T> {
     return new Promise((resolve, reject) => {
-      const req = https.get(`${BRAND.siteOrigin}${path}`, { timeout: 6000 }, (res) => {
+      const url = new URL(`${BRAND.siteOrigin}${path}`);
+      const transport = url.protocol === 'http:' ? http : https;
+      const req = transport.get(url, { timeout: 6000 }, (res) => {
         let data = '';
         res.on('data', (chunk) => { data += chunk; });
         res.on('end', () => {

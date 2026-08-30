@@ -1,5 +1,6 @@
 import { app, safeStorage } from 'electron';
 import fsp from 'node:fs/promises';
+import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
 import { BRAND_URLS } from '../../brand.config';
@@ -90,12 +91,14 @@ export class AccountService {
   private request<T>(method: 'GET' | 'POST', endpoint: string, body?: unknown, token?: string): Promise<T> {
     return new Promise((resolve, reject) => {
       const url = `${this.base}${endpoint}`;
+      const parsedUrl = new URL(url);
+      const transport = parsedUrl.protocol === 'http:' ? http : https;
       const payload = body ? JSON.stringify(body) : undefined;
       const headers: Record<string, string> = { 'Content-Type': 'application/json', 'User-Agent': 'NatuxWorldLauncher' };
       if (token) headers.Authorization = `Bearer ${token}`;
       if (payload) headers['Content-Length'] = String(Buffer.byteLength(payload));
 
-      const req = https.request(url, { method, headers, timeout: 6000 }, (res) => {
+      const req = transport.request(parsedUrl, { method, headers, timeout: 6000 }, (res) => {
         let data = '';
         res.setEncoding('utf-8');
         res.on('data', (c: string) => (data += c));

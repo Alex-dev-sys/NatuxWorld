@@ -1,4 +1,5 @@
 import { app } from 'electron';
+import http from 'node:http';
 import https from 'node:https';
 import { SettingsService } from './SettingsService';
 import { BRAND_URLS } from '../../brand.config';
@@ -49,8 +50,10 @@ export class CrashReportService {
     });
 
     await new Promise<void>((resolve) => {
-      const req = https.request(
-        ENDPOINT,
+      const endpoint = new URL(ENDPOINT);
+      const transport = endpoint.protocol === 'http:' ? http : https;
+      const req = transport.request(
+        endpoint,
         {
           method: 'POST',
           timeout: 6000,

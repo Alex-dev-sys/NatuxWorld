@@ -3,7 +3,12 @@ import react from '@vitejs/plugin-react';
 import electron from 'vite-plugin-electron/simple';
 import path from 'node:path';
 
+const localMode = process.env.NATUX_LOCAL_MODE === 'true';
+
 export default defineConfig({
+  define: {
+    __NATUX_LOCAL_MODE__: JSON.stringify(localMode),
+  },
   plugins: [
     react(),
     electron({
