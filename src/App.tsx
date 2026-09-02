@@ -58,6 +58,20 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings?.autoLaunch, accountStatus]);
 
+  // "Запустить игру" из контекстного меню трея.
+  const trayLaunchFired = useRef(false);
+  useEffect(() => {
+    const off = bridge.app.onTrayLaunchRequest(() => {
+      if (accountStatus === 'authed' && !trayLaunchFired.current) {
+        trayLaunchFired.current = true;
+        play();
+        setTimeout(() => { trayLaunchFired.current = false; }, 3000);
+      }
+    });
+    return off;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountStatus]);
+
   if (accountStatus !== 'authed') {
     return (
       <>

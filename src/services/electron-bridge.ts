@@ -62,6 +62,11 @@ const fallback: NatuxAPI = {
       autoLaunch: false,
       crashReports: false,
       onboardingCompleted: false,
+      minimizeToTray: false,
+      launchOnStartup: false,
+      updateChannel: 'stable' as const,
+      telemetryEnabled: false,
+      installId: '',
     }),
     set: async (s) => s as never,
     getSystemMemory: async () => 8192,
@@ -69,6 +74,7 @@ const fallback: NatuxAPI = {
       memory: 4096, fullscreen: false, closeOnLaunch: false, language: 'ru' as const,
       jvmArgs: '-XX:+UnlockExperimentalVMOptions -XX:+UseG1GC', resolution: { width: 1280, height: 720 },
       javaMode: 'bundled' as const, autoUpdate: true, autoLaunch: false, crashReports: false, onboardingCompleted: false,
+      minimizeToTray: false, launchOnStartup: false, updateChannel: 'stable' as const, telemetryEnabled: false, installId: '',
     }),
     pickJava: async () => null,
     verifyJava: async () => ({ ok: false, error: 'Недоступно в браузере' }),
@@ -82,9 +88,13 @@ const fallback: NatuxAPI = {
     openExternal: async (url) => {
       window.open(url, '_blank', 'noopener,noreferrer');
     },
+    openScreenshots: async () => ({ ok: false, error: 'Недоступно в браузере' }),
+    diagnosticsRun: async () => [],
+    playtimeGet: async () => ({ totalMs: 0, sessions: [], lastSession: null, inGame: false }),
   },
   app: {
     onReady: noop,
+    onTrayLaunchRequest: noop,
   },
   account: {
     bootstrap: async () => ({ status: 'guest' as const }),

@@ -21,6 +21,17 @@ export async function POST(
     return NextResponse.json({ error: 'Нельзя повторить выдачу для этого статуса' }, { status: 400 })
   }
 
+  // A crash mid-delivery leaves delivery_pending with partially unknown RCON
+  // progress. The RCON client checkpoints executed commands, but re-attempting
+  // a possibly-partial grant is an admin decision — require explicit confirm.
+  const body = await _req.json().catch(() => ({})) as { confirm?: boolean }
+  if (order.status === 'delivery_pending' && body.confirm !== true) {
+    return NextResponse.json(
+      { needConfirm: true, error: 'Предыдущая попытка могла выполниться частично. Повторите с confirm: true.' },
+      { status: 400 },
+    )
+  }
+
   const pending = await updateOrder(order.publicId, { status: 'delivery_pending', deliveryError: undefined })
   if (!pending) {
     return NextResponse.json({ error: 'Ошибка обновления заказа' }, { status: 500 })

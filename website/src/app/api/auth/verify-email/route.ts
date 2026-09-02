@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { rateLimit } from '@/lib/ratelimit'
 import { signToken, formatUser, apiError, logLoginEvent } from '@/lib/auth'
+import { hashBackupCode } from '@/lib/backupCodes'
 import { clientIp } from '@/lib/clientIp'
 
 export async function POST(req: NextRequest) {
@@ -24,7 +25,9 @@ export async function POST(req: NextRequest) {
     return apiError('rate_limited', 'Слишком много попыток, подождите', 429)
   }
 
-  const user = await prisma.user.findUnique({ where: { email } })
+  const user = await prisma.user.findFirst({
+    where: { email: { equals: email, mode: 'insensitive' } },
+  })
   if (!user || user.emailVerified || !user.verifyCode) {
     await logLoginEvent({ ip, userAgent, kind: 'fail' })
     return apiError('code_invalid', 'Неверный код', 400)
@@ -35,7 +38,8 @@ export async function POST(req: NextRequest) {
     return apiError('code_expired', 'Код истёк, запросите новый', 410)
   }
 
-  if (user.verifyCode !== code) {
+  // Stored codes are sha256 digests (see register/resend-code).
+  if (user.verifyCode !== hashBackupCode(code)) {
     await logLoginEvent({ userId: user.id, ip, userAgent, kind: 'fail' })
     return apiError('code_invalid', 'Неверный код', 400)
   }
@@ -44,9 +48,9 @@ export async function POST(req: NextRequest) {
   // prevents two concurrent requests from both receiving a session.
   const consumed = await prisma.user.updateMany({
     where: {
-      email,
+      id: user.id,
       emailVerified: false,
-      verifyCode: code,
+      verifyCode: hashBackupCode(code),
       verifyCodeExpires: { gt: new Date() },
     },
     data: { emailVerified: true, verifyCode: null, verifyCodeExpires: null },
@@ -56,7 +60,7 @@ export async function POST(req: NextRequest) {
     return apiError('code_invalid', 'Неверный код', 400)
   }
 
-  const updated = await prisma.user.findUnique({ where: { email } })
+  const updated = await prisma.user.findUnique({ where: { id: user.id } })
   if (!updated) return apiError('code_invalid', 'Неверный код', 400)
   await logLoginEvent({ userId: updated.id, ip, userAgent, kind: 'verify' })
   const token = signToken(updated.id, updated.tokenVersion)

@@ -17,7 +17,9 @@ export async function POST(req: NextRequest) {
     return apiError('bad_credentials', 'Неверный логин или пароль', 401)
   }
   const { login, password } = body as Record<string, string>
-  if (!login || !password) return apiError('bad_credentials', 'Неверный логин или пароль', 401)
+  if (!login || !password || password.length > 200) {
+    return apiError('bad_credentials', 'Неверный логин или пароль', 401)
+  }
 
   // IP-wide bucket caps password spraying; per-(ip, account) bucket caps targeted
   // brute force. Identifier normalized so casing/whitespace can't open fresh buckets.
@@ -27,9 +29,13 @@ export async function POST(req: NextRequest) {
   }
 
   const isEmail = login.includes('@')
-  const user = await prisma.user.findUnique({
-    where: isEmail ? { email: login } : { username: login },
-  })
+  const identifier = login.trim()
+  // Case-insensitive email lookup so casing can't fork accounts into
+  // separate rate-limit/verification identities. bcrypt (below) provides the
+  // timing uniformity; this lookup is not secret-dependent.
+  const user = isEmail
+    ? await prisma.user.findFirst({ where: { email: { equals: identifier, mode: 'insensitive' } } })
+    : await prisma.user.findUnique({ where: { username: identifier } })
   if (!user) {
     await logLoginEvent({ ip, userAgent, kind: 'fail' })
     return apiError('bad_credentials', 'Неверный логин или пароль', 401)

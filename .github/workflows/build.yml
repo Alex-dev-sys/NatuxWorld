@@ -32,12 +32,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        # actions pinned by commit SHA (supply-chain hygiene)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22.12.0
           cache: npm
@@ -78,23 +79,10 @@ jobs:
       - name: Build renderer + Electron
         run: npm run build:web
 
-      - name: Regenerate icon.ico from icon.png
-        shell: pwsh
-        run: |
-          if (Test-Path build/icon.png) {
-            choco install imagemagick.app -y --no-progress
-            $magick = Get-Command magick -ErrorAction SilentlyContinue
-            if ($null -eq $magick) {
-              # choco may not refresh PATH in this session; resolve the real install dir.
-              $dir = Get-ChildItem "C:\Program Files\ImageMagick-7*" -Directory -ErrorAction SilentlyContinue |
-                Sort-Object Name -Descending | Select-Object -First 1
-              if ($null -ne $dir) { $env:Path += ";$($dir.FullName)" }
-            }
-            magick "build/icon.png" -define icon:auto-resize=256,128,96,64,48,32,24,16 "build/icon.ico"
-            Write-Host "icon.ico regenerated from icon.png"
-          } else {
-            Write-Host "no build/icon.png, keeping existing icon.ico"
-          }
+      # NOTE: icon.ico is committed to the repo and used as-is. It is NOT
+      # regenerated in CI from icon.png — that step previously pulled an
+      # unpinned third-party package (imagemagick via choco) into a release
+      # job with contents: write, an avoidable supply-chain vector.
 
       - name: Package & publish to Release
         if: steps.ver.outputs.release == 'true'
@@ -144,7 +132,7 @@ jobs:
           gh release upload ${{ steps.ver.outputs.tag }} SHA256SUMS-windows.txt --clobber
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: natux-world-windows-${{ steps.ver.outputs.version }}
           path: |
@@ -165,12 +153,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22.12.0
           cache: npm
@@ -213,7 +201,7 @@ jobs:
           gh release upload "v${{ needs.build.outputs.version }}" SHA256SUMS-macos.txt --clobber
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: natux-world-macos-${{ needs.build.outputs.version }}
           path: release/*.dmg

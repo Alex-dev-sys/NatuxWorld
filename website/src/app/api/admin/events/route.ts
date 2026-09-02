@@ -44,6 +44,14 @@ export async function GET(req: NextRequest) {
       const poll = async () => {
         if (closed) return
         try {
+          // Re-check admin auth every cycle: a logged-out or revoked session
+          // must stop receiving events immediately, not on next page load.
+          if (!(await requireAdmin(req))) {
+            closed = true
+            clearInterval(interval)
+            try { controller.close() } catch { /* already closed */ }
+            return
+          }
           const [newEvents, newOrders, newCrashes] = await Promise.all([
             lastEventId
               ? prisma.loginEvent.findMany({

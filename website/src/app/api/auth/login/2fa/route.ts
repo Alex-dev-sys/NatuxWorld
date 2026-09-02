@@ -40,9 +40,17 @@ export async function POST(req: NextRequest) {
   if (user.twoFactorMethod === 'totp' && user.totpSecretEnc) {
     ok = verifyTotp(trimmed, decryptSecret(user.totpSecretEnc))
   } else if (user.twoFactorMethod === 'email') {
-    ok = !!user.twoFactorCode && !!user.twoFactorCodeExpires &&
-      user.twoFactorCodeExpires > new Date() &&
-      user.twoFactorCode === hashBackupCode(trimmed)
+    // Atomic consume: exactly one concurrent request can burn the OTP, so a
+    // reused/parallel code can never yield two sessions.
+    const consumed = await prisma.user.updateMany({
+      where: {
+        id: user.id,
+        twoFactorCode: hashBackupCode(trimmed),
+        twoFactorCodeExpires: { gt: new Date() },
+      },
+      data: { twoFactorCode: null, twoFactorCodeExpires: null },
+    })
+    ok = consumed.count === 1
   }
 
   // Backup code fallback (works for either method).
@@ -59,10 +67,6 @@ export async function POST(req: NextRequest) {
     return apiError('bad_credentials', 'Неверный код', 401)
   }
 
-  // Clear any consumed email OTP.
-  if (user.twoFactorCode) {
-    await prisma.user.update({ where: { id: user.id }, data: { twoFactorCode: null, twoFactorCodeExpires: null } })
-  }
   await logLoginEvent({ userId: user.id, ip, userAgent, kind: 'login' })
   return Response.json({ token: signToken(user.id, user.tokenVersion), user: formatUser(user) })
 }

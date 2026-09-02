@@ -3,9 +3,9 @@ import { NextResponse } from 'next/server'
 import { verifySessionToken } from '@/lib/adminSession'
 
 // Comma-separated allowlist from env (supports a changing home IP / multiple admins).
-// Falls back to the original single IP so a missing env var keeps current access working;
-// set ADMIN_ALLOWED_IPS in prod to override.
-const ADMIN_ALLOWED_IPS = (process.env.ADMIN_ALLOWED_IPS ?? '109.122.200.90')
+// Fail-closed: with no ADMIN_ALLOWED_IPS set in production the admin surface is
+// unreachable — set the env var explicitly to grant access (no hardcoded fallback IP).
+const ADMIN_ALLOWED_IPS = (process.env.ADMIN_ALLOWED_IPS ?? '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean)

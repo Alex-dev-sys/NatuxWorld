@@ -6,6 +6,7 @@ const db = vi.hoisted(() => ({
   order: { updateMany: vi.fn() },
   gameEvent: { updateMany: vi.fn() },
   gameToken: { deleteMany: vi.fn() },
+  appPassword: { deleteMany: vi.fn() },
   twoFactorBackupCode: { deleteMany: vi.fn() },
   adminAudit: { create: vi.fn() },
   $transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
@@ -28,6 +29,7 @@ beforeEach(() => {
   db.user.update.mockResolvedValue(theUser)
   db.order.updateMany.mockResolvedValue({}); db.gameEvent.updateMany.mockResolvedValue({})
   db.gameToken.deleteMany.mockResolvedValue({}); db.twoFactorBackupCode.deleteMany.mockResolvedValue({})
+  db.appPassword.deleteMany.mockResolvedValue({})
 })
 
 describe('admin user PATCH — Phase 4 actions', () => {

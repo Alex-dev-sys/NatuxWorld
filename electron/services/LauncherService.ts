@@ -21,6 +21,9 @@ import { ForgeService } from './ForgeService';
 import { MinecraftService, type LaunchHandle } from './MinecraftService';
 import { SettingsService } from './SettingsService';
 import { CrashReportService } from './CrashReportService';
+import { playtime } from './PlaytimeService';
+import { discordRpc } from './DiscordRpcService';
+import { TelemetryService } from './TelemetryService';
 import { BRAND } from '../../brand.config';
 import {
   getAssetObjectPath,
@@ -91,6 +94,9 @@ export function parseVersionId(id: string): { loader: string; mcVersion: string 
 
 export const ASSET_BASE_URL = 'https://resources.download.minecraft.net';
 
+/** Free disk space required before we start pulling libraries/assets (~1.5 GB). */
+const MIN_FREE_BYTES = 1.5 * 1024 * 1024 * 1024;
+
 const CHANNEL_PROGRESS = 'launcher:progress';
 const CHANNEL_LOG = 'launcher:log';
 
@@ -111,6 +117,7 @@ export class LauncherService extends EventEmitter {
   private readonly minecraft = new MinecraftService();
   private readonly settingsSvc = new SettingsService();
   private readonly crashReporter = new CrashReportService();
+  private readonly telemetry = new TelemetryService();
 
   // Rolling tail of recent log lines, retained for opt-in crash reports. Separate from
   // logBuffer (which is drained on each IPC flush), so a report still has context.
@@ -189,6 +196,7 @@ export class LauncherService extends EventEmitter {
       this.report({ stage: 'error', progress: 0, message: `Ошибка: ${msg}` });
       // User-initiated cancel is not a crash — don't report it.
       if (!this.cancelled) {
+        void this.telemetry.send('install_fail');
         void this.crashReporter.report({
           kind: 'launch-error',
           stage: failedStage,
@@ -206,6 +214,18 @@ export class LauncherService extends EventEmitter {
     this.report({ stage: 'resolving', progress: 0, message: 'Получение манифеста Mojang...' });
     const version = await this.mojang.resolveVersion(mcVersion);
     this.throwIfCancelled();
+
+    // Disk space gate: fail BEFORE downloading hundreds of MB, with a clear
+    // message instead of an obscure ENOSPC in the middle of the install.
+    await fsp.mkdir(getMinecraftDir(), { recursive: true });
+    const stats = await fsp.statfs(getMinecraftDir());
+    const freeBytes = Number(stats.bavail) * Number(stats.bsize);
+    if (Number.isFinite(freeBytes) && freeBytes < MIN_FREE_BYTES) {
+      throw new Error(
+        `Недостаточно места на диске: свободно ${(freeBytes / 1024 ** 3).toFixed(1)} GB, ` +
+        `для игры нужно ~${(MIN_FREE_BYTES / 1024 ** 3).toFixed(1)} GB. Освободите место и попробуйте снова.`,
+      );
+    }
 
     this.report({ stage: 'java-check', progress: 0, message: 'Проверка Java...' });
     let java = await this.java.detect();
@@ -329,6 +349,8 @@ export class LauncherService extends EventEmitter {
     });
     handle.on('exit', ({ code }: { code: number | null }) => {
       this.currentProc = null;
+      void playtime.endSession().catch(() => undefined);
+      void discordRpc.clear().catch(() => undefined);
       const crashed = code !== 0 && code !== null;
       this.report({
         stage: 'idle',
@@ -337,6 +359,7 @@ export class LauncherService extends EventEmitter {
       });
       // A non-zero exit that the user didn't trigger via cancel() is a real crash.
       if (crashed && !this.cancelled) {
+        void this.telemetry.send('game_crash');
         void this.crashReporter.report({
           kind: 'game-crash',
           stage: 'running',
@@ -348,12 +371,20 @@ export class LauncherService extends EventEmitter {
     });
     handle.on('error', (err: unknown) => {
       this.currentProc = null;
+      void playtime.endSession().catch(() => undefined);
+      void discordRpc.clear().catch(() => undefined);
       this.report({
         stage: 'error',
         progress: 0,
         message: `Ошибка запуска: ${err instanceof Error ? err.message : String(err)}`,
       });
     });
+
+    // The game is live: start the local play-time session, advertise on Discord
+    // and (opt-in) count the successful launch.
+    void playtime.beginSession().catch(() => undefined);
+    void discordRpc.setInGame({ username: opts.username, server: opts.server }).catch(() => undefined);
+    void this.telemetry.send('launch_ok');
 
     this.report({ stage: 'running', progress: 100, message: `Игра запущена (pid ${handle.pid})` });
   }

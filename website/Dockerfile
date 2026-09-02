@@ -18,6 +18,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
@@ -29,4 +30,5 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]
+# check-secrets gates startup on placeholder credentials (fails closed).
+CMD ["sh", "-c", "node scripts/check-secrets.mjs && node node_modules/prisma/build/index.js migrate deploy && node server.js"]

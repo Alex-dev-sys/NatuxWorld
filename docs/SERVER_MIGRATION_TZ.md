@@ -153,7 +153,7 @@ Root-проект `src/`, `electron/`, `package.json` и launcher не запу�
 ## 5. Требования к VPS
 
 - Ubuntu 22.04/24.04 или Debian 12.
-- Минимум 2 vCPU, 4 GB RAM, 40 GB SSD; для Minecraft лучше отдельный сервер или минимум 8 GB RAM.
+- для Minecraft лучше отдельный сервер или минимум 8 GB RAM.
 - Docker Engine и Docker Compose plugin.
 - Открыты только TCP `22`, `80`, `443`; порт `5432` не публиковать.
 - Порт Next.js `3000` не публиковать наружу.

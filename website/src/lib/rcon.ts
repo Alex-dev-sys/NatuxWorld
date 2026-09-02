@@ -50,7 +50,13 @@ function mockRconResponse(cmd: string): string {
   return 'OK'
 }
 
-async function tryRcon(commands: string[]): Promise<RconResult> {
+// `progress` accumulates every command that received a successful response,
+// across attempts — executeRcon uses it as a checkpoint so a mid-list failure
+// never re-runs commands that already executed server-side.
+async function tryRcon(
+  commands: string[],
+  progress: { commands: string[]; responses: string[] }
+): Promise<RconResult> {
   if (process.env.RCON_MOCK === 'true') {
     console.log('[MOCK RCON] Commands:', commands)
     if (process.env.RCON_MOCK_FAIL === 'true') {
@@ -58,7 +64,9 @@ async function tryRcon(commands: string[]): Promise<RconResult> {
     }
     await new Promise(r => setTimeout(r, 200))
     const responses = commands.map(c => mockRconResponse(c.trim()))
-    return { success: true, commands, responses }
+    progress.commands.push(...commands)
+    progress.responses.push(...responses)
+    return { success: true, commands: [...progress.commands], responses: [...progress.responses] }
   }
 
   const { Rcon } = await import('rcon-client')
@@ -71,13 +79,13 @@ async function tryRcon(commands: string[]): Promise<RconResult> {
 
   await rcon.connect()
   try {
-    const responses: string[] = []
     for (const cmd of commands) {
       const response = await rcon.send(cmd)
       console.log(`[RCON] ${cmd} → ${response}`)
-      responses.push(response)
+      progress.commands.push(cmd)
+      progress.responses.push(response)
     }
-    return { success: true, commands, responses }
+    return { success: true, commands: [...progress.commands], responses: [...progress.responses] }
   } finally {
     await rcon.end()
   }
@@ -86,20 +94,24 @@ async function tryRcon(commands: string[]): Promise<RconResult> {
 export async function executeRcon(commands: string[]): Promise<RconResult> {
   const MAX_ATTEMPTS = 3
   let lastError = ''
+  const progress: { commands: string[]; responses: string[] } = { commands: [], responses: [] }
+  // Only commands without a recorded successful response are ever retried.
+  let remaining = commands
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS && remaining.length > 0; attempt++) {
     try {
-      return await tryRcon(commands)
+      return await tryRcon(remaining, progress)
     } catch (err) {
       lastError = String(err)
       console.error(`[RCON] Attempt ${attempt}/${MAX_ATTEMPTS} failed: ${lastError}`)
+      remaining = commands.filter(c => !progress.commands.includes(c))
       if (attempt < MAX_ATTEMPTS) {
         await new Promise(r => setTimeout(r, attempt * 2000))
       }
     }
   }
 
-  return { success: false, commands, error: lastError }
+  return { success: false, commands: [...progress.commands], error: lastError }
 }
 
 export { DURATION_DAYS }

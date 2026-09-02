@@ -18,6 +18,7 @@ export type DownloadProgressCb = (bytesDone: number, bytesTotal: number, current
 
 const MAX_REDIRECTS = 5;
 const MAX_RETRIES = 3;
+const MIN_RESUME_BYTES = 64 * 1024; // don't bother resuming tiny stubs
 
 export async function sha1OfFile(filePath: string): Promise<string> {
   const hash = createHash('sha1');
@@ -93,8 +94,22 @@ export class DownloadService {
   private async fetchToFile(job: DownloadJob, signal?: AbortSignal): Promise<number> {
     await fsp.mkdir(path.dirname(job.dest), { recursive: true });
     const tmp = `${job.dest}.tmp`;
+    let resumeFrom = 0;
+    // A partial .tmp from a previous attempt/connection drop can be resumed if the
+    // server supports ranges (HTTP 206). Integrity is still enforced afterwards:
+    // the full file is re-hashed (sha1) and size-checked before it lands at dest.
+    try {
+      const st = await fsp.stat(tmp);
+      if (st.isFile() && st.size >= MIN_RESUME_BYTES && (!job.size || st.size < job.size)) {
+        resumeFrom = st.size;
+      }
+    } catch {
+      // no tmp yet — normal first download
+    }
+
     const hash = createHash('sha1');
     let received = 0;
+    let resumed = false;
 
     try {
       // Whether the very first request was https. Used to forbid a redirect from
@@ -113,11 +128,13 @@ export class DownloadService {
             return reject(new Error(`Refusing protocol downgrade to http: ${rawUrl}`));
           }
           const client = target.protocol === 'https:' ? https : http;
+          const headers: Record<string, string> = { 'User-Agent': 'NatuxWorldLauncher' };
+          if (resumeFrom > 0) headers.Range = `bytes=${resumeFrom}-`;
           const req = client.get(
             rawUrl,
             // signal: in-flight request is destroyed immediately when the user cancels,
             // instead of the cancel waiting for the whole stage to finish downloading.
-            { headers: { 'User-Agent': 'NatuxWorldLauncher' }, signal },
+            { headers, signal },
             (res) => {
               if (
                 res.statusCode &&
@@ -129,7 +146,20 @@ export class DownloadService {
                 res.resume();
                 return;
               }
-              if (res.statusCode !== 200) {
+              if (resumeFrom > 0) {
+                if (res.statusCode === 206) {
+                  // Server honoured the range — append to the partial file.
+                  resumed = true;
+                  received = resumeFrom;
+                } else if (res.statusCode === 200) {
+                  // Range unsupported — start over with a clean file.
+                  resumeFrom = 0;
+                } else {
+                  reject(new Error(`HTTP ${res.statusCode} for ${rawUrl}`));
+                  res.resume();
+                  return;
+                }
+              } else if (res.statusCode !== 200) {
                 reject(new Error(`HTTP ${res.statusCode} for ${rawUrl}`));
                 res.resume();
                 return;
@@ -138,7 +168,7 @@ export class DownloadService {
                 hash.update(chunk);
                 received += chunk.length;
               });
-              const out = createWriteStream(tmp);
+              const out = createWriteStream(tmp, { flags: resumed ? 'a' : 'w' });
               pipeline(res, out).then(resolve, reject);
             },
           );
@@ -153,7 +183,11 @@ export class DownloadService {
       }
 
       if (job.sha1) {
-        const got = hash.digest('hex');
+        // Re-hash the COMPLETE file (covers both fresh and resumed downloads —
+        // the incremental hash above only saw the tail on resume).
+        const fullHash = createHash('sha1');
+        await pipeline(createReadStream(tmp), fullHash);
+        const got = fullHash.digest('hex');
         if (got !== job.sha1.toLowerCase()) {
           throw new Error(`SHA1 mismatch for ${job.url}: got ${got}, expected ${job.sha1}`);
         }
@@ -162,9 +196,13 @@ export class DownloadService {
       await fsp.rename(tmp, job.dest);
       return received;
     } catch (err) {
-      // Any failure path (stream error, HTTP error, size/sha mismatch) must not leave a
-      // partial .tmp behind for the next retry to trip over.
-      await fsp.unlink(tmp).catch(() => undefined);
+      // Integrity failures (hash/size mismatch) must delete the partial file — it is
+      // provably corrupt. Network errors keep it: the next retry (or next launch)
+      // resumes from where the connection dropped.
+      const integrityFailure = err instanceof Error && /SHA1 mismatch|Size mismatch/.test(err.message);
+      if (integrityFailure) {
+        await fsp.unlink(tmp).catch(() => undefined);
+      }
       throw err;
     }
   }

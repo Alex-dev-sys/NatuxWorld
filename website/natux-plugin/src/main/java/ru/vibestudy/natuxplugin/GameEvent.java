@@ -1,6 +1,9 @@
 package ru.vibestudy.natuxplugin;
 
+import java.util.UUID;
+
 public class GameEvent {
+    public final String eventId;
     public final String username;
     public final String kind;
     public final String message;
@@ -9,6 +12,9 @@ public class GameEvent {
     public final String extra;
 
     public GameEvent(String username, String kind, String message, String world, Double x, Double y, Double z, String extra) {
+        // Client-generated id: the API drops duplicates, so re-sending a batch
+        // after an ambiguous timeout can never double-count events.
+        this.eventId = UUID.randomUUID().toString();
         this.username = username;
         this.kind = kind;
         this.message = message != null ? message : "";

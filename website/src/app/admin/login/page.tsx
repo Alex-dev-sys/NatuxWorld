@@ -30,7 +30,12 @@ function LoginForm() {
         return
       }
 
-      const from = params.get('from') ?? '/admin'
+      // Only same-app admin paths are allowed; blocks javascript:/data: URLs,
+      // scheme-relative '//host' and any backslash tricks (open redirect).
+      const rawFrom = params.get('from') ?? '/admin'
+      const from = /^\/admin(\/|$)/.test(rawFrom) && !rawFrom.includes(':') && !rawFrom.includes('\\')
+        ? rawFrom
+        : '/admin'
       router.push(from)
       router.refresh()
     } catch {

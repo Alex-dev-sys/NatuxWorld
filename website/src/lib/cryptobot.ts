@@ -68,6 +68,8 @@ export async function createInvoice(
       'Crypto-Pay-API-Token': token(),
     },
     body: JSON.stringify(body),
+    // Bounded call: a hanging provider must not stall the checkout request.
+    signal: AbortSignal.timeout(10_000),
   })
 
   const data = (await res.json()) as CryptoBotResponse<CryptoBotInvoice>

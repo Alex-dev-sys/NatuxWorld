@@ -9,10 +9,14 @@ datasource db {
 model User {
   id                 String    @id
   username           String    @unique
+  /// Precomputed offline-mode UUID (v3, md5 of 'OfflinePlayer:' + username).
+  /// Kept in sync by register / admin set-username; backfilled by migration.
+  uuid               String    @unique
   email              String    @unique
   passwordHash       String
   emailVerified      Boolean   @default(false)
   tokenVersion       Int       @default(0)
+  /// Stores sha256 of the 6-digit code, never the code itself.
   verifyCode         String?
   verifyCodeExpires  DateTime?
   bannedAt           DateTime?
@@ -62,6 +66,7 @@ model Coupon {
 }
 
 model GameToken {
+  /// Stores sha256 of the access token, never the raw value.
   accessToken String   @id
   clientToken String
   userId      String
@@ -87,6 +92,9 @@ model LoginEvent {
 
 model GameEvent {
   id        String   @id @default(uuid())
+  /// Client-generated id; unique index makes ingestion idempotent
+  /// (createMany + skipDuplicates drops replayed events).
+  eventId   String?  @unique
   userId    String?
   username  String
   kind      String   // command | block_break | block_place | chat | join | quit | death | kill
@@ -186,4 +194,34 @@ model ProductVariant {
   order         Int      @default(0)
 
   @@index([productId])
+}
+
+/// News entries shown in the launcher's news tab. Managed via admin/CMS later;
+/// for now seeded by the release process.
+model NewsPost {
+  id          String   @id // slug, e.g. "1-21-1-forge-update"
+  title       String
+  description String   @default("")
+  body        String   @default("")
+  image       String   @default("")
+  category    String   @default("update") // update | event | donate | wipe
+  published   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@index([published, createdAt])
+}
+
+/// Count-only launcher telemetry (opt-in, no identifiers). One row per
+/// event/version/platform/day; each POST increments the counter.
+model LauncherEventStat {
+  id       String   @id @default(uuid())
+  event    String // install_ok | install_fail | launch_ok | game_crash
+  version  String
+  platform String
+  arch     String
+  day      DateTime @db.Date
+  count    Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([event, version, platform, arch, day])
 }

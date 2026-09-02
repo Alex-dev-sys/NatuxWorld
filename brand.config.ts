@@ -13,6 +13,9 @@ export const BRAND = Object.freeze({
   serverHost: localMode ? '127.0.0.1' : 'mc.vibestudy.ru',
   shopPath: '/shop',
   minecraftVersionLabel: '1.21.1 Forge',
+  // Discord Application ID for Rich Presence. Empty string disables the
+  // integration entirely (no connection attempt is made).
+  discordClientId: '',
 });
 
 export const BRAND_URLS = Object.freeze({

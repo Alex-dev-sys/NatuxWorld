@@ -63,6 +63,9 @@ const api = {
   },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+    openScreenshots: () => ipcRenderer.invoke('shell:openScreenshots'),
+    diagnosticsRun: () => ipcRenderer.invoke('diagnostics:run'),
+    playtimeGet: () => ipcRenderer.invoke('playtime:get'),
   },
   account: {
     bootstrap: () => ipcRenderer.invoke('account:bootstrap'),
@@ -81,6 +84,11 @@ const api = {
       const listener = (_e: unknown, data: { version: string }) => cb(data);
       ipcRenderer.on('app:ready', listener);
       return () => ipcRenderer.removeListener('app:ready', listener);
+    },
+    onTrayLaunchRequest: (cb: () => void) => {
+      const listener = () => cb();
+      ipcRenderer.on('tray:launch-request', listener);
+      return () => ipcRenderer.removeListener('tray:launch-request', listener);
     },
   },
 };

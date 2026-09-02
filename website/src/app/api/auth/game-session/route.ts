@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyToken, apiError } from '@/lib/auth'
 import { offlineUuid, randomToken } from '@/lib/yggdrasil'
-import { deleteExpiredGameTokens } from '@/lib/gameTokens'
+import { deleteExpiredGameTokens, hashGameToken, pruneExcessGameTokens } from '@/lib/gameTokens'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,8 +23,11 @@ export async function POST(req: NextRequest) {
   const clientToken = randomToken()
   await deleteExpiredGameTokens(user.id)
   await prisma.gameToken.create({
-    data: { accessToken, clientToken, userId: user.id, tokenVersion: user.tokenVersion },
+    // Only the sha256 of the access token is persisted; the raw value goes to
+    // the client in the response below.
+    data: { accessToken: hashGameToken(accessToken), clientToken, userId: user.id, tokenVersion: user.tokenVersion },
   })
+  await pruneExcessGameTokens(user.id)
 
   return Response.json({
     accessToken,

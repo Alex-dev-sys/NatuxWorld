@@ -24,10 +24,14 @@ async function fetchTps(): Promise<number | null> {
       timeout: 3000,
     })
     await rcon.connect()
-    const response = await rcon.send('tps')
-    await rcon.end()
-    const match = response.match(/(\d+\.\d+)/)
-    return match ? parseFloat(match[1]) : null
+    try {
+      const response = await rcon.send('tps')
+      const match = response.match(/(\d+\.\d+)/)
+      return match ? parseFloat(match[1]) : null
+    } finally {
+      // Always close, even when send() throws — no connection leaks.
+      await rcon.end()
+    }
   } catch {
     return null
   }

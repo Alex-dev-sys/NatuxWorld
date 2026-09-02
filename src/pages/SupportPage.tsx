@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { LifeBuoy, MessagesSquare, Send, Mail } from 'lucide-react';
 import { bridge } from '../services/electron-bridge';
+import { DiagnosticsPanel } from '../components/DiagnosticsPanel';
 import { useLang, pick } from '../i18n';
 
 const channels = [
@@ -28,6 +29,7 @@ export function SupportPage() {
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-4">
       <h1 className="font-display text-4xl tracking-wide">{t.title}</h1>
+      <DiagnosticsPanel />
       <div className="flex items-center gap-3 rounded-2xl glass p-5">
         <LifeBuoy className="h-8 w-8 text-primary" />
         <div>

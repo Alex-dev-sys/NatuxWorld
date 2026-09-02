@@ -5,6 +5,7 @@ const apFindMany = vi.fn()
 const apUpdateMany = vi.fn()
 const gtCreate = vi.fn()
 const gtDeleteMany = vi.fn()
+const gtFindMany = vi.fn()
 vi.mock('@/lib/db', () => ({
   prisma: {
     user: { findUnique: (...a: unknown[]) => findUnique(...a) },
@@ -12,6 +13,7 @@ vi.mock('@/lib/db', () => ({
     gameToken: {
       create: (...a: unknown[]) => gtCreate(...a),
       deleteMany: (...a: unknown[]) => gtDeleteMany(...a),
+      findMany: (...a: unknown[]) => gtFindMany(...a),
     },
   },
 }))
@@ -31,6 +33,7 @@ describe('yggdrasil + 2FA app-password', () => {
     ;(globalThis as { __rateLimit?: unknown }).__rateLimit = undefined
     findUnique.mockReset(); apFindMany.mockReset(); apUpdateMany.mockResolvedValue({});
     gtCreate.mockResolvedValue({}); gtDeleteMany.mockResolvedValue({ count: 0 })
+    gtFindMany.mockResolvedValue([])
   })
 
   it('accepts a valid app-password and rejects the main password for a 2FA user', async () => {

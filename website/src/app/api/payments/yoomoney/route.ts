@@ -62,7 +62,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
 
-  const paidAmount = parseFloat(params.amount ?? '0')
+  // Strict money parsing: the sha1 covers the raw string, but the comparison
+  // must be exact — reject malformed amounts and non-RUB currency outright
+  // (643 = ISO-4217 numeric code for RUB, what YooMoney notifications send).
+  const amountRaw = params.amount ?? ''
+  if (!/^\d+(\.\d{1,2})?$/.test(amountRaw) || params.currency !== '643') {
+    return NextResponse.json({ error: 'Invalid amount or currency' }, { status: 400 })
+  }
+  const paidAmount = parseFloat(amountRaw)
   if (paidAmount < order.price) {
     return NextResponse.json({ error: 'Insufficient amount' }, { status: 400 })
   }

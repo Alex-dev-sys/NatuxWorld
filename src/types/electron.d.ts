@@ -10,6 +10,8 @@ import type { JavaInstallation } from '../../electron/services/JavaService';
 import type { LauncherSettings } from '../../electron/services/SettingsService';
 import type { UpdateInfo, UpdateEvent } from '../../electron/services/UpdateService';
 import type { AccountUser } from '../../electron/services/AccountService';
+import type { DiagnosticCheck } from '../../electron/services/DiagnosticsService';
+import type { PlaytimeStats } from '../../electron/services/PlaytimeService';
 
 export type AccountResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } };
 export type BootstrapResult = { status: 'guest' } | { status: 'authed'; user: AccountUser };
@@ -69,9 +71,13 @@ export interface NatuxAPI {
   };
   shell: {
     openExternal: (url: string) => Promise<void>;
+    openScreenshots: () => Promise<{ ok: boolean; error?: string }>;
+    diagnosticsRun: () => Promise<DiagnosticCheck[]>;
+    playtimeGet: () => Promise<PlaytimeStats>;
   };
   app: {
     onReady: (cb: (data: { version: string }) => void) => () => void;
+    onTrayLaunchRequest: (cb: () => void) => () => void;
   };
   account: {
     bootstrap: () => Promise<BootstrapResult>;

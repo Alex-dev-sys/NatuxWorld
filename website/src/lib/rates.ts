@@ -33,6 +33,8 @@ async function fetchRates(): Promise<Rates> {
     headers: { Accept: 'application/json' },
     // never reuse Next.js fetch cache; we manage caching in-memory
     cache: 'no-store',
+    // Bounded call: a hanging provider must not stall checkout pricing.
+    signal: AbortSignal.timeout(10_000),
   })
 
   if (!res.ok) {

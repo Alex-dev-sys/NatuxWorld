@@ -13,6 +13,8 @@ files:
   - dist-electron/**/*
   - package.json
 asar: true
+# Hardens the packaged Electron binary (runAsNode / NODE_OPTIONS / inspect off).
+afterPack: scripts/apply-fuses.cjs
 win:
   target:
     - target: nsis

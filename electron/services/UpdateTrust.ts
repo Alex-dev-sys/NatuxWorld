@@ -15,11 +15,24 @@ export interface SignedUpdateManifest {
   version: string;
   artifact: string;
   sha512: string;
+  /** Optional release channel — absent means 'stable'. */
+  channel?: 'stable' | 'beta';
+  /** Optional staged-rollout percentage (0–100) — absent means 100. */
+  rolloutPct?: number;
 }
 
 export interface UpdateCandidate {
   version: string;
   files: Array<{ url: string; sha512?: string }>;
+}
+
+export interface UpdateVisibilityOptions {
+  /** Channel the user selected (default 'stable'). */
+  channel: 'stable' | 'beta';
+  /** Stable per-install id for rollout bucketing (never leaves the machine). */
+  installId: string;
+  /** Current launcher version. */
+  currentVersion: string;
 }
 
 const VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
@@ -43,6 +56,42 @@ function assertManifest(value: unknown): asserts value is SignedUpdateManifest {
   if (typeof manifest.sha512 !== 'string' || !SHA512_RE.test(manifest.sha512)) {
     throw new Error('Invalid update SHA-512');
   }
+  if (manifest.channel !== undefined && manifest.channel !== 'stable' && manifest.channel !== 'beta') {
+    throw new Error('Invalid update channel');
+  }
+  if (
+    manifest.rolloutPct !== undefined &&
+    (typeof manifest.rolloutPct !== 'number' || !Number.isInteger(manifest.rolloutPct) ||
+      manifest.rolloutPct < 0 || manifest.rolloutPct > 100)
+  ) {
+    throw new Error('Invalid rollout percentage');
+  }
+}
+
+/**
+ * Decide whether a verified manifest should be shown/downloaded by this install:
+ * same channel, newer version, and (for staged releases) inside the rollout
+ * bucket. Deterministic per installId+version, so a client either gets the
+ * staged release or not — with no flapping between checks.
+ */
+export function isUpdateVisible(
+  manifest: SignedUpdateManifest,
+  opts: UpdateVisibilityOptions,
+): boolean {
+  if (manifest.version === opts.currentVersion) return false;
+  const channel = manifest.channel ?? 'stable';
+  if (channel !== opts.channel) return false;
+  const rollout = manifest.rolloutPct ?? 100;
+  if (rollout >= 100) return true;
+  if (rollout <= 0 || !opts.installId) return false;
+  // FNV-1a over installId + ':' + version → stable 0..99 bucket.
+  const key = `${opts.installId}:${manifest.version}`;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h % 100 < rollout;
 }
 
 export function verifyUpdateManifest(

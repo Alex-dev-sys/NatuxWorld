@@ -18,8 +18,14 @@ export function signToken(userId: string, tokenVersion: number = 0): string {
 export function verifyToken(token: string): { sub: string; tv: number } {
   const secret = process.env.JWT_SECRET
   if (!secret) throw new Error('JWT_SECRET not set')
-  const payload = jwt.verify(token, secret) as { sub: string; tv?: number }
-  return { sub: payload.sub, tv: payload.tv ?? 0 }
+  const payload = jwt.verify(token, secret) as { sub?: string; tv?: number; purpose?: string }
+  // Session tokens carry exactly sub + numeric tv. Reject purpose-bound tokens
+  // (e.g. the 5-minute 2FA challenge) and tokens without a tokenVersion, so a
+  // short-lived challenge can never be replayed as a bearer session.
+  if (typeof payload.sub !== 'string' || typeof payload.tv !== 'number' || payload.purpose) {
+    throw new Error('Invalid token claims')
+  }
+  return { sub: payload.sub, tv: payload.tv }
 }
 
 // Extract the user id from an `Authorization: Bearer <jwt>` header, or null.
@@ -88,4 +94,11 @@ export async function logLoginEvent(opts: {
 }): Promise<void> {
   const { prisma } = await import('@/lib/db')
   await prisma.loginEvent.create({ data: opts }).catch(() => {})
+  // Opportunistic retention: ~1% of writes trims records older than 180 days so
+  // the table (IPs, user agents) stays bounded without a cron dependency.
+  if (Math.random() < 0.01) {
+    await prisma.loginEvent
+      .deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) } } })
+      .catch(() => {})
+  }
 }

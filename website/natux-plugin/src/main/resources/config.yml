@@ -2,10 +2,13 @@ api:
   url: "http://127.0.0.1:3000/api/game-event"
   key: "CHANGE_ME"
 
-# Events to track (set to false to disable)
+# Events to track (set to false to disable).
+# NOTE: "commands" sends ONLY the command name (e.g. "/login"), never its
+# arguments — passwords typed in-game can never reach the site.
+# "chat" is OFF by default: player conversations are personal data.
 track:
   commands: true
-  chat: true
+  chat: false
   block_break: true
   block_place: true
   join: true

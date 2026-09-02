@@ -79,6 +79,10 @@ export function getLogsDir(): string {
   return path.join(app.getPath('userData'), 'logs');
 }
 
+export function getScreenshotsDir(): string {
+  return path.join(getMinecraftDir(), 'screenshots');
+}
+
 export function getCacheDir(): string {
   return path.join(app.getPath('userData'), 'cache');
 }

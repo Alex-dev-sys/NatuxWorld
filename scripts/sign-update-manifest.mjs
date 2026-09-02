@@ -44,12 +44,16 @@ if (matchingArtifacts.length !== 1) {
   throw new Error('Could not identify exactly one local installer matching latest.yml SHA-512');
 }
 const actualSha512 = updaterSha512;
+// Optional release controls: CHANNEL=beta marks a prerelease feed entry,
+// ROLLOUT_PCT=25 stages the release to ~25% of installs (stable bucketing).
 const manifest = {
   schemaVersion: 1,
   repository,
   version,
   artifact,
   sha512: actualSha512,
+  ...(process.env.CHANNEL === 'beta' ? { channel: 'beta' } : {}),
+  ...(process.env.ROLLOUT_PCT ? { rolloutPct: Number(process.env.ROLLOUT_PCT) } : {}),
 };
 const rawManifest = JSON.stringify(manifest);
 const signature = sign(null, Buffer.from(rawManifest, 'utf8'), privateKey).toString('base64');

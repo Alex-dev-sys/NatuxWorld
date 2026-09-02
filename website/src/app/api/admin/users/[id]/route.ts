@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/adminAuth'
 import { buildCommands, executeRcon } from '@/lib/rcon'
 import { getProductById } from '@/lib/productStore'
 import { logAdminAction } from '@/lib/adminAudit'
+import { offlineUuid } from '@/lib/yggdrasil'
 import bcrypt from 'bcryptjs'
 
 export const dynamic = 'force-dynamic'
@@ -101,12 +102,17 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   if (action === 'ban') {
-    const updated = await prisma.user.update({
-      where: { id: params.id },
-      data: { bannedAt: new Date(), banReason: banReason ?? 'Заблокирован администратором', tokenVersion: { increment: 1 } },
-    })
+    const updated = await prisma.$transaction([
+      prisma.user.update({
+        where: { id: params.id },
+        data: { bannedAt: new Date(), banReason: banReason ?? 'Заблокирован администратором', tokenVersion: { increment: 1 } },
+      }),
+      // Ban is a hard kill: game credentials must not outlive it.
+      prisma.gameToken.deleteMany({ where: { userId: params.id } }),
+      prisma.appPassword.deleteMany({ where: { userId: params.id } }),
+    ])
     await logAdminAction(req, 'user.ban', { target: user.username, params: { banReason }, ok: true })
-    return NextResponse.json({ ok: true, user: updated })
+    return NextResponse.json({ ok: true, user: updated[0] })
   }
 
   if (action === 'unban') {
@@ -119,13 +125,17 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   }
 
   if (action === 'revoke-tokens') {
-    const updated = await prisma.user.update({
-      where: { id: params.id },
-      data: { tokenVersion: { increment: 1 } },
-    })
-    await prisma.gameToken.deleteMany({ where: { userId: params.id } })
+    const updated = await prisma.$transaction([
+      prisma.user.update({
+        where: { id: params.id },
+        data: { tokenVersion: { increment: 1 } },
+      }),
+      prisma.gameToken.deleteMany({ where: { userId: params.id } }),
+      // Game passwords are tokens too — a "revoke all" must kill them as well.
+      prisma.appPassword.deleteMany({ where: { userId: params.id } }),
+    ])
     await logAdminAction(req, 'user.revoke-tokens', { target: user.username, ok: true })
-    return NextResponse.json({ ok: true, tokenVersion: updated.tokenVersion })
+    return NextResponse.json({ ok: true, tokenVersion: (updated[0] as { tokenVersion: number }).tokenVersion })
   }
 
   if (action === 'force-verify') {
@@ -165,8 +175,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     if (clash && clash.id !== params.id) return NextResponse.json({ error: 'Ник уже занят' }, { status: 409 })
     // username is the in-game / yggdrasil identity. Orders reference it by value,
     // so migrate the old order rows to the new name to keep the user's history.
+    // The precomputed offline uuid is derived from the username — keep it in sync.
     await prisma.$transaction([
-      prisma.user.update({ where: { id: params.id }, data: { username } }),
+      prisma.user.update({ where: { id: params.id }, data: { username, uuid: offlineUuid(username) } }),
       prisma.order.updateMany({ where: { username: user.username }, data: { username } }),
       prisma.gameEvent.updateMany({ where: { username: user.username }, data: { username } }),
     ])
@@ -177,11 +188,16 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   if (action === 'reset-password') {
     const tempPassword = genTempPassword()
     const passwordHash = await bcrypt.hash(tempPassword, 10)
-    await prisma.user.update({
-      where: { id: params.id },
-      data: { passwordHash, tokenVersion: { increment: 1 } }, // bump = logout everywhere
-    })
-    await prisma.gameToken.deleteMany({ where: { userId: params.id } })
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: params.id },
+        data: { passwordHash, tokenVersion: { increment: 1 } }, // bump = logout everywhere
+      }),
+      prisma.gameToken.deleteMany({ where: { userId: params.id } }),
+      // A hard credential reset must also kill game passwords, otherwise a
+      // stolen app-password keeps working after the "reset".
+      prisma.appPassword.deleteMany({ where: { userId: params.id } }),
+    ])
     // Never log the password itself.
     await logAdminAction(req, 'user.reset-password', { target: user.username, ok: true })
     return NextResponse.json({ ok: true, tempPassword })
@@ -195,6 +211,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       }),
       prisma.twoFactorBackupCode.deleteMany({ where: { userId: params.id } }),
       prisma.gameToken.deleteMany({ where: { userId: params.id } }),
+      // Game passwords were issued under the old 2FA enrollment — revoke them
+      // together with the factor they were created against.
+      prisma.appPassword.deleteMany({ where: { userId: params.id } }),
     ])
     await logAdminAction(req, 'user.reset-2fa', { target: user.username, ok: true })
     return NextResponse.json({ ok: true })

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { X, Cpu, MemoryStick, MonitorPlay, Coffee, FolderOpen, Check, Languages, RefreshCw, Rocket, Trash2, FileText, Bug } from 'lucide-react';
+import { X, Cpu, MemoryStick, MonitorPlay, Coffee, FolderOpen, Check, Languages, RefreshCw, Rocket, Trash2, FileText, Bug, Minimize2, Power, Activity, GitBranch, Camera } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { bridge } from '../services/electron-bridge';
@@ -30,6 +30,11 @@ const ru = {
   updateCheckFailed: (message: string) => `Ошибка: ${message}`,
   autoLaunch: 'Автозапуск игры', autoLaunchHint: 'Сразу нажимать ИГРАТЬ при старте',
   crashReports: 'Отчёты о крашах', crashReportsHint: 'Анонимно слать логи при вылете — помогает чинить баги',
+  minimizeToTray: 'Сворачивать в трей', minimizeToTrayHint: 'Закрытие окна не завершает лаунчер',
+  launchOnStartup: 'Запускать при входе в систему', launchOnStartupHint: 'Окно стартует скрытым в трее',
+  updateChannel: 'Канал обновлений', channelStable: 'Стабильный', channelBeta: 'Бета (ранние сборки)',
+  telemetry: 'Анонимная статистика', telemetryHint: 'Только счётчики: запуски/краши/версии. Без ников и логов',
+  screenshots: 'Скриншоты', screenshotsHint: 'Открыть папку скриншотов игры',
   logs: 'Логи', logsHint: 'Открыть страницу логов', open: 'Открыть',
   resetSettings: 'Сбросить настройки', version: (v: string) => `Версия лаунчера ${v}`,
   confirm: 'Точно', cancel: 'Отмена',
@@ -54,6 +59,11 @@ const en: typeof ru = {
   updateCheckFailed: (message: string) => `Error: ${message}`,
   autoLaunch: 'Auto-launch game', autoLaunchHint: 'Press PLAY automatically on start',
   crashReports: 'Crash reports', crashReportsHint: 'Send anonymous logs on crash — helps fix bugs',
+  minimizeToTray: 'Minimize to tray', minimizeToTrayHint: 'Closing the window keeps the launcher running',
+  launchOnStartup: 'Start with the system', launchOnStartupHint: 'Starts hidden in the tray',
+  updateChannel: 'Update channel', channelStable: 'Stable', channelBeta: 'Beta (early builds)',
+  telemetry: 'Anonymous stats', telemetryHint: 'Counters only: launches/crashes/versions. No nicks or logs',
+  screenshots: 'Screenshots', screenshotsHint: 'Open the game screenshots folder',
   logs: 'Logs', logsHint: 'Open the logs page', open: 'Open',
   resetSettings: 'Reset settings', version: (v: string) => `Launcher version ${v}`,
   confirm: 'Confirm', cancel: 'Cancel',
@@ -313,8 +323,33 @@ function LauncherTab() {
         <Toggle value={!!settings?.autoLaunch} onChange={(v) => update({ autoLaunch: v })} />
       </Row>
 
+      <Row icon={<Minimize2 className="h-4 w-4" />} label={t.minimizeToTray} hint={t.minimizeToTrayHint}>
+        <Toggle value={!!settings?.minimizeToTray} onChange={(v) => update({ minimizeToTray: v })} />
+      </Row>
+
+      <Row icon={<Power className="h-4 w-4" />} label={t.launchOnStartup} hint={t.launchOnStartupHint}>
+        <Toggle value={!!settings?.launchOnStartup} onChange={(v) => update({ launchOnStartup: v })} />
+      </Row>
+
+      <Row icon={<GitBranch className="h-4 w-4" />} label={t.updateChannel}>
+        <select value={settings?.updateChannel ?? 'stable'} onChange={(e) => update({ updateChannel: e.target.value as 'stable' | 'beta' })}
+          className="rounded-lg bg-white/[0.04] px-3 py-1.5 text-sm text-white ring-1 ring-white/10 focus:outline-none focus:ring-primary">
+          <option value="stable" style={{ backgroundColor: '#0e0e12', color: '#fff' }}>{t.channelStable}</option>
+          <option value="beta" style={{ backgroundColor: '#0e0e12', color: '#fff' }}>{t.channelBeta}</option>
+        </select>
+      </Row>
+
+      <Row icon={<Activity className="h-4 w-4" />} label={t.telemetry} hint={t.telemetryHint}>
+        <Toggle value={!!settings?.telemetryEnabled} onChange={(v) => update({ telemetryEnabled: v })} />
+      </Row>
+
       <Row icon={<Bug className="h-4 w-4" />} label={t.crashReports} hint={t.crashReportsHint}>
         <Toggle value={!!settings?.crashReports} onChange={(v) => update({ crashReports: v })} />
+      </Row>
+
+      <Row icon={<Camera className="h-4 w-4" />} label={t.screenshots} hint={t.screenshotsHint}>
+        <button onClick={() => bridge.shell.openScreenshots().catch(() => {})}
+          className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">{t.open}</button>
       </Row>
 
       <Row icon={<FileText className="h-4 w-4" />} label={t.logs} hint={t.logsHint}>

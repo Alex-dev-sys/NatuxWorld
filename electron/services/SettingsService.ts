@@ -17,6 +17,16 @@ export interface LauncherSettings {
   crashReports: boolean;
   /** The welcome flow is shown once after the player has signed in. */
   onboardingCompleted: boolean;
+  /** Hide to tray instead of quitting when the window is closed. */
+  minimizeToTray: boolean;
+  /** Start the launcher when the OS boots (per-user login item). */
+  launchOnStartup: boolean;
+  /** Update feed channel: 'beta' receives prerelease builds. */
+  updateChannel: 'stable' | 'beta';
+  /** Opt-in count-only usage telemetry (no identifiers, no content). */
+  telemetryEnabled: boolean;
+  /** Random per-install id used ONLY for staged-update rollout bucketing. */
+  installId: string;
 }
 
 const DEFAULTS: LauncherSettings = {
@@ -31,17 +41,44 @@ const DEFAULTS: LauncherSettings = {
   autoLaunch: false,
   crashReports: false,
   onboardingCompleted: false,
+  minimizeToTray: false,
+  launchOnStartup: false,
+  updateChannel: 'stable',
+  telemetryEnabled: false,
+  installId: '',
 };
 
 export class SettingsService {
   private file = path.join(app.getPath('userData'), 'settings.json');
+  private listeners = new Set<(s: LauncherSettings) => void>();
+
+  /** Subscribe to runtime settings changes (tray/autostart live re-apply). */
+  onDidChange(cb: (s: LauncherSettings) => void): () => void {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+
+  private notify(s: LauncherSettings): void {
+    for (const cb of this.listeners) {
+      try { cb(s); } catch { /* listener errors must not break persistence */ }
+    }
+  }
 
   async get(): Promise<LauncherSettings> {
     try {
       const raw = await fs.readFile(this.file, 'utf-8');
-      return { ...DEFAULTS, ...JSON.parse(raw) };
+      const merged = { ...DEFAULTS, ...JSON.parse(raw) } as LauncherSettings;
+      // Ensure every install has a stable rollout bucket id (never sent anywhere
+      // except the rollout gate computation).
+      if (!merged.installId) {
+        merged.installId = globalThis.crypto.randomUUID();
+        await fs.writeFile(this.file, JSON.stringify(merged, null, 2), 'utf-8').catch(() => undefined);
+      }
+      return merged;
     } catch {
-      return DEFAULTS;
+      const seeded = { ...DEFAULTS, installId: globalThis.crypto.randomUUID() };
+      await fs.writeFile(this.file, JSON.stringify(seeded, null, 2), 'utf-8').catch(() => undefined);
+      return seeded;
     }
   }
 
@@ -49,11 +86,19 @@ export class SettingsService {
     const current = await this.get();
     const next = { ...current, ...patch };
     await fs.writeFile(this.file, JSON.stringify(next, null, 2), 'utf-8');
+    this.notify(next);
     return next;
   }
 
   async reset(): Promise<LauncherSettings> {
-    await fs.writeFile(this.file, JSON.stringify(DEFAULTS, null, 2), 'utf-8');
-    return DEFAULTS;
+    const next = { ...DEFAULTS, installId: currentInstallId(await this.get()) };
+    await fs.writeFile(this.file, JSON.stringify(next, null, 2), 'utf-8');
+    this.notify(next);
+    return next;
   }
+}
+
+/** reset() keeps the rollout bucket id so staged rollouts don't reshuffle. */
+function currentInstallId(s: LauncherSettings): string {
+  return s.installId;
 }

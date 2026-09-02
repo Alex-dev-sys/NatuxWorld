@@ -3,6 +3,9 @@ declare global {
   var __rateLimit: Map<string, { count: number; resetAt: number }> | undefined
 }
 
+// NOTE: process-local limiter. Correct for the current single-container
+// deployment, but limits reset on restart and do NOT aggregate across
+// instances. If the app is ever scaled out, back this with Redis/Postgres.
 function getStore() {
   if (!global.__rateLimit) global.__rateLimit = new Map()
   return global.__rateLimit

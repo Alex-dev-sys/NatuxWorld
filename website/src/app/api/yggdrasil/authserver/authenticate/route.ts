@@ -7,7 +7,7 @@ import { clientIp } from '@/lib/clientIp'
 import { isLockedOut } from '@/lib/lockout'
 import { logLoginEvent } from '@/lib/auth'
 import { verifyAppPassword } from '@/lib/appPassword'
-import { deleteExpiredGameTokens } from '@/lib/gameTokens'
+import { deleteExpiredGameTokens, hashGameToken, pruneExcessGameTokens } from '@/lib/gameTokens'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   try { body = await req.json() } catch { return Response.json({ error: 'ForbiddenOperationException', errorMessage: 'Invalid credentials' }, { status: 403 }) }
 
   const { username, password, clientToken, requestUser } = body as Record<string, string>
-  if (!username || !password) {
+  if (!username || !password || password.length > 200) {
     return Response.json({ error: 'ForbiddenOperationException', errorMessage: 'Invalid credentials' }, { status: 403 })
   }
 
@@ -33,9 +33,10 @@ export async function POST(req: NextRequest) {
   }
 
   const isEmail = username.includes('@')
-  const user = await prisma.user.findUnique({
-    where: isEmail ? { email: username } : { username },
-  })
+  const identifier = username.trim()
+  const user = isEmail
+    ? await prisma.user.findFirst({ where: { email: { equals: identifier, mode: 'insensitive' } } })
+    : await prisma.user.findUnique({ where: { username: identifier } })
   if (!user || !user.emailVerified || user.bannedAt) {
     return Response.json({ error: 'ForbiddenOperationException', errorMessage: 'Invalid credentials' }, { status: 403 })
   }
@@ -68,12 +69,15 @@ export async function POST(req: NextRequest) {
   await deleteExpiredGameTokens(user.id)
   await prisma.gameToken.create({
     data: {
-      accessToken,
+      // Only the sha256 of the access token is persisted; the raw value goes
+      // to the client in the response below.
+      accessToken: hashGameToken(accessToken),
       clientToken: resolvedClientToken,
       userId: user.id,
       tokenVersion: user.tokenVersion,
     },
   })
+  await pruneExcessGameTokens(user.id)
 
   const profile = buildProfile(user.username)
   const resp: Record<string, unknown> = {

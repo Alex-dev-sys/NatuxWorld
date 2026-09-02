@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import {
   filterByOsRules,
@@ -174,6 +174,17 @@ export class MinecraftService {
       detached: false,
       windowsHide: true,
     });
+
+    // The argfile contains the LIVE game access token — it must not linger on
+    // disk. Delete shortly after spawn (once the JVM has read it) and again on
+    // exit/error for crash paths.
+    const removeArgfile = () => {
+      try { unlinkSync(argfile); } catch { /* already gone */ }
+    };
+    const graceTimer = setTimeout(removeArgfile, 10_000);
+    graceTimer.unref?.();
+    proc.once('exit', () => { clearTimeout(graceTimer); removeArgfile(); });
+    proc.once('error', () => { clearTimeout(graceTimer); removeArgfile(); });
 
     return MinecraftService.wrapProcess(proc);
   }

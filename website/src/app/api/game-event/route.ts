@@ -48,6 +48,9 @@ export async function POST(req: NextRequest) {
   }
 
   const events = body.events.slice(0, 500).map(e => ({
+    // Client-generated id enables idempotent ingestion (ON CONFLICT DO NOTHING),
+    // so the plugin can safely re-send a batch after an ambiguous timeout.
+    eventId: str(e.eventId, 64) || null,
     username: str(e.username, 16),
     kind: str(e.kind, 50),
     message: str(e.message, 500),
@@ -70,8 +73,17 @@ export async function POST(req: NextRequest) {
 
   await prisma.gameEvent.createMany({
     data: events.map((e: EventRow) => ({ ...e, userId: userMap[e.username] ?? null })),
-    skipDuplicates: false,
+    // Duplicate (already-ingested) eventIds are dropped, not errored.
+    skipDuplicates: true,
   })
+
+  // Opportunistic retention: ~2% of batches trim events older than 90 days so
+  // the telemetry table stays bounded without a cron dependency.
+  if (Math.random() < 0.02) {
+    await prisma.gameEvent
+      .deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) } } })
+      .catch(() => {})
+  }
 
   return NextResponse.json({ ok: true, count: events.length })
 }

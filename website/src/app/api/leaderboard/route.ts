@@ -29,7 +29,9 @@ export async function GET() {
         return {
           nick: s.username,
           rank: lastOrder?.productName ?? 'Unknown',
-          spent: s._sum.price ?? 0,
+          // Coarse rounding: the leaderboard is a fun public page, not a
+          // precise per-player spending disclosure.
+          spent: Math.round((s._sum.price ?? 0) / 100) * 100,
         }
       })
     )

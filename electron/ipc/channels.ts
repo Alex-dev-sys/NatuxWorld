@@ -44,6 +44,13 @@ export const IPC = {
   },
   SHELL: {
     OPEN_EXTERNAL: 'shell:openExternal',
+    OPEN_SCREENSHOTS: 'shell:openScreenshots',
+  },
+  DIAGNOSTICS: {
+    RUN: 'diagnostics:run',
+  },
+  PLAYTIME: {
+    GET: 'playtime:get',
   },
   ACCOUNT: {
     BOOTSTRAP: 'account:bootstrap',

@@ -10,6 +10,9 @@ import { NewsService } from '../services/NewsService';
 import { SettingsService } from '../services/SettingsService';
 import { UpdateService } from '../services/UpdateService';
 import { AccountService, AccountApiError } from '../services/AccountService';
+import { DiagnosticsService } from '../services/DiagnosticsService';
+import { PlaytimeService } from '../services/PlaytimeService';
+import { getScreenshotsDir } from '../utils/paths';
 
 export const launcher = new LauncherService();
 const java = new JavaService();
@@ -18,6 +21,8 @@ const news = new NewsService();
 export const settings = new SettingsService();
 export const updater = new UpdateService();
 export const account = new AccountService();
+const diagnostics = new DiagnosticsService();
+const playtime = new PlaytimeService();
 
 /** Coerce arbitrary IPC input into a sane integer MiB value for JVM heap flags. */
 function clampMemory(value: unknown): number {
@@ -108,8 +113,13 @@ export function registerIpcHandlers(): void {
       };
     }
     if ('language' in obj && obj.language !== 'ru' && obj.language !== 'en') delete obj.language;
+    if ('updateChannel' in obj && obj.updateChannel !== 'stable' && obj.updateChannel !== 'beta') {
+      delete obj.updateChannel;
+    }
+    // installId is generated inside SettingsService — the renderer must never write it.
+    if ('installId' in obj) delete obj.installId;
     // Consent flags must be strict booleans, never truthy junk from the renderer.
-    for (const key of ['crashReports', 'autoUpdate', 'autoLaunch', 'fullscreen', 'closeOnLaunch', 'onboardingCompleted']) {
+    for (const key of ['crashReports', 'autoUpdate', 'autoLaunch', 'fullscreen', 'closeOnLaunch', 'onboardingCompleted', 'minimizeToTray', 'launchOnStartup', 'telemetryEnabled']) {
       if (key in obj) obj[key] = obj[key] === true;
     }
     return settings.set(obj as Parameters<typeof settings.set>[0]);
@@ -166,6 +176,18 @@ export function registerIpcHandlers(): void {
       /* ignore invalid url */
     }
   });
+
+  // Screenshot manager: reveal the game's screenshots folder (created on demand).
+  ipcMain.handle(IPC.SHELL.OPEN_SCREENSHOTS, async () => {
+    const dir = getScreenshotsDir();
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(dir, { recursive: true });
+    const err = await shell.openPath(dir);
+    return err ? { ok: false, error: err } : { ok: true };
+  });
+
+  ipcMain.handle(IPC.DIAGNOSTICS.RUN, () => diagnostics.run());
+  ipcMain.handle(IPC.PLAYTIME.GET, () => playtime.getStats());
 
   ipcMain.handle('account:bootstrap', async () => {
     const stored = await account.loadStored();

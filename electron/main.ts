@@ -1,7 +1,9 @@
-import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, session, shell, Menu, Tray, nativeImage } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerIpcHandlers, updater, launcher, settings as settingsService } from './ipc/handlers';
+import * as discordRpcModule from './services/DiscordRpcService';
+import * as playtimeModule from './services/PlaytimeService';
 import { BRAND } from '../brand.config';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -12,6 +14,69 @@ const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist');
 
 let mainWindow: BrowserWindow | null = null;
 let updateCheckInterval: ReturnType<typeof setInterval> | null = null;
+let tray: Tray | null = null;
+let trayReady = false;
+let quitting = false;
+const discord = discordRpcModule.discordRpc;
+const playtime = playtimeModule.playtime;
+
+/** Window icon as a nativeImage for tray/menu use (falls back to empty image). */
+function appIcon(): Electron.NativeImage {
+  try {
+    return nativeImage.createFromPath(path.join(process.env.APP_ROOT ?? '', 'build', 'icon.png'));
+  } catch {
+    return nativeImage.createEmpty();
+  }
+}
+
+function showMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function createTray(): void {
+  if (trayReady || process.platform === 'darwin') return;
+  try {
+    tray = new Tray(appIcon());
+    tray.setToolTip(BRAND.name);
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: 'Открыть', click: () => showMainWindow() },
+      { type: 'separator' },
+      {
+        label: 'Запустить игру',
+        click: () => {
+          showMainWindow();
+          mainWindow?.webContents.send('tray:launch-request');
+        },
+      },
+      { type: 'separator' },
+      { label: 'Выход', click: () => app.quit() },
+    ]));
+    tray.on('double-click', () => showMainWindow());
+    trayReady = true;
+  } catch {
+    // Tray is a nice-to-have; never block startup over it.
+  }
+}
+
+function applyLoginItem(enabled: boolean): void {
+  if (process.platform !== 'win32' && process.platform !== 'darwin') return;
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: enabled,
+      path: process.execPath,
+      // Windows: hide the window on autostart (it lives in the tray).
+      args: enabled && process.platform === 'win32' ? ['--hidden'] : [],
+    });
+  } catch {
+    /* store restrictions etc. */
+  }
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -25,6 +90,7 @@ function createWindow(): void {
     backgroundColor: '#070707',
     title: BRAND.name,
     icon: path.join(process.env.APP_ROOT ?? '', 'build', 'icon.png'),
+    show: !process.argv.includes('--hidden'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -37,6 +103,15 @@ function createWindow(): void {
 
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow?.webContents.send('app:ready', { version: app.getVersion() });
+  });
+
+  // Close-to-tray: with the option enabled, the X button hides the window and the
+  // launcher keeps running in the tray (game downloads / updates continue).
+  mainWindow.on('close', (event) => {
+    if (!quitting && trayReady && !mainWindow?.isDestroyed()) {
+      event.preventDefault();
+      mainWindow?.hide();
+    }
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -151,16 +226,27 @@ app.whenReady().then(() => {
 
   ipcMain.handle('app:version', () => app.getVersion());
   registerIpcHandlers();
+
+  // Live re-apply of OS-integration settings (tray + autostart) when they change.
+  settingsService.onDidChange((s) => {
+    if (s.minimizeToTray) createTray();
+    applyLoginItem(s.launchOnStartup === true);
+  });
+
   createWindow();
   if (mainWindow) {
     updater.attach(mainWindow);
     launcher.attach(mainWindow);
     settingsService.get().then((s) => {
+      if (s.minimizeToTray) createTray();
+      applyLoginItem(s.launchOnStartup === true);
       if (s.autoUpdate) {
         setTimeout(() => { updater.check().catch(() => {}); }, 4000);
         updateCheckInterval = setInterval(() => { updater.check().catch(() => {}); }, 1000 * 60 * 30);
       }
     }).catch(() => {});
+    // One-shot self-integrity check against the signed manifest (non-blocking).
+    setTimeout(() => { updater.checkSelfIntegrity().catch(() => {}); }, 8000);
   }
 
   app.on('activate', () => {
@@ -169,10 +255,14 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', () => {
+  quitting = true;
   if (updateCheckInterval) {
     clearInterval(updateCheckInterval);
     updateCheckInterval = null;
   }
+  // Close any open play session and drop Discord presence on exit.
+  void playtime.endSession().catch(() => {});
+  discord.destroy();
 });
 
 app.on('window-all-closed', () => {

@@ -1,14 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { hashBackupCode } from '@/lib/backupCodes'
 
-const { findUnique, update, updateMany, sendVerificationEmail, logLoginEvent } = vi.hoisted(() => ({
+const { findUnique, findFirst, update, updateMany, sendVerificationEmail, logLoginEvent } = vi.hoisted(() => ({
   findUnique: vi.fn(),
+  findFirst: vi.fn(),
   update: vi.fn(),
   updateMany: vi.fn(),
   sendVerificationEmail: vi.fn(),
   logLoginEvent: vi.fn(),
 }))
 
-vi.mock('@/lib/db', () => ({ prisma: { user: { findUnique, update, updateMany } } }))
+vi.mock('@/lib/db', () => ({ prisma: { user: { findUnique, findFirst, update, updateMany } } }))
 vi.mock('@/lib/auth', () => ({
   apiError: (code: string, message: string, status: number) => Response.json({ error: { code, message } }, { status }),
   formatUser: (user: unknown) => user,
@@ -31,6 +33,7 @@ function req(body: unknown) {
 
 beforeEach(() => {
   findUnique.mockReset()
+  findFirst.mockReset()
   update.mockReset()
   updateMany.mockReset()
   sendVerificationEmail.mockReset().mockResolvedValue(undefined)
@@ -40,14 +43,14 @@ beforeEach(() => {
 
 describe('email verification security', () => {
   it('does not verify an already verified account or issue a session', async () => {
-    findUnique.mockResolvedValue({ id: 'u1', email: 'user@example.com', emailVerified: true, verifyCode: '123456', verifyCodeExpires: new Date(Date.now() + 60_000), tokenVersion: 0 })
+    findFirst.mockResolvedValue({ id: 'u1', email: 'user@example.com', emailVerified: true, verifyCode: '123456', verifyCodeExpires: new Date(Date.now() + 60_000), tokenVersion: 0 })
     const res = await verifyEmail(req({ email: 'user@example.com', code: '123456' }))
     expect(res.status).toBe(400)
     expect(updateMany).not.toHaveBeenCalled()
   })
 
   it('does not generate a resend code for an already verified account', async () => {
-    findUnique.mockResolvedValue({ id: 'u1', email: 'user@example.com', emailVerified: true })
+    findFirst.mockResolvedValue({ id: 'u1', email: 'user@example.com', emailVerified: true })
     const res = await resendCode(req({ email: 'user@example.com' }))
     expect(res.status).toBe(200)
     expect(update).not.toHaveBeenCalled()
@@ -55,8 +58,10 @@ describe('email verification security', () => {
   })
 
   it('consumes a valid code with a conditional update', async () => {
-    const user = { id: 'u1', email: 'user@example.com', emailVerified: false, verifyCode: '123456', verifyCodeExpires: new Date(Date.now() + 60_000), tokenVersion: 0 }
-    findUnique.mockResolvedValueOnce(user).mockResolvedValueOnce({ ...user, emailVerified: true, verifyCode: null })
+    // Stored codes are sha256 digests of the 6-digit value.
+    const user = { id: 'u1', email: 'user@example.com', emailVerified: false, verifyCode: hashBackupCode('123456'), verifyCodeExpires: new Date(Date.now() + 60_000), tokenVersion: 0 }
+    findFirst.mockResolvedValueOnce(user).mockResolvedValueOnce(undefined)
+    findUnique.mockResolvedValueOnce({ ...user, emailVerified: true, verifyCode: null })
     updateMany.mockResolvedValue({ count: 1 })
     const res = await verifyEmail(req({ email: user.email, code: '123456' }))
     expect(res.status).toBe(200)

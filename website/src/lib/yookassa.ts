@@ -82,6 +82,8 @@ export async function createPayment(
     },
     body: JSON.stringify(body),
     cache: 'no-store',
+    // Bounded call: a hanging provider must not stall the checkout request.
+    signal: AbortSignal.timeout(10_000),
   })
 
   const data = (await res.json()) as YooKassaPayment & {
@@ -107,6 +109,8 @@ export async function verifyPayment(paymentId: string): Promise<VerifiedYooKassa
     const res = await fetch(`${API_URL}/${paymentId}`, {
       headers: { Authorization: authHeader() },
       cache: 'no-store',
+      // Bounded call: a hanging provider must not stall webhook processing.
+      signal: AbortSignal.timeout(10_000),
     })
     if (!res.ok) return null
     const data = (await res.json()) as VerifiedYooKassaPayment

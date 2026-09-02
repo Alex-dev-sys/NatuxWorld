@@ -38,10 +38,11 @@ public class PlayerListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onCommand(PlayerCommandPreprocessEvent e) {
         if (!track("commands")) return;
-        String cmd = e.getMessage();
-        // Skip trivial movement / spam commands
-        if (cmd.startsWith("/w ") || cmd.startsWith("/tell ")) return;
-        push(e.getPlayer().getName(), "command", cmd, e.getPlayer().getLocation(), "");
+        // SECURITY: only the command LABEL is sent — never the full line.
+        // Arguments routinely contain secrets (/login <pass>, /changepassword,
+        // /msg <text>) and must never reach the telemetry store.
+        String label = e.getMessage().split(" ", 2)[0].toLowerCase();
+        push(e.getPlayer().getName(), "command", label, e.getPlayer().getLocation(), "");
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)

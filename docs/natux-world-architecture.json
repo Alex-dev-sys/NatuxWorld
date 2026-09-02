@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "NATUX WORLD",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/natux-world-architecture.html",
+    "viewBox": [1380, 720],
+    "repository": {
+      "url": "https://github.com/Alex-dev-sys/NatuxWorld",
+      "revision": "2133ea12ae61a18857bb49593bc0d21dffeddfa7"
+    }
+  },
+  "components": [
+    {
+      "id": "player",
+      "type": "external",
+      "label": "Minecraft Player",
+      "sublabel": "desktop user",
+      "pos": [30, 280],
+      "size": [130, 64],
+      "sources": [{ "path": "README.md", "label": "product context" }]
+    },
+    {
+      "id": "launcher-ui",
+      "type": "frontend",
+      "label": "Launcher UI",
+      "sublabel": "React + Vite",
+      "pos": [190, 280],
+      "size": [145, 64],
+      "sources": [{ "path": "src/App.tsx", "line": 1, "end_line": 94, "label": "routes + bootstrap" }]
+    },
+    {
+      "id": "preload-bridge",
+      "type": "security",
+      "label": "Preload Bridge",
+      "sublabel": "isolated IPC surface",
+      "pos": [370, 280],
+      "size": [160, 64],
+      "tag": "contextIsolation",
+      "sources": [{ "path": "electron/preload.ts", "label": "context bridge" }]
+    },
+    {
+      "id": "electron-shell",
+      "type": "backend",
+      "label": "Electron Shell",
+      "sublabel": "window + IPC handlers",
+      "pos": [565, 280],
+      "size": [160, 64],
+      "sources": [{ "path": "electron/main.ts", "line": 1, "end_line": 175, "label": "main process" }]
+    },
+    {
+      "id": "launcher-services",
+      "type": "backend",
+      "label": "Launcher Services",
+      "sublabel": "auth · files · updates",
+      "pos": [760, 280],
+      "size": [170, 64],
+      "sources": [
+        { "path": "electron/ipc/handlers.ts", "label": "IPC wiring" },
+        { "path": "electron/services/LauncherService.ts", "label": "launch flow" },
+        { "path": "electron/services/UpdateService.ts", "label": "updates" }
+      ]
+    },
+    {
+      "id": "game-platforms",
+      "type": "external",
+      "label": "Mojang + Forge",
+      "sublabel": "metadata + downloads",
+      "pos": [960, 160],
+      "size": [160, 64],
+      "sources": [{ "path": "electron/services/MojangService.ts", "label": "Mojang API" }]
+    },
+    {
+      "id": "natux-site",
+      "type": "cloud",
+      "label": "NATUX Website",
+      "sublabel": "Next.js application",
+      "pos": [900, 400],
+      "size": [145, 64],
+      "sources": [{ "path": "website/src/middleware.ts", "label": "web boundary" }]
+    },
+    {
+      "id": "website-backend",
+      "type": "backend",
+      "label": "Website Backend",
+      "sublabel": "auth · shop · admin APIs",
+      "pos": [1075, 400],
+      "size": [150, 64],
+      "sources": [
+        { "path": "website/src/lib/auth.ts", "label": "auth" },
+        { "path": "website/src/lib/store.ts", "label": "store" },
+        { "path": "website/src/lib/adminAuth.ts", "label": "admin auth" }
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "Prisma data model",
+      "pos": [1255, 400],
+      "size": [100, 64],
+      "sources": [{ "path": "website/prisma/schema.prisma", "label": "schema" }]
+    },
+    {
+      "id": "minecraft-server",
+      "type": "external",
+      "label": "Minecraft Server",
+      "sublabel": "status + RCON",
+      "pos": [1255, 560],
+      "size": [100, 64],
+      "sources": [{ "path": "website/src/lib/rconPolicy.ts", "label": "RCON policy" }]
+    },
+    {
+      "id": "github-releases",
+      "type": "cloud",
+      "label": "GitHub Releases",
+      "sublabel": "launcher update channel",
+      "pos": [960, 40],
+      "size": [160, 64],
+      "sources": [{ "path": "electron/services/UpdateService.ts", "label": "update service" }]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "NATUX desktop launcher",
+      "wraps": ["launcher-ui", "preload-bridge", "electron-shell", "launcher-services"]
+    },
+    {
+      "kind": "region",
+      "label": "NATUX web platform",
+      "wraps": ["natux-site", "website-backend", "postgres"],
+      "pad": 12
+    }
+  ],
+  "connections": [
+    { "from": "player", "to": "launcher-ui", "label": "use launcher", "labelDy": 56, "variant": "emphasis" },
+    { "from": "launcher-ui", "to": "preload-bridge", "label": "invoke typed bridge", "labelDy": 56, "variant": "emphasis" },
+    { "from": "preload-bridge", "to": "electron-shell", "label": "IPC", "labelDy": 56, "variant": "security" },
+    { "from": "electron-shell", "to": "launcher-services", "label": "dispatch commands", "labelDy": 56, "variant": "emphasis" },
+    { "from": "launcher-services", "to": "game-platforms", "label": "metadata + assets", "variant": "emphasis", "fromSide": "top", "toSide": "bottom" },
+    { "from": "launcher-services", "to": "github-releases", "label": "check updates", "variant": "dashed", "fromSide": "top", "toSide": "bottom" },
+    { "from": "launcher-services", "to": "natux-site", "label": "auth + news", "variant": "emphasis", "fromSide": "bottom", "toSide": "left" },
+    { "from": "natux-site", "to": "website-backend", "label": "server actions + API", "labelDy": -26, "variant": "emphasis" },
+    { "from": "website-backend", "to": "postgres", "label": "read/write domain data", "labelDy": 56, "variant": "emphasis" },
+    { "from": "website-backend", "to": "minecraft-server", "label": "status + RCON", "variant": "dashed", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Desktop path",
+      "items": [
+        "React renders launcher routes and auth gates",
+        "The preload bridge is the security boundary",
+        "Electron services own launch, downloads, auth, and updates"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Web platform",
+      "items": [
+        "Next.js serves the public and admin surfaces",
+        "Prisma models persist accounts, shop, and operational data",
+        "RCON integration reaches the Minecraft server"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Trust boundaries",
+      "items": [
+        "Renderer runs without Node integration",
+        "Admin routes apply IP and session checks",
+        "External services remain explicit dependencies"
+      ]
+    }
+  ]
+}
