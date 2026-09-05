@@ -6,6 +6,7 @@ dist
 .env
 .env.local
 .env.*.local
+.env.*
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -14,6 +15,8 @@ pnpm-debug.log*
 
 /src/generated/prisma
 tsconfig.tsbuildinfo
+*.local.json
+account.json
 ecosystem.config.js
 nginx-vibestudy-patch.conf
 /backups/
