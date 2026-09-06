@@ -16,6 +16,10 @@ asar: true
 # Hardens the packaged Electron binary (runAsNode / NODE_OPTIONS / inspect off).
 afterPack: scripts/apply-fuses.cjs
 win:
+  # The post-pack fuse hook already hardens the executable. Disabling the
+  # Windows executable edit/sign step avoids requiring symbolic-link creation
+  # permissions when electron-builder extracts winCodeSign on developer hosts.
+  signAndEditExecutable: false
   target:
     - target: nsis
       arch: [x64]

@@ -51,6 +51,7 @@ const DEFAULTS: LauncherSettings = {
 export class SettingsService {
   private file = path.join(app.getPath('userData'), 'settings.json');
   private listeners = new Set<(s: LauncherSettings) => void>();
+  private writeQueue: Promise<LauncherSettings> = Promise.resolve({ ...DEFAULTS });
 
   /** Subscribe to runtime settings changes (tray/autostart live re-apply). */
   onDidChange(cb: (s: LauncherSettings) => void): () => void {
@@ -83,11 +84,18 @@ export class SettingsService {
   }
 
   async set(patch: Partial<LauncherSettings>): Promise<LauncherSettings> {
-    const current = await this.get();
-    const next = { ...current, ...patch };
-    await fs.writeFile(this.file, JSON.stringify(next, null, 2), 'utf-8');
-    this.notify(next);
-    return next;
+    const operation = this.writeQueue.then(async () => {
+      const current = await this.get();
+      const next = { ...current, ...patch };
+      const temp = `${this.file}.tmp`;
+      await fs.writeFile(temp, JSON.stringify(next, null, 2), 'utf-8');
+      if (typeof fs.rename === 'function') await fs.rename(temp, this.file);
+      else await fs.writeFile(this.file, JSON.stringify(next, null, 2), 'utf-8');
+      this.notify(next);
+      return next;
+    });
+    this.writeQueue = operation.catch(() => ({ ...DEFAULTS }));
+    return operation;
   }
 
   async reset(): Promise<LauncherSettings> {

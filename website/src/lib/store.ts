@@ -113,15 +113,12 @@ export async function saveOrder(order: Order): Promise<void> {
   })
 }
 
-/** Atomically claims an order and consumes its coupon, or changes nothing. */
+/** Atomically records payment. Coupon exhaustion never rolls back a confirmed payment. */
 export async function claimOrderForDelivery(
   publicId: string,
   paymentId: string
 ): Promise<Order | null> {
-  class CouponLimitError extends Error {}
-
-  try {
-    return await prisma.$transaction(async (tx) => {
+  return await prisma.$transaction(async (tx) => {
       const { count } = await tx.order.updateMany({
         where: { publicId, status: { in: ['created', 'waiting_payment'] } },
         data: { status: 'delivery_pending', paidAt: new Date(), paymentId },
@@ -130,16 +127,17 @@ export async function claimOrderForDelivery(
 
       const row = await tx.order.findUnique({ where: { publicId } })
       if (!row) return null
+      let couponError: string | undefined
       if (row.couponCode) {
         const redeemed = await tx.$executeRaw`UPDATE "Coupon" SET "usedCount" = "usedCount" + 1 WHERE "code" = ${row.couponCode} AND "active" = true AND ("maxUses" IS NULL OR "usedCount" < "maxUses") AND ("expiresAt" IS NULL OR "expiresAt" > NOW())`
-        if (redeemed !== 1) throw new CouponLimitError('Coupon is no longer available')
+        if (redeemed !== 1) couponError = 'Coupon is no longer available; payment recorded at the confirmed amount'
+      }
+      if (couponError) {
+        const updated = await tx.order.update({ where: { publicId }, data: { deliveryError: couponError } })
+        return mapOrder(updated)
       }
       return mapOrder(row)
     })
-  } catch (error) {
-    if (error instanceof CouponLimitError) return null
-    throw error
-  }
 }
 
 export async function updateOrder(

@@ -16,6 +16,7 @@ const DURATION_DAYS: Record<Duration, string> = {
 
 const SAFE_USERNAME = /^[a-zA-Z0-9_]{3,16}$/
 const SAFE_ALPHANUMERIC = /^[a-zA-Z0-9_\-. ]+$/
+const RCON_ERROR_RESPONSE = /\b(?:unknown|incomplete|error|failed|failure|denied|no permission|ошибк|неизвестн|недостаточн)\b/i
 
 export function buildCommands(
   templates: string[],
@@ -82,6 +83,9 @@ async function tryRcon(
     for (const cmd of commands) {
       const response = await rcon.send(cmd)
       console.log(`[RCON] ${cmd} → ${response}`)
+      if (RCON_ERROR_RESPONSE.test(response)) {
+        throw new Error(`RCON command rejected: ${response}`)
+      }
       progress.commands.push(cmd)
       progress.responses.push(response)
     }
@@ -96,15 +100,15 @@ export async function executeRcon(commands: string[]): Promise<RconResult> {
   let lastError = ''
   const progress: { commands: string[]; responses: string[] } = { commands: [], responses: [] }
   // Only commands without a recorded successful response are ever retried.
-  let remaining = commands
+  let completedCount = 0
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS && remaining.length > 0; attempt++) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS && completedCount < commands.length; attempt++) {
     try {
-      return await tryRcon(remaining, progress)
+      return await tryRcon(commands.slice(completedCount), progress)
     } catch (err) {
       lastError = String(err)
       console.error(`[RCON] Attempt ${attempt}/${MAX_ATTEMPTS} failed: ${lastError}`)
-      remaining = commands.filter(c => !progress.commands.includes(c))
+      completedCount = progress.commands.length
       if (attempt < MAX_ATTEMPTS) {
         await new Promise(r => setTimeout(r, attempt * 2000))
       }

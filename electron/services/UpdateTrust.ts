@@ -129,9 +129,15 @@ export function matchesUpdateCandidate(
   manifest: SignedUpdateManifest,
 ): boolean {
   if (candidate.version !== manifest.version || !Array.isArray(candidate.files)) return false;
-  return candidate.files.some(
+  // electron-updater selects the first matching artifact. Requiring that the
+  // signed artifact is the only candidate prevents an attacker from placing a
+  // different executable before the trusted one in the feed.
+  const matching = candidate.files.filter(
     (file) => artifactName(file.url) === manifest.artifact && file.sha512 === manifest.sha512,
   );
+  if (matching.length !== 1) return false;
+  const sameArchitectureExecutables = candidate.files.filter((file) => /-(?:x64|ia32|arm64)\.exe$/i.test(artifactName(file.url) ?? ''));
+  return sameArchitectureExecutables.length === 1 && artifactName(sameArchitectureExecutables[0].url) === manifest.artifact;
 }
 
 async function fetchSmallText(url: string, maxBytes: number): Promise<string> {

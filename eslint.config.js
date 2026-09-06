@@ -40,4 +40,13 @@ export default tseslint.config(
       '@typescript-eslint/no-require-imports': 'off',
     },
   },
+  {
+    // Electron-builder hooks are intentionally CommonJS because electron-builder
+    // loads them independently of the application's ESM module graph.
+    files: ['scripts/**/*.cjs'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+      'no-undef': 'off',
+    },
+  },
 );

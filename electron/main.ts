@@ -64,6 +64,12 @@ function createTray(): void {
   }
 }
 
+function destroyTray(): void {
+  tray?.destroy();
+  tray = null;
+  trayReady = false;
+}
+
 function applyLoginItem(enabled: boolean): void {
   if (process.platform !== 'win32' && process.platform !== 'darwin') return;
   try {
@@ -230,6 +236,7 @@ app.whenReady().then(() => {
   // Live re-apply of OS-integration settings (tray + autostart) when they change.
   settingsService.onDidChange((s) => {
     if (s.minimizeToTray) createTray();
+    else destroyTray();
     applyLoginItem(s.launchOnStartup === true);
   });
 
@@ -250,7 +257,13 @@ app.whenReady().then(() => {
   }
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+      if (mainWindow) {
+        updater.attach(mainWindow);
+        launcher.attach(mainWindow);
+      }
+    }
   });
 });
 

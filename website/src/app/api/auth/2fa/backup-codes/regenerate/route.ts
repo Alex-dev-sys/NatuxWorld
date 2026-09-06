@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/db'
 import { apiError, authenticatedUser } from '@/lib/auth'
 import { verifyTotp } from '@/lib/totp'
@@ -11,6 +12,10 @@ export async function POST(req: NextRequest) {
   const user = await authenticatedUser(req.headers)
   if (!user) return apiError('token_invalid', 'Сессия истекла', 401)
   const userId = user.id
+
+  const body = (await req.json().catch(() => ({}))) as { password?: string }
+  const passwordOk = typeof body.password === 'string' && body.password.length <= 200 && await bcrypt.compare(body.password, user.passwordHash)
+  if (!passwordOk) return apiError('bad_credentials', 'Подтвердите действие паролем', 401)
   const { code } = (await req.json().catch(() => ({}))) as { code?: string }
   if (!code) return apiError('bad_request', 'Код обязателен', 400)
   if (!user.twoFactorEnabled) return apiError('bad_request', '2FA не включена', 400)

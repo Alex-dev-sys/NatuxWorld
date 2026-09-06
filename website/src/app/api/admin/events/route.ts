@@ -39,7 +39,9 @@ export async function GET(req: NextRequest) {
         lastEventId = le?.id ?? null
         lastOrderId = lo?.id ?? null
         lastCrashId = lc?.id ?? null
-      } catch { /* db error on init */ }
+      } catch (error) {
+        console.error('[admin/events] initial poll failed', error)
+      }
 
       const poll = async () => {
         if (closed) return
@@ -59,21 +61,21 @@ export async function GET(req: NextRequest) {
                   orderBy: { createdAt: 'asc' }, take: 20,
                   select: { id: true, userId: true, ip: true, kind: true, createdAt: true },
                 })
-              : [],
+              : await prisma.loginEvent.findMany({ orderBy: { createdAt: 'asc' }, take: 20, select: { id: true, userId: true, ip: true, kind: true, createdAt: true } }),
             lastOrderId
               ? prisma.order.findMany({
                   where: { createdAt: { gt: (await prisma.order.findUnique({ where: { id: lastOrderId }, select: { createdAt: true } }))?.createdAt ?? new Date(0) } },
                   orderBy: { createdAt: 'asc' }, take: 10,
                   select: { id: true, publicId: true, username: true, productName: true, price: true, status: true, createdAt: true },
                 })
-              : [],
+              : await prisma.order.findMany({ orderBy: { createdAt: 'asc' }, take: 10, select: { id: true, publicId: true, username: true, productName: true, price: true, status: true, createdAt: true } }),
             lastCrashId
               ? prisma.crashReport.findMany({
                   where: { createdAt: { gt: (await prisma.crashReport.findUnique({ where: { id: lastCrashId }, select: { createdAt: true } }))?.createdAt ?? new Date(0) } },
                   orderBy: { createdAt: 'asc' }, take: 10,
                   select: { id: true, kind: true, stage: true, message: true, createdAt: true },
                 })
-              : [],
+              : await prisma.crashReport.findMany({ orderBy: { createdAt: 'asc' }, take: 10, select: { id: true, kind: true, stage: true, message: true, createdAt: true } }),
           ])
 
           for (const e of newEvents) {
@@ -90,7 +92,10 @@ export async function GET(req: NextRequest) {
           }
 
           send({ type: 'ping' })
-        } catch { /* ignore poll errors */ }
+        } catch (error) {
+          console.error('[admin/events] poll failed', error)
+          send({ type: 'degraded', message: 'Database polling failed' })
+        }
       }
 
       const interval = setInterval(poll, 5000)
