@@ -9,7 +9,9 @@ const store = vi.hoisted(() => ({
 const verifyPayment = vi.hoisted(() => vi.fn())
 const fulfillOrder = vi.hoisted(() => vi.fn())
 
-vi.mock('@/lib/store', () => store)
+// Kept out of `store` itself: the beforeEach below calls mockReset on every
+// value there, and this one is a plain helper, not a spy.
+vi.mock('@/lib/store', () => ({ ...store, deliveryAttemptIdFor: (id: string) => `payment:${id}` }))
 vi.mock('@/lib/yookassa', () => ({ verifyPayment }))
 vi.mock('@/lib/fulfillment', () => ({ fulfillOrder }))
 

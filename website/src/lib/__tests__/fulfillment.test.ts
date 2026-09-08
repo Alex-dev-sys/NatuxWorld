@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const getProductById = vi.hoisted(() => vi.fn())
 const updateOrder = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/productStore', () => ({ getProductById }))
-vi.mock('@/lib/store', () => ({ updateOrder }))
+vi.mock('@/lib/store', () => ({
+  updateOrder,
+  updateOrderIfOwned: vi.fn(),
+  renewDeliveryLease: vi.fn(),
+  DELIVERY_LEASE_MS: 300000,
+}))
 
 import { fulfillOrder } from '@/lib/fulfillment'
 import type { Order } from '@/lib/types'

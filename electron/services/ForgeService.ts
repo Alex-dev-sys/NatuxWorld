@@ -130,7 +130,9 @@ export class ForgeService extends EventEmitter {
     javaPath: string,
     vanilla: VanillaVersion,
     onProgress: (p: LaunchProgress) => void,
+    signal?: AbortSignal,
   ): Promise<MergedVersion> {
+    signal?.throwIfAborted();
     const build = FORGE_VERSIONS[mcVersion];
     if (!build) throw new Error(`Forge не поддерживается для ${mcVersion}`);
 
@@ -148,7 +150,7 @@ export class ForgeService extends EventEmitter {
     if (!cached) {
       // Drop a stale json so the installer performs a clean (re)install.
       await fsp.unlink(forgeJsonPath).catch(() => undefined);
-      await this.runInstaller(mcVersion, build, javaPath, onProgress);
+      await this.runInstaller(mcVersion, build, javaPath, onProgress, signal);
       if (!(await isValidZip(clientJar))) {
         throw new Error(
           'Forge установился, но процессоры не создали клиентский JAR. ' +
@@ -169,11 +171,12 @@ export class ForgeService extends EventEmitter {
     build: string,
     javaPath: string,
     onProgress: (p: LaunchProgress) => void,
+    signal?: AbortSignal,
   ): Promise<void> {
     const installer = path.join(getForgeDir(mcVersion), `forge-${mcVersion}-${build}-installer.jar`);
 
     onProgress({ stage: 'forge-install', progress: 0, message: 'Загрузка установщика Forge...' });
-    await this.ensureInstaller(installer, installerUrl(mcVersion, build), FORGE_INSTALLER_SHA1[`${mcVersion}-${build}`]);
+    await this.ensureInstaller(installer, installerUrl(mcVersion, build), FORGE_INSTALLER_SHA1[`${mcVersion}-${build}`], signal);
 
     // Forge installer refuses to run without a launcher_profiles.json in the target dir.
     const gameDir = getMinecraftDir();
@@ -184,8 +187,9 @@ export class ForgeService extends EventEmitter {
     }
     await fsp.mkdir(getVersionDir(forgeVersionId(mcVersion, build)), { recursive: true });
 
+    signal?.throwIfAborted();
     onProgress({ stage: 'forge-install', progress: 20, message: 'Установка Forge (процессоры)...' });
-    await this.spawnInstaller(consoleJava(javaPath), installer, gameDir, onProgress);
+    await this.spawnInstaller(consoleJava(javaPath), installer, gameDir, onProgress, signal);
   }
 
   /**
@@ -194,16 +198,26 @@ export class ForgeService extends EventEmitter {
    * When a pinned sha1 exists, DownloadService verifies it (and skips re-download of a
    * valid cached copy); zip validity remains as a fallback for unpinned versions.
    */
-  private async ensureInstaller(installer: string, url: string, sha1?: string): Promise<void> {
+  private async ensureInstaller(
+    installer: string,
+    url: string,
+    sha1?: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      // Cancelling during the (multi-MB, potentially slow) installer download has
+      // to abort it too — killing only the spawned installer left the download
+      // running and the next launch blocked behind it.
+      signal?.throwIfAborted();
       if (fs.existsSync(installer) && (await isValidZip(installer))) {
         if (!sha1) return;
         // Cached file must also match the pinned hash, not just open as a zip.
         if ((await sha1OfFile(installer)) === sha1.toLowerCase()) return;
       }
       await fsp.unlink(installer).catch(() => undefined);
-      await this.download.downloadMany([{ url, dest: installer, sha1 }], () => undefined);
+      await this.download.downloadMany([{ url, dest: installer, sha1 }], () => undefined, signal);
     }
+    signal?.throwIfAborted();
     if (!(await isValidZip(installer))) {
       throw new Error('Установщик Forge скачался повреждённым (битый архив). Проверь соединение и повтори.');
     }
@@ -214,6 +228,7 @@ export class ForgeService extends EventEmitter {
     installer: string,
     gameDir: string,
     onProgress: (p: LaunchProgress) => void,
+    signal?: AbortSignal,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const proc = spawn(java, ['-jar', installer, '--installClient', gameDir], {
@@ -221,6 +236,23 @@ export class ForgeService extends EventEmitter {
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
       });
+      // The installer is a child process of its own — cancel used to leave it
+      // running (it is not the launcher's tracked `currentProc`), so the UI said
+      // "Отменено" while Forge kept installing.
+      const onAbort = () => {
+        proc.kill();
+        reject(new Error('Установка Forge отменена'));
+      };
+      if (signal) {
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        signal.addEventListener('abort', onAbort, { once: true });
+        const cleanup = () => signal.removeEventListener('abort', onAbort);
+        proc.on('exit', cleanup);
+        proc.on('error', cleanup);
+      }
       const tail: string[] = [];
       const onLine = (chunk: Buffer) => {
         for (const line of chunk.toString().split(/\r?\n/)) {

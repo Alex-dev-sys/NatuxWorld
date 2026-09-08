@@ -7,6 +7,7 @@ import RankFrame from './RankFrame'
 import { PremiumCard, useCountUp } from './PremiumFX'
 import { useRouter } from 'next/navigation'
 import type { Product, Duration, ProductVariant, Coupon } from '@/lib/types'
+import { applyDiscount, isFree } from '@/lib/coupons'
 
 // ─── validation ──────────────────────────────────────────────────────────────
 
@@ -427,15 +428,16 @@ export default function ShopClient({ products }: { products: Product[] }) {
   const variant = product?.variants.find(v => v.duration === selectedDuration) ?? product?.variants[0]
 
   const basePrice = variant?.price ?? 0
-  const discountedPrice = coupon
-    ? coupon.type === 'percent'
-      ? Math.max(1, Math.round(basePrice * (1 - coupon.value / 100)))
-      : Math.max(1, basePrice - coupon.value)
-    : basePrice
+  // Same pure function the server uses, so the price shown always matches the
+  // price charged. The inlined copy did not know about `free` coupons and left
+  // the full price on screen for an activation that actually costs 0 ₽.
+  const discountedPrice = coupon ? applyDiscount(basePrice, coupon) : basePrice
 
   // Live crypto conversion (informational), 2 decimals, 0.01 minimum.
+  // A free activation is not paid in crypto at all — the 0.01 floor otherwise
+  // showed an amount next to a 0 ₽ total.
   const cryptoAmount =
-    paymentMethod !== 'card' && rates
+    paymentMethod !== 'card' && rates && discountedPrice > 0
       ? Math.max(
           0.01,
           discountedPrice / (paymentMethod === 'USDT' ? rates.usdt : rates.ton)
@@ -706,7 +708,9 @@ export default function ShopClient({ products }: { products: Product[] }) {
                   <span className="font-display text-4xl type-data" style={{ fontFamily: '"Bebas Neue", sans-serif', color: '#fff', letterSpacing: '0.02em' }}>{displayPrice} ₽</span>
                   <span className="text-site-muted text-sm line-through type-data">{displayBase} ₽</span>
                   <span className="text-site-success text-xs font-semibold">
-                    −{coupon.type === 'percent' ? `${coupon.value}%` : `${basePrice - discountedPrice}₽`}
+                    {isFree(coupon)
+                      ? 'бесплатно'
+                      : `−${coupon.type === 'percent' ? `${coupon.value}%` : `${basePrice - discountedPrice}₽`}`}
                   </span>
                 </div>
               ) : (

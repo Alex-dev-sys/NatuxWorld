@@ -60,11 +60,18 @@ export function mcBridge(command: McBridgeCommand): Promise<string> {
         }
         stream.on('data', append)
         stream.stderr.on('data', append)
-        stream.on('close', () => {
+        // The exit code is the only signal that the remote start/stop/restart
+        // actually worked; ignoring it turned every failure into an HTTP success
+        // and a successful audit entry.
+        stream.on('close', (code: number | null, signal?: string) => {
           if (settled) return
           settled = true
           clearTimeout(timeout)
           conn.end()
+          if (signal) return reject(new Error(`Minecraft SSH command killed by signal ${signal}`))
+          if (code !== 0 && code !== null) {
+            return reject(new Error(`Minecraft SSH command failed with exit code ${code}`))
+          }
           resolve(output.trim())
         })
       })

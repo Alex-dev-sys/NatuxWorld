@@ -158,14 +158,21 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 
   if (action === 'set-email') {
     if (!email || !EMAIL_RE.test(email)) return NextResponse.json({ error: 'Некорректный email' }, { status: 400 })
-    const clash = await prisma.user.findUnique({ where: { email } })
+    // Store and compare the canonical form. Registration already lowercases and
+    // login looks up case-insensitively; an exact-match check here let an admin
+    // create User@example.com alongside user@example.com, which is one identity
+    // for login but two rows for the unique index.
+    const normalizedEmail = email.trim().toLowerCase()
+    const clash = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+    })
     if (clash && clash.id !== params.id) return NextResponse.json({ error: 'Email уже занят' }, { status: 409 })
     // New email must be re-verified; bump tokenVersion to drop existing sessions.
     const updated = await prisma.user.update({
       where: { id: params.id },
-      data: { email, emailVerified: false, verifyCode: null, verifyCodeExpires: null, tokenVersion: { increment: 1 } },
+      data: { email: normalizedEmail, emailVerified: false, verifyCode: null, verifyCodeExpires: null, tokenVersion: { increment: 1 } },
     })
-    await logAdminAction(req, 'user.set-email', { target: user.username, params: { email }, ok: true })
+    await logAdminAction(req, 'user.set-email', { target: user.username, params: { email: normalizedEmail }, ok: true })
     return NextResponse.json({ ok: true, user: updated })
   }
 
@@ -207,7 +214,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     await prisma.$transaction([
       prisma.user.update({
         where: { id: params.id },
-        data: { twoFactorEnabled: false, twoFactorMethod: null, totpSecretEnc: null, twoFactorCode: null, twoFactorCodeExpires: null, tokenVersion: { increment: 1 } },
+        data: { twoFactorEnabled: false, twoFactorMethod: null, totpSecretEnc: null, pendingTotpSecretEnc: null, pendingTotpExpires: null, twoFactorCode: null, twoFactorCodeExpires: null, tokenVersion: { increment: 1 } },
       }),
       prisma.twoFactorBackupCode.deleteMany({ where: { userId: params.id } }),
       prisma.gameToken.deleteMany({ where: { userId: params.id } }),

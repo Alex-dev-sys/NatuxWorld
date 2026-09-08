@@ -64,6 +64,8 @@ export interface Order {
   fulfillmentCommands?: string[]
   /** Commands actually executed, retained for customer/admin diagnostics. */
   rconCommands?: string[]
+  /** Provider checkout link while the order is still awaiting payment. */
+  paymentUrl?: string
   couponCode?: string
   originalPrice?: number
 }
@@ -72,7 +74,7 @@ export interface Order {
 export type PublicOrder = Pick<Order,
   'publicId' | 'productName' | 'variantDuration' | 'variantDurationLabel' |
   'price' | 'username' | 'status' | 'createdAt' | 'paidAt' | 'deliveredAt' |
-  'couponCode' | 'originalPrice'
+  'couponCode' | 'originalPrice' | 'paymentUrl'
 > & { deliveryError?: never; rconCommands?: never[] }
 
 export interface ServerStatus {

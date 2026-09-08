@@ -1,6 +1,6 @@
 // src/app/api/payments/yookassa/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { getOrder, getOrderById, getOrderByPaymentId, claimOrderForDelivery } from '@/lib/store'
+import { getOrder, getOrderById, getOrderByPaymentId, claimOrderForDelivery, deliveryAttemptIdFor } from '@/lib/store'
 import { fulfillOrder } from '@/lib/fulfillment'
 import { verifyPayment } from '@/lib/yookassa'
 
@@ -75,6 +75,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'Already processed' })
   }
 
-  const updated = await fulfillOrder(claimed)
+  const updated = await fulfillOrder(claimed, deliveryAttemptIdFor(paymentId))
   return NextResponse.json({ message: 'OK', order: updated })
 }

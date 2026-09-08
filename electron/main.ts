@@ -70,14 +70,16 @@ function destroyTray(): void {
   trayReady = false;
 }
 
-function applyLoginItem(enabled: boolean): void {
+function applyLoginItem(enabled: boolean, minimizeToTray: boolean): void {
   if (process.platform !== 'win32' && process.platform !== 'darwin') return;
   try {
     app.setLoginItemSettings({
       openAtLogin: enabled,
       path: process.execPath,
-      // Windows: hide the window on autostart (it lives in the tray).
-      args: enabled && process.platform === 'win32' ? ['--hidden'] : [],
+      // Windows: start hidden ONLY when the tray icon will exist to bring the
+      // window back. Without the tray (the default) a hidden window left the
+      // launcher running with no way to reach it.
+      args: enabled && minimizeToTray && process.platform === 'win32' ? ['--hidden'] : [],
     });
   } catch {
     /* store restrictions etc. */
@@ -237,7 +239,7 @@ app.whenReady().then(() => {
   settingsService.onDidChange((s) => {
     if (s.minimizeToTray) createTray();
     else destroyTray();
-    applyLoginItem(s.launchOnStartup === true);
+    applyLoginItem(s.launchOnStartup === true, s.minimizeToTray === true && trayReady);
   });
 
   createWindow();
@@ -246,7 +248,12 @@ app.whenReady().then(() => {
     launcher.attach(mainWindow);
     settingsService.get().then((s) => {
       if (s.minimizeToTray) createTray();
-      applyLoginItem(s.launchOnStartup === true);
+      // Tray creation can fail (Linux without a system tray, policy). Pass what
+      // actually happened, not what was requested.
+      applyLoginItem(s.launchOnStartup === true, s.minimizeToTray === true && trayReady);
+      // Started with --hidden but no tray to restore from: show the window
+      // rather than leaving an unreachable background process.
+      if (!trayReady && process.argv.includes('--hidden')) showMainWindow();
       if (s.autoUpdate) {
         setTimeout(() => { updater.check().catch(() => {}); }, 4000);
         updateCheckInterval = setInterval(() => { updater.check().catch(() => {}); }, 1000 * 60 * 30);

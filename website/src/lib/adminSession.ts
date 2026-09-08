@@ -20,22 +20,18 @@ export async function createSessionToken(secret: string, ttlSeconds: number): Pr
   return `${exp}.${sid}.${sigHex}`
 }
 
-// In-process revocation list (sid -> expiry). Single-container deployment, so
-// an in-memory set is sufficient; entries self-prune once past their expiry.
-const revoked = new Map<string, number>()
-
-export function revokeSessionToken(token: string): void {
+/** Session id carried by a token, or null when the token is malformed. */
+export function sessionIdOf(token: string): string | null {
   const parts = token.split('.')
-  if (parts.length !== 3) return
-  const expSeconds = parseInt(parts[0], 10)
-  if (!Number.isNaN(expSeconds)) {
-    revoked.set(parts[1], expSeconds)
-  }
-  for (const [sid, exp] of revoked) {
-    if (exp <= Math.floor(Date.now() / 1000)) revoked.delete(sid)
-  }
+  if (parts.length !== 3) return null
+  return /^[a-f0-9]{32}$/.test(parts[1]) ? parts[1] : null
 }
 
+/**
+ * Signature + expiry only. This runs in edge middleware, which cannot reach the
+ * database, so it is a coarse gate: whether the session is still live is decided
+ * by requireAdmin() (Node runtime) against the AdminSession table.
+ */
 export async function verifySessionToken(token: string, secret: string): Promise<boolean> {
   const parts = token.split('.')
   if (parts.length !== 3) return false
@@ -51,6 +47,5 @@ export async function verifySessionToken(token: string, secret: string): Promise
   if (sig.length !== expected.length) return false
   let diff = 0
   for (let i = 0; i < sig.length; i++) diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i)
-  if (diff !== 0) return false
-  return !revoked.has(sid)
+  return diff === 0
 }

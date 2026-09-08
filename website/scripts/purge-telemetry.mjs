@@ -7,9 +7,18 @@
 //    /login, /register, /changepassword. This data must not survive.
 // 2. Deletes 'chat' rows and everything older than the retention window
 //    (default 90 days).
+import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
 
-const prisma = new PrismaClient()
+// Prisma 7 takes the connection through a driver adapter — a bare
+// `new PrismaClient()` throws PrismaClientInitializationError before this script
+// can delete anything, which silently left the legacy command rows in place.
+if (!process.env.DATABASE_URL) {
+  console.error('DATABASE_URL is not set — refusing to run.')
+  process.exit(1)
+}
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) })
 const days = Number(process.argv[2] ?? 90)
 const cutoff = new Date(Date.now() - (Number.isFinite(days) ? days : 90) * 86_400_000)
 

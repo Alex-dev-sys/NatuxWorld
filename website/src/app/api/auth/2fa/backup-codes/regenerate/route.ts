@@ -13,11 +13,13 @@ export async function POST(req: NextRequest) {
   if (!user) return apiError('token_invalid', 'Сессия истекла', 401)
   const userId = user.id
 
-  const body = (await req.json().catch(() => ({}))) as { password?: string }
+  // A Request body can only be read once — parse it a single time and take both
+  // fields from that one read.
+  const body = (await req.json().catch(() => ({}))) as { password?: unknown; code?: unknown }
   const passwordOk = typeof body.password === 'string' && body.password.length <= 200 && await bcrypt.compare(body.password, user.passwordHash)
   if (!passwordOk) return apiError('bad_credentials', 'Подтвердите действие паролем', 401)
-  const { code } = (await req.json().catch(() => ({}))) as { code?: string }
-  if (!code) return apiError('bad_request', 'Код обязателен', 400)
+  const code = body.code
+  if (typeof code !== 'string' || !code) return apiError('bad_request', 'Код обязателен', 400)
   if (!user.twoFactorEnabled) return apiError('bad_request', '2FA не включена', 400)
 
   const codes = generateBackupCodes()

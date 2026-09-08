@@ -42,7 +42,7 @@ describe('POST /api/auth/login/2fa (TOTP)', () => {
   it('issues a JWT for a valid TOTP code', async () => {
     const secret = generateTotpSecret()
     findUnique.mockResolvedValue({ id: 'u_1', username: 'u', email: 'e@e.com', emailVerified: true, bannedAt: null, tokenVersion: 0, twoFactorEnabled: true, twoFactorMethod: 'totp', totpSecretEnc: encryptSecret(secret), twoFactorCode: null })
-    const res = await POST(req({ challenge: signChallenge('u_1'), code: authenticator.generate(secret) }))
+    const res = await POST(req({ challenge: signChallenge('u_1', 0), code: authenticator.generate(secret) }))
     expect(res.status).toBe(200)
     expect((await res.json()).token).toBeTruthy()
   })
@@ -50,7 +50,7 @@ describe('POST /api/auth/login/2fa (TOTP)', () => {
   it('rejects a wrong code', async () => {
     const secret = generateTotpSecret()
     findUnique.mockResolvedValue({ id: 'u_1', emailVerified: true, bannedAt: null, tokenVersion: 0, twoFactorEnabled: true, twoFactorMethod: 'totp', totpSecretEnc: encryptSecret(secret), twoFactorCode: null })
-    const res = await POST(req({ challenge: signChallenge('u_1'), code: '000000' }))
+    const res = await POST(req({ challenge: signChallenge('u_1', 0), code: '000000' }))
     expect(res.status).toBe(401)
   })
 
@@ -59,10 +59,18 @@ describe('POST /api/auth/login/2fa (TOTP)', () => {
     expect(res.status).toBe(401)
   })
 
+  it('rejects a challenge issued before a global sign-out / password change', async () => {
+    const secret = generateTotpSecret()
+    // Challenge minted at tokenVersion 0; the account has since bumped to 1.
+    findUnique.mockResolvedValue({ id: 'u_1', username: 'u', email: 'e@e.com', emailVerified: true, bannedAt: null, tokenVersion: 1, twoFactorEnabled: true, twoFactorMethod: 'totp', totpSecretEnc: encryptSecret(secret), twoFactorCode: null })
+    const res = await POST(req({ challenge: signChallenge('u_1', 0), code: authenticator.generate(secret) }))
+    expect(res.status).toBe(401)
+  })
+
   it('accepts an unused backup code', async () => {
     findUnique.mockResolvedValue({ id: 'u_1', username: 'u', email: 'e@e.com', emailVerified: true, bannedAt: null, tokenVersion: 0, twoFactorEnabled: true, twoFactorMethod: 'totp', totpSecretEnc: encryptSecret(generateTotpSecret()), twoFactorCode: null })
     bcUpdateMany.mockResolvedValue({ count: 1 })
-    const res = await POST(req({ challenge: signChallenge('u_1'), code: 'abcd-efgh' }))
+    const res = await POST(req({ challenge: signChallenge('u_1', 0), code: 'abcd-efgh' }))
     expect(res.status).toBe(200)
     expect(bcUpdateMany).toHaveBeenCalled() // marked used atomically
   })

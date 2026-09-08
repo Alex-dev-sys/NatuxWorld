@@ -1,7 +1,7 @@
 // src/app/api/orders/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { getProductById } from '@/lib/productStore'
-import { saveOrder, updateOrder } from '@/lib/store'
+import { saveOrder, updateOrder, claimOrderForDelivery, deliveryAttemptIdFor } from '@/lib/store'
 import { applyDiscount, isFree } from '@/lib/coupons'
 import { validateCoupon, redeemCoupon } from '@/lib/couponStore'
 import { fulfillOrder } from '@/lib/fulfillment'
@@ -16,7 +16,8 @@ const NICK_RE = /^[a-zA-Z0-9_]{3,16}$/
 const DURATIONS: Duration[] = ['30d', '90d', 'forever']
 
 function siteOrigin(): string {
-  const domain = process.env.NEXT_PUBLIC_SITE_DOMAIN ?? 'localhost:3000'
+  // Blank, not just undefined: an unset Docker build arg arrives as "".
+  const domain = process.env.NEXT_PUBLIC_SITE_DOMAIN?.trim() || 'localhost:3000'
   const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http'
   return `${protocol}://${domain}`
 }
@@ -153,17 +154,17 @@ export async function POST(req: NextRequest) {
 
   await saveOrder(order)
 
-  // Бесплатный промокод — пропускаем оплату и сразу выдаём ранг
+  // Бесплатный промокод — пропускаем оплату и сразу выдаём ранг.
+  // Claim the order the same way the payment webhooks do: an unconditional
+  // status write left no lease, so a confirmed admin retry could seize an order
+  // whose free activation was still running and deliver it a second time.
   if (coupon && isFree(coupon)) {
-    const paid = await updateOrder(order.publicId, {
-      status: 'delivery_pending',
-      paidAt: new Date().toISOString(),
-      paymentId: `free_${order.publicId}`,
-    })
+    const paymentId = `free_${order.publicId}`
+    const paid = await claimOrderForDelivery(order.publicId, paymentId, { redeemCoupon: false })
     if (!paid) {
       return NextResponse.json({ error: 'Ошибка обновления заказа' }, { status: 500 })
     }
-    await fulfillOrder(paid)
+    await fulfillOrder(paid, deliveryAttemptIdFor(paymentId))
     return NextResponse.json(
       { publicId: order.publicId, paymentUrl: `${siteOrigin()}/order/${order.publicId}` },
       { status: 201 }
@@ -216,6 +217,11 @@ export async function POST(req: NextRequest) {
     await updateOrder(order.publicId, { status: 'cancelled', deliveryError: message })
     return NextResponse.json({ error: message }, { status: 502 })
   }
+
+  // Remember the checkout link so the order page can send the buyer back to
+  // THIS payment instead of a fresh order. Best-effort: a failed write must not
+  // void a payment link that already exists.
+  await updateOrder(order.publicId, { paymentUrl })
 
   return NextResponse.json({ publicId: order.publicId, paymentUrl }, { status: 201 })
 }

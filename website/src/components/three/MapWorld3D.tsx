@@ -151,7 +151,9 @@ function TacticalMarker({ position, label, color, beamHeight = 6 }: MarkerProps)
         color={color}
         anchorX="center"
         anchorY="middle"
-        font={undefined}
+        // Explicit local font: the default resolver fetches from a CDN, which
+        // production CSP (connect-src 'self') blocks.
+        font="/fonts/noto-sans-latin-400.ttf"
         characters="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 /"
       >
         {label}

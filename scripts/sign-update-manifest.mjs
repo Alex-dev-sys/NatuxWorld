@@ -44,6 +44,23 @@ if (matchingArtifacts.length !== 1) {
   throw new Error('Could not identify exactly one local installer matching latest.yml SHA-512');
 }
 const actualSha512 = updaterSha512;
+
+// The installed launcher is a DIFFERENT file from the installer: the app hashes
+// its own process.execPath at startup, which can never equal the NSIS setup
+// hash. Sign the unpacked executable separately so self-integrity has something
+// truthful to compare against.
+const unpackedDir = path.join(releaseDir, 'win-unpacked');
+const unpackedFiles = await readdir(unpackedDir).catch(() => {
+  throw new Error(`Missing ${unpackedDir}; build the Windows target before signing`);
+});
+const executables = unpackedFiles.filter((name) => name.toLowerCase().endsWith('.exe'));
+if (executables.length !== 1) {
+  throw new Error('Expected exactly one .exe in release/win-unpacked');
+}
+const executableSha512 = createHash('sha512')
+  .update(await readFile(path.join(unpackedDir, executables[0])))
+  .digest('base64');
+
 // Optional release controls: CHANNEL=beta marks a prerelease feed entry,
 // ROLLOUT_PCT=25 stages the release to ~25% of installs (stable bucketing).
 const manifest = {
@@ -52,6 +69,7 @@ const manifest = {
   version,
   artifact,
   sha512: actualSha512,
+  executableSha512,
   ...(process.env.CHANNEL === 'beta' ? { channel: 'beta' } : {}),
   ...(process.env.ROLLOUT_PCT ? { rolloutPct: Number(process.env.ROLLOUT_PCT) } : {}),
 };

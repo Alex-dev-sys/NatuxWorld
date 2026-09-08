@@ -20,8 +20,9 @@ export async function POST(req: NextRequest) {
   const { challenge, code } = body
   if (!challenge || !code) return apiError('bad_request', 'Код обязателен', 400)
 
-  const userId = verifyChallenge(challenge)
-  if (!userId) return apiError('token_invalid', 'Сессия подтверждения истекла', 401)
+  const claims = verifyChallenge(challenge)
+  if (!claims) return apiError('token_invalid', 'Сессия подтверждения истекла', 401)
+  const userId = claims.userId
 
   // The 6-digit space is small; cap attempts hard.
   if (!rateLimit(`2fa:ip:${ip}`, 30, 60_000) || !rateLimit(`2fa:${ip}:${userId}`, 6, 60_000)) {
@@ -31,6 +32,11 @@ export async function POST(req: NextRequest) {
   const user = await prisma.user.findUnique({ where: { id: userId } })
   if (!user || !user.twoFactorEnabled || !user.emailVerified || user.bannedAt) {
     return apiError('unauthorized', 'Недоступно', 403)
+  }
+  // The password proven at step one is part of the credentials that a password
+  // change / global sign-out invalidates — so this half-finished login dies too.
+  if (user.tokenVersion !== claims.tokenVersion) {
+    return apiError('token_invalid', 'Сессия подтверждения истекла', 401)
   }
   if (await isLockedOut(user.id)) return apiError('rate_limited', 'Слишком много попыток, попробуйте позже', 429)
 

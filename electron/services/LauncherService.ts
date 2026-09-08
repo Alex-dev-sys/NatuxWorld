@@ -97,6 +97,8 @@ export const ASSET_BASE_URL = 'https://resources.download.minecraft.net';
 /** Free disk space required before we start pulling libraries/assets (~1.5 GB). */
 const MIN_FREE_BYTES = 1.5 * 1024 * 1024 * 1024;
 
+/** Longest the UI waits for a cancelled pipeline to unwind before showing idle. */
+const CANCEL_GRACE_MS = 10_000;
 const CHANNEL_PROGRESS = 'launcher:progress';
 const CHANNEL_LOG = 'launcher:log';
 
@@ -108,6 +110,9 @@ export class LauncherService extends EventEmitter {
   private cancelled = false;
   private isLaunching = false;
   private abort: AbortController | null = null;
+  /** Resolves when the in-flight pipeline has fully unwound; see cancel(). */
+  private launchSettled: Promise<void> | null = null;
+  private resolveLaunchSettled: (() => void) | null = null;
 
   private readonly mojang = new MojangService();
   private readonly download = new DownloadService(8);
@@ -175,6 +180,15 @@ export class LauncherService extends EventEmitter {
       this.currentProc.kill();
       this.currentProc = null;
     }
+    // Report "Отменено" only once the pipeline has actually stopped. Announcing
+    // it while Java/Forge were still installing let the user press PLAY again
+    // and get "Запуск уже идёт" from a stage that had not finished unwinding.
+    if (this.launchSettled) {
+      await Promise.race([
+        this.launchSettled,
+        new Promise<void>((r) => setTimeout(r, CANCEL_GRACE_MS)),
+      ]);
+    }
     this.report({ stage: 'idle', progress: 0, message: 'Отменено' });
   }
 
@@ -186,6 +200,7 @@ export class LauncherService extends EventEmitter {
     this.cancelled = false;
     this.abort = new AbortController();
     this.recentLogs = [];
+    this.launchSettled = new Promise<void>((resolve) => { this.resolveLaunchSettled = resolve; });
     try {
       const parsed = parseVersionId(opts.version);
       await this.runPipeline(parsed.mcVersion, parsed.loader, opts);
@@ -202,11 +217,16 @@ export class LauncherService extends EventEmitter {
           stage: failedStage,
           message: msg,
           logs: this.recentLogs,
+          // Scrubbed out of the report, never sent.
+          username: opts.username,
         });
       }
       return { ok: false, error: msg };
     } finally {
       this.isLaunching = false;
+      this.resolveLaunchSettled?.();
+      this.resolveLaunchSettled = null;
+      this.launchSettled = null;
     }
   }
 
@@ -231,7 +251,7 @@ export class LauncherService extends EventEmitter {
     let java = await this.java.detect();
     if (!java) {
       this.report({ stage: 'java-check', progress: 5, message: 'Java не найдена, ставим...' });
-      java = await this.java.install();
+      java = await this.java.install(this.abort?.signal);
     }
     this.throwIfCancelled();
 
@@ -289,7 +309,13 @@ export class LauncherService extends EventEmitter {
     let launchVersion = version;
     if (loader === 'forge') {
       this.report({ stage: 'forge-install', progress: 0, message: 'Установка Forge...' });
-      launchVersion = await this.forge.install(mcVersion, java.path, version, (p) => this.report(p));
+      launchVersion = await this.forge.install(
+        mcVersion,
+        java.path,
+        version,
+        (p) => this.report(p),
+        this.abort?.signal,
+      );
       this.throwIfCancelled();
     }
 
@@ -366,6 +392,8 @@ export class LauncherService extends EventEmitter {
           exitCode: code ?? undefined,
           message: `Игра завершилась с кодом ${code}`,
           logs: this.recentLogs,
+          // Scrubbed out of the report, never sent.
+          username: opts.username,
         });
       }
     });
@@ -387,6 +415,14 @@ export class LauncherService extends EventEmitter {
     void this.telemetry.send('launch_ok');
 
     this.report({ stage: 'running', progress: 100, message: `Игра запущена (pid ${handle.pid})` });
+
+    // closeOnLaunch: get out of the way once the game is actually up. Minimize
+    // rather than quit — the launcher still owns the game process, play-time
+    // session, log stream and crash reporting. The window stays on the taskbar
+    // (and the tray, when close-to-tray is on), so it is always reachable.
+    if (cfg.closeOnLaunch && this.window && !this.window.isDestroyed()) {
+      this.window.minimize();
+    }
   }
 
   private buildLibraryJobs(libs: Library[]): DownloadJob[] {

@@ -1,11 +1,14 @@
 import { NextRequest } from 'next/server'
 import QRCode from 'qrcode'
 import { prisma } from '@/lib/db'
-import { apiError, authenticatedUser } from '@/lib/auth'
-import { generateTotpSecret, otpauthUri, verifyTotp } from '@/lib/totp'
-import { encryptSecret, decryptSecret } from '@/lib/twofaCrypto'
+import { apiError, authenticatedUser, consumeSecondFactor } from '@/lib/auth'
+import { generateTotpSecret, otpauthUri } from '@/lib/totp'
+import { encryptSecret } from '@/lib/twofaCrypto'
 
 export const dynamic = 'force-dynamic'
+
+/** Enrollment window for a pending secret; abandoned QR screens expire on their own. */
+const PENDING_TOTP_TTL_MS = 15 * 60 * 1000
 
 export async function POST(req: NextRequest) {
   const user = await authenticatedUser(req.headers)
@@ -13,18 +16,26 @@ export async function POST(req: NextRequest) {
   const userId = user.id
 
   // With 2FA already enabled, a stolen bearer JWT must not be able to swap in
-  // its own secret (that would hand over the account's second factor).
-  // Require a fresh code from the CURRENT secret before issuing a new one.
-  if (user.twoFactorEnabled && user.twoFactorMethod === 'totp' && user.totpSecretEnc) {
-    const { code } = (await req.json().catch(() => ({}))) as { code?: string }
-    const provided = (code ?? '').trim()
-    const valid = /^\d{6}$/.test(provided) && verifyTotp(provided, decryptSecret(user.totpSecretEnc))
-    if (!valid) return apiError('bad_credentials', 'Введите текущий код из приложения', 401)
+  // its own secret (that would hand over the account's second factor). Confirm
+  // the CURRENT factor first — whichever method the account actually uses.
+  if (user.twoFactorEnabled) {
+    const body = (await req.json().catch(() => ({}))) as unknown
+    const code = typeof body === 'object' && body !== null ? (body as { code?: unknown }).code : undefined
+    if (typeof code !== 'string' || !(await consumeSecondFactor(user, code))) {
+      return apiError('bad_credentials', 'Подтвердите смену текущим кодом двухфакторной защиты', 401)
+    }
   }
 
   const secret = generateTotpSecret()
-  // Store as pending secret (enabled only after /enable confirms a code).
-  await prisma.user.update({ where: { id: userId }, data: { totpSecretEnc: encryptSecret(secret) } })
+  // Pending only: the active secret is replaced by /enable, never here, so
+  // abandoning this screen leaves the existing authenticator working.
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      pendingTotpSecretEnc: encryptSecret(secret),
+      pendingTotpExpires: new Date(Date.now() + PENDING_TOTP_TTL_MS),
+    },
+  })
 
   const uri = otpauthUri(user.username, secret)
   const qr = await QRCode.toDataURL(uri)

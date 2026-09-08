@@ -15,7 +15,19 @@ services:
       retries: 5
 
   app:
-    build: .
+    build:
+      context: .
+      # NEXT_PUBLIC_* must be present during `next build` — they are baked into
+      # the client bundle. Passing them only under `environment` leaves the
+      # browser with the source defaults (e.g. mc.vibestudy.ru).
+      args:
+        NEXT_PUBLIC_SERVER_NAME: ${NEXT_PUBLIC_SERVER_NAME}
+        NEXT_PUBLIC_SITE_DOMAIN: ${NEXT_PUBLIC_SITE_DOMAIN}
+        NEXT_PUBLIC_SERVER_IP: ${NEXT_PUBLIC_SERVER_IP}
+        NEXT_PUBLIC_SERVER_VERSION: ${NEXT_PUBLIC_SERVER_VERSION}
+        NEXT_PUBLIC_VK_URL: ${NEXT_PUBLIC_VK_URL}
+        NEXT_PUBLIC_DISCORD_URL: ${NEXT_PUBLIC_DISCORD_URL}
+        NEXT_PUBLIC_TELEGRAM_URL: ${NEXT_PUBLIC_TELEGRAM_URL}
     restart: unless-stopped
     depends_on:
       postgres:

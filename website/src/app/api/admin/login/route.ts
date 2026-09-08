@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { timingSafeEqual } from 'crypto'
-import { createSessionToken, ADMIN_SESSION_TTL_SECONDS } from '@/lib/adminSession'
+import { createSessionToken, sessionIdOf, ADMIN_SESSION_TTL_SECONDS } from '@/lib/adminSession'
+import { createAdminSession } from '@/lib/adminAuth'
 import { rateLimit } from '@/lib/ratelimit'
 import { clientIp } from '@/lib/clientIp'
 import { verifyTotp } from '@/lib/totp'
@@ -40,6 +41,16 @@ export async function POST(req: NextRequest) {
 
   // Подписанный токен с истечением срока — не раскрывает сам секрет
   const sessionToken = await createSessionToken(adminSecret, ADMIN_SESSION_TTL_SECONDS)
+
+  // Record the session before handing out the cookie — an unregistered session
+  // is rejected by requireAdmin, so a failure here must not look like a login.
+  const sid = sessionIdOf(sessionToken)
+  if (!sid) return NextResponse.json({ error: 'Сервер не настроен' }, { status: 500 })
+  try {
+    await createAdminSession(sid, ADMIN_SESSION_TTL_SECONDS)
+  } catch {
+    return NextResponse.json({ error: 'Не удалось создать сессию' }, { status: 500 })
+  }
 
   const res = NextResponse.json({ ok: true })
   res.cookies.set('admin_session', sessionToken, {

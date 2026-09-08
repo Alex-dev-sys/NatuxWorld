@@ -19,6 +19,8 @@ export type DownloadProgressCb = (bytesDone: number, bytesTotal: number, current
 const MAX_REDIRECTS = 5;
 const MAX_RETRIES = 3;
 const MIN_RESUME_BYTES = 64 * 1024; // don't bother resuming tiny stubs
+/** Idle (no-bytes) timeout: a silent-but-open connection must fail, not hang. */
+const IDLE_TIMEOUT_MS = 60_000;
 
 export async function sha1OfFile(filePath: string): Promise<string> {
   const hash = createHash('sha1');
@@ -173,6 +175,12 @@ export class DownloadService {
             },
           );
           req.on('error', reject);
+          // Cancellation is handled by `signal`; this covers the other stall:
+          // a peer that connects, then sends nothing and never closes. Without
+          // it the promise stays pending and the retry loop never fires.
+          req.setTimeout(IDLE_TIMEOUT_MS, () => {
+            req.destroy(new Error(`Download timeout (no data) for ${rawUrl}`));
+          });
         };
         tryGet(job.url);
       });

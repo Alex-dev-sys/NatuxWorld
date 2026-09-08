@@ -26,6 +26,10 @@ const MEDAL = {
 }
 
 const NUMERAL = ['1', '2', '3']
+// Without an explicit font, troika falls back to its unicode-font-resolver and
+// fetches font data from cdn.jsdelivr.net — which production CSP (connect-src
+// 'self') blocks, leaving the text unrendered. Serve it from our own origin.
+const FONT_3D = '/fonts/noto-sans-latin-400.ttf'
 const PILLAR_HEIGHTS = [3.3, 2.1, 1.5] // #1 центр, #2 лево, #3 право
 const SLOT_ORDER = [1, 0, 2]           // индексы в top3: лево=серебро, центр=золото, право=бронза
 const X_POSITIONS = [-2.35, 0, 2.35]
@@ -53,7 +57,7 @@ function Medal({ rank, y, reducedMotion }: { rank: number; y: number; reducedMot
         <meshBasicMaterial color={metal} />
       </mesh>
       {/* номер на медали */}
-      <Text position={[0, 0, 0.07]} fontSize={0.42} color="#1a1205" anchorX="center" anchorY="middle">
+      <Text position={[0, 0, 0.07]} fontSize={0.42} color="#1a1205" anchorX="center" anchorY="middle" font={FONT_3D}>
         {NUMERAL[rank]}
       </Text>
     </group>
@@ -102,6 +106,7 @@ function Pillar({ rank, xPos, reducedMotion }: { rank: number; xPos: number; red
         color={metal}
         anchorX="center"
         anchorY="middle"
+        font={FONT_3D}
         outlineWidth={0.012}
         outlineColor="#000000"
       >

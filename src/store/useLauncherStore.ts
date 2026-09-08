@@ -25,6 +25,12 @@ const STAGE_LABEL: Record<string, string> = {
 
 interface LauncherState {
   isLaunching: boolean;
+  /**
+   * The game process is alive. Separate from isLaunching, which the 'running'
+   * stage clears — without this the PLAY button re-enabled mid-game, and a
+   * second click tore down the live progress subscription.
+   */
+  isRunning: boolean;
   progress: number;
   progressMessage: string;
   stage: string;
@@ -38,6 +44,7 @@ interface LauncherState {
 
 export const useLauncherStore = create<LauncherState>((set, get) => ({
   isLaunching: false,
+  isRunning: false,
   progress: 0,
   progressMessage: 'Готов к запуску',
   stage: 'idle',
@@ -48,8 +55,9 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
   setAppVersion: (v) => set({ appVersion: v }),
 
   play: async () => {
-    const { isLaunching, unsubProgress } = get();
-    if (isLaunching) return;
+    const { isLaunching, isRunning, unsubProgress } = get();
+    // Never start a second launch, and never disturb a live session's listener.
+    if (isLaunching || isRunning) return;
     if (unsubProgress) unsubProgress();
 
     const unsub = bridge.launcher.onProgress((p: LaunchProgress) => {
@@ -62,6 +70,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
         progressMessage: message,
         errorMessage: p.stage === 'error' ? message : null,
         isLaunching: p.stage !== 'idle' && p.stage !== 'error' && p.stage !== 'running',
+        isRunning: p.stage === 'running',
       });
       if (terminal) {
         const sub = get().unsubProgress;
@@ -90,6 +99,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
       if (!result.ok) {
         set({
           isLaunching: false,
+          isRunning: false,
           stage: 'error',
           progressMessage: result.error ?? 'Ошибка запуска',
           errorMessage: result.error ?? 'Ошибка запуска',
@@ -98,6 +108,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
     } catch {
       set({
         isLaunching: false,
+        isRunning: false,
         stage: 'error',
         progressMessage: 'Ошибка запуска',
         errorMessage: 'Ошибка запуска',
@@ -121,6 +132,7 @@ export const useLauncherStore = create<LauncherState>((set, get) => ({
     if (unsubProgress) unsubProgress();
     set({
       isLaunching: false,
+      isRunning: false,
       progress: 0,
       stage: 'idle',
       progressMessage: STAGE_LABEL.idle,

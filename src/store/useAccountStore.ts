@@ -39,7 +39,10 @@ export const useAccountStore = create<AccountState>((set, get) => ({
   bootstrap: async () => {
     try {
       const res = await bridge.account.bootstrap();
-      if (res.status === 'authed') set({ status: 'authed', user: res.user });
+      if (res.status === 'authed') set({ status: 'authed', user: res.user, error: null });
+      // Offline: the stored session was never rejected, only unverifiable. Stay
+      // signed in and surface the reason instead of forcing a new login.
+      else if (res.status === 'offline') set({ status: 'authed', user: res.user, error: res.error });
       else set({ status: 'guest', user: null });
     } catch {
       set({ status: 'guest', user: null });

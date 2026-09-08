@@ -16,8 +16,17 @@ export async function POST(req: NextRequest) {
   try { body = await req.json() } catch {
     return apiError('bad_credentials', 'Неверный логин или пароль', 401)
   }
-  const { login, password } = body as Record<string, string>
-  if (!login || !password || password.length > 200) {
+  // Validate types before touching the values: `as Record<string, string>` is a
+  // compile-time assertion only, so a JSON null or `{login: 123}` used to reach
+  // login.toLowerCase() and throw a 500 before the rate limiter even ran.
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return apiError('bad_credentials', 'Неверный логин или пароль', 401)
+  }
+  const { login, password } = body as Record<string, unknown>
+  if (
+    typeof login !== 'string' || typeof password !== 'string' ||
+    !login || !password || login.length > 200 || password.length > 200
+  ) {
     return apiError('bad_credentials', 'Неверный логин или пароль', 401)
   }
 
@@ -79,7 +88,7 @@ export async function POST(req: NextRequest) {
     return Response.json({
       twoFactorRequired: true,
       method: user.twoFactorMethod,
-      challenge: signChallenge(user.id),
+      challenge: signChallenge(user.id, user.tokenVersion),
     })
   }
 

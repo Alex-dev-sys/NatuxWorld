@@ -14,7 +14,14 @@ export interface SignedUpdateManifest {
   repository: typeof UPDATE_REPOSITORY;
   version: string;
   artifact: string;
+  /** SHA-512 of the published INSTALLER (what electron-updater downloads). */
   sha512: string;
+  /**
+   * Optional SHA-512 of the INSTALLED executable (release/win-unpacked/*.exe).
+   * A different file from the installer, so self-integrity must compare against
+   * this — never against `sha512`. Absent on manifests from older releases.
+   */
+  executableSha512?: string;
   /** Optional release channel — absent means 'stable'. */
   channel?: 'stable' | 'beta';
   /** Optional staged-rollout percentage (0–100) — absent means 100. */
@@ -55,6 +62,12 @@ function assertManifest(value: unknown): asserts value is SignedUpdateManifest {
   }
   if (typeof manifest.sha512 !== 'string' || !SHA512_RE.test(manifest.sha512)) {
     throw new Error('Invalid update SHA-512');
+  }
+  if (
+    manifest.executableSha512 !== undefined &&
+    (typeof manifest.executableSha512 !== 'string' || !SHA512_RE.test(manifest.executableSha512))
+  ) {
+    throw new Error('Invalid executable SHA-512');
   }
   if (manifest.channel !== undefined && manifest.channel !== 'stable' && manifest.channel !== 'beta') {
     throw new Error('Invalid update channel');

@@ -14,7 +14,11 @@ import type { DiagnosticCheck } from '../../electron/services/DiagnosticsService
 import type { PlaytimeStats } from '../../electron/services/PlaytimeService';
 
 export type AccountResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } };
-export type BootstrapResult = { status: 'guest' } | { status: 'authed'; user: AccountUser };
+export type BootstrapResult =
+  | { status: 'guest' }
+  | { status: 'authed'; user: AccountUser }
+  // Session kept, server unreachable — retryable, NOT a sign-out.
+  | { status: 'offline'; user: AccountUser; error: string };
 export type LoginOutcome =
   | { twoFactor: false; user: AccountUser }
   | { twoFactor: true; method: string | null; challenge: string };

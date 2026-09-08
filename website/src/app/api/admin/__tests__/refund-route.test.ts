@@ -1,7 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/adminAuth', () => ({ requireAdmin: async () => true }))
-const store = vi.hoisted(() => ({ getOrderById: vi.fn(), updateOrder: vi.fn() }))
+const store = vi.hoisted(() => ({
+  getOrderById: vi.fn(),
+  updateOrder: vi.fn(),
+  updateOrderIfOwned: vi.fn(),
+  renewDeliveryLease: vi.fn(),
+  deliveryAttemptIdFor: (id: string) => `payment:${id}`,
+  DELIVERY_LEASE_MS: 300000,
+}))
 vi.mock('@/lib/store', () => store)
 const auditCreate = vi.fn()
 vi.mock('@/lib/db', () => ({ prisma: { adminAudit: { create: (...a: unknown[]) => auditCreate(...a) } } }))

@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-vi.mock('@/lib/adminSession', () => ({ ADMIN_SESSION_TTL_SECONDS: 60, createSessionToken: async () => 'fake.session' }))
+vi.mock('@/lib/adminSession', () => ({
+  ADMIN_SESSION_TTL_SECONDS: 60,
+  createSessionToken: async () => `${Math.floor(Date.now() / 1000) + 60}.${'a'.repeat(32)}.sig`,
+  sessionIdOf: () => 'a'.repeat(32),
+}))
+// The session must be registered server-side before the cookie is issued.
+vi.mock('@/lib/adminAuth', () => ({ createAdminSession: vi.fn(async () => {}) }))
 
 import { POST } from '@/app/api/admin/login/route'
 import { authenticator } from 'otplib'

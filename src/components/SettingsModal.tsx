@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { X, Cpu, MemoryStick, MonitorPlay, Coffee, FolderOpen, Check, Languages, RefreshCw, Rocket, Trash2, FileText, Bug, Minimize2, Power, Activity, GitBranch, Camera } from 'lucide-react';
+import { X, Cpu, MemoryStick, MonitorPlay, Coffee, Check, Languages, RefreshCw, Rocket, Trash2, FileText, Bug, Minimize2, Power, Activity, GitBranch, Camera } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { bridge } from '../services/electron-bridge';
@@ -21,7 +21,9 @@ const ru = {
   resolution: 'Разрешение окна', custom: 'Своё',
   fullscreen: 'Полноэкранный режим', fullscreenOn: 'Разрешение игнорируется', fullscreenOff: 'Оконный режим',
   jvm: 'JVM аргументы', reset: 'Сбросить',
-  closeOnLaunch: 'Закрывать лаунчер при запуске', closeOnLaunchHint: 'Освобождает ОЗУ',
+  javaLocked: 'Используется встроенный JRE 21 — сторонняя Java отключена в целях безопасности',
+  jvmLocked: 'Аргументы не применяются: произвольные JVM-флаги отключены в целях безопасности',
+  closeOnLaunch: 'Сворачивать лаунчер при запуске', closeOnLaunchHint: 'Окно свернётся, когда игра запустится',
   language: 'Язык интерфейса',
   autoUpdate: 'Авто-обновление', autoUpdateHint: 'Применится при следующем запуске',
   checkUpdates: 'Проверить обновления', checkUpdatesHint: 'Проверяет GitHub Release и подпись',
@@ -50,7 +52,9 @@ const en: typeof ru = {
   resolution: 'Window resolution', custom: 'Custom',
   fullscreen: 'Fullscreen', fullscreenOn: 'Resolution ignored', fullscreenOff: 'Windowed',
   jvm: 'JVM arguments', reset: 'Reset',
-  closeOnLaunch: 'Close launcher on launch', closeOnLaunchHint: 'Frees up RAM',
+  javaLocked: 'The bundled JRE 21 is always used — a custom Java is disabled for security',
+  jvmLocked: 'Not applied: arbitrary JVM flags are disabled for security',
+  closeOnLaunch: 'Minimize launcher on launch', closeOnLaunchHint: 'The window minimizes once the game starts',
   language: 'Interface language',
   autoUpdate: 'Auto-update', autoUpdateHint: 'Applied on next start',
   checkUpdates: 'Check for updates', checkUpdatesHint: 'Checks the GitHub Release and signature',
@@ -161,31 +165,12 @@ function GameTab() {
   const maxMem = Math.floor(systemMemoryMb / 512) * 512;
   const res = settings?.resolution ?? { width: 1280, height: 720 };
   const isPreset = PRESETS.some((p) => p.w === res.width && p.h === res.height);
-  const [javaResult, setJavaResult] = useState<{ ok: boolean; text: string } | null>(null);
   // Local draft while dragging the RAM slider: keeps the drag buttery-smooth
   // (no settings write / IPC per pixel) and commits once on pointer release.
   const [memDraft, setMemDraft] = useState<number | null>(null);
   const memValue = memDraft ?? Math.min(memory, maxMem);
   const commitMem = () => {
     if (memDraft != null) { update({ memory: memDraft }); setMemDraft(null); }
-  };
-
-  const verifyJava = async () => {
-    if (!settings?.javaPath) return;
-    try {
-      const r = await bridge.settings.verifyJava({ path: settings.javaPath });
-      setJavaResult(
-        r.ok
-          ? { ok: true, text: t.javaOk(String(r.version ?? '')) }
-          : { ok: false, text: t.javaErr(String(r.error ?? '')) },
-      );
-    } catch (e) {
-      setJavaResult({ ok: false, text: t.javaErr(String((e as Error)?.message ?? '')) });
-    }
-  };
-  const pickJava = async () => {
-    const p = await bridge.settings.pickJava();
-    if (p) update({ javaPath: p, javaMode: 'custom' });
   };
 
   return (
@@ -197,33 +182,21 @@ function GameTab() {
           className="w-56 accent-primary" />
       </Row>
 
-      <Row icon={<Coffee className="h-4 w-4" />} label={t.java} stacked>
-        <div className="flex flex-col gap-2">
+      {/*
+        The launch pipeline deliberately never forwards javaPath / jvmArgs (see
+        LauncherService: an untrusted renderer must not be able to run an
+        arbitrary binary or inject JVM flags). Showing these as editable
+        promised a setting that silently did nothing — so they are visible but
+        disabled, with the reason stated.
+      */}
+      <Row icon={<Coffee className="h-4 w-4" />} label={t.java} hint={t.javaLocked} stacked>
+        <div className="flex flex-col gap-2 opacity-60">
           <div className="flex gap-2">
-            {(['bundled', 'custom'] as const).map((m) => (
-              <button key={m} onClick={() => update({ javaMode: m })}
-                className={`rounded-lg px-3 py-1.5 text-xs ring-1 ring-white/10 ${settings?.javaMode === m ? 'bg-primary/15 text-primary' : 'text-muted'}`}>
-                {m === 'bundled' ? t.javaBundled : t.javaCustom}
-              </button>
-            ))}
+            <button disabled
+              className="cursor-not-allowed rounded-lg bg-primary/15 px-3 py-1.5 text-xs text-primary ring-1 ring-white/10">
+              {t.javaBundled}
+            </button>
           </div>
-          {settings?.javaMode === 'custom' && (
-            <>
-              <div className="flex items-center gap-2">
-                <input readOnly value={settings?.javaPath ?? ''} placeholder={t.javaPathPh}
-                  className="flex-1 rounded-lg bg-white/[0.04] px-3 py-2 font-mono text-xs ring-1 ring-white/10" />
-                <button onClick={pickJava} className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">
-                  <FolderOpen className="h-4 w-4" />
-                </button>
-                <button onClick={verifyJava} className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">{t.verify}</button>
-              </div>
-              {javaResult && (
-                <div className={`text-xs ${javaResult.ok ? 'text-success' : 'text-red-400'}`}>
-                  {javaResult.text}
-                </div>
-              )}
-            </>
-          )}
         </div>
       </Row>
 
@@ -253,13 +226,9 @@ function GameTab() {
         <Toggle value={!!settings?.fullscreen} onChange={(v) => update({ fullscreen: v })} />
       </Row>
 
-      <Row icon={<Cpu className="h-4 w-4" />} label={t.jvm} stacked>
-        <div className="flex items-center gap-2">
-          <input type="text" value={settings?.jvmArgs ?? ''} onChange={(e) => update({ jvmArgs: e.target.value })}
-            className="flex-1 rounded-lg bg-white/[0.04] px-3 py-2 font-mono text-xs ring-1 ring-white/10 focus:outline-none focus:ring-primary" />
-          <button onClick={() => update({ jvmArgs: '-XX:+UnlockExperimentalVMOptions -XX:+UseG1GC' })}
-            className="rounded-lg bg-white/[0.06] px-3 py-2 text-xs ring-1 ring-white/10 hover:bg-white/[0.1]">{t.reset}</button>
-        </div>
+      <Row icon={<Cpu className="h-4 w-4" />} label={t.jvm} hint={t.jvmLocked} stacked>
+        <input type="text" value={settings?.jvmArgs ?? ''} disabled readOnly
+          className="w-full cursor-not-allowed rounded-lg bg-white/[0.04] px-3 py-2 font-mono text-xs text-muted opacity-60 ring-1 ring-white/10" />
       </Row>
 
       <Row icon={<MonitorPlay className="h-4 w-4" />} label={t.closeOnLaunch} hint={t.closeOnLaunchHint}>

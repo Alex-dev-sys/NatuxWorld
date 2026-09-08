@@ -13,8 +13,12 @@ export async function POST(req: NextRequest) {
   let body: unknown
   try { body = await req.json() } catch { return new Response(null, { status: 403 }) }
 
-  const { accessToken, selectedProfile, serverId } = body as Record<string, string>
-  if (!accessToken || !selectedProfile || !serverId) return new Response(null, { status: 403 })
+  if (typeof body !== 'object' || body === null) return new Response(null, { status: 403 })
+  const { accessToken, selectedProfile, serverId } = body as Record<string, unknown>
+  if (
+    typeof accessToken !== 'string' || typeof selectedProfile !== 'string' || typeof serverId !== 'string' ||
+    !accessToken || !selectedProfile || !serverId
+  ) return new Response(null, { status: 403 })
 
   // Tokens are stored as sha256 digests; hash the presented raw value.
   const accessTokenHash = hashGameToken(accessToken)

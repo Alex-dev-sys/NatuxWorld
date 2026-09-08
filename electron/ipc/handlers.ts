@@ -11,7 +11,7 @@ import { SettingsService } from '../services/SettingsService';
 import { UpdateService } from '../services/UpdateService';
 import { AccountService, AccountApiError } from '../services/AccountService';
 import { DiagnosticsService } from '../services/DiagnosticsService';
-import { PlaytimeService } from '../services/PlaytimeService';
+import { playtime } from '../services/PlaytimeService';
 import { getScreenshotsDir } from '../utils/paths';
 
 export const launcher = new LauncherService();
@@ -22,7 +22,6 @@ export const settings = new SettingsService();
 export const updater = new UpdateService();
 export const account = new AccountService();
 const diagnostics = new DiagnosticsService();
-const playtime = new PlaytimeService();
 
 /** Coerce arbitrary IPC input into a sane integer MiB value for JVM heap flags. */
 function clampMemory(value: unknown): number {
@@ -172,6 +171,11 @@ export function registerIpcHandlers(): void {
     try {
       const u = new URL(url);
       if (u.protocol === 'http:' || u.protocol === 'https:') return shell.openExternal(url);
+      // mailto: is the support screen's Email action. Allow it, but only in a
+      // strictly checked shape — no headers, no embedded newlines.
+      if (u.protocol === 'mailto:' && /^mailto:[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(url)) {
+        return shell.openExternal(url);
+      }
     } catch {
       /* ignore invalid url */
     }
@@ -196,9 +200,20 @@ export function registerIpcHandlers(): void {
       const user = await account.me(stored.token);
       await account.saveStored({ token: stored.token, user });
       return { status: 'authed' as const, user };
-    } catch {
-      await account.clearStored();
-      return { status: 'guest' as const };
+    } catch (err) {
+      // Only a server verdict on the session itself may delete credentials.
+      // DNS failures, timeouts and 5xx used to wipe a perfectly valid session
+      // and force a fresh login after one offline start.
+      const rejected = err instanceof AccountApiError && (err.status === 401 || err.status === 403);
+      if (rejected) {
+        await account.clearStored();
+        return { status: 'guest' as const };
+      }
+      return {
+        status: 'offline' as const,
+        user: stored.user,
+        error: err instanceof Error ? err.message : 'Нет связи с сервером',
+      };
     }
   });
 

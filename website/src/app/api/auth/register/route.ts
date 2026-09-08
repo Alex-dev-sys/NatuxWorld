@@ -23,9 +23,16 @@ export async function POST(req: NextRequest) {
   try { body = await req.json() } catch {
     return apiError('validation_failed', 'Проверьте правильность данных', 422)
   }
-  const { username, email, password } = body as Record<string, string>
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    await logLoginEvent({ ip, userAgent, kind: 'fail' })
+    return apiError('validation_failed', 'Проверьте правильность данных', 422)
+  }
+  const { username, email, password } = body as Record<string, unknown>
 
-  if (!username || !email || !password ||
+  // Types first: a non-string field would otherwise slip past the regex tests
+  // (RegExp coerces) and blow up later on .trim() / bcrypt.
+  if (typeof username !== 'string' || typeof email !== 'string' || typeof password !== 'string' ||
+      !username || !email || !password ||
       !USERNAME_RE.test(username) ||
       !EMAIL_RE.test(email) ||
       password.length < 8 || password.length > 200) {

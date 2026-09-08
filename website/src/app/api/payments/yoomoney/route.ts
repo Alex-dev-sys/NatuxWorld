@@ -1,7 +1,7 @@
 // src/app/api/payments/yoomoney/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { getOrder, getOrderById, getOrderByPaymentId, claimOrderForDelivery } from '@/lib/store'
+import { getOrder, getOrderById, getOrderByPaymentId, claimOrderForDelivery, deliveryAttemptIdFor } from '@/lib/store'
 import { fulfillOrder } from '@/lib/fulfillment'
 
 function verifySha1(params: Record<string, string>, secret: string): boolean {
@@ -80,6 +80,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'Already processed' })
   }
 
-  const updated = await fulfillOrder(claimed)
+  const updated = await fulfillOrder(claimed, deliveryAttemptIdFor(paymentId))
   return NextResponse.json({ message: 'OK', order: updated })
 }

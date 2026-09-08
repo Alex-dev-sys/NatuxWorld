@@ -143,7 +143,12 @@ export function ProfileMenu() {
                 </button>
               )}
 
-              {user && renaming ? (
+              {/*
+                Renaming only rewrites the local offline profile. With a server
+                session the in-game nick comes from that session, so the button
+                changed nothing visible — offer it only in offline mode.
+              */}
+              {user && !accountName && renaming ? (
                 <div className="flex items-center gap-1 px-1 py-1">
                   <input
                     autoFocus
@@ -163,7 +168,7 @@ export function ProfileMenu() {
                     OK
                   </button>
                 </div>
-              ) : user ? (
+              ) : user && !accountName ? (
                 <button
                   onClick={() => {
                     setNameDraft(user.username);

@@ -6,6 +6,8 @@ import path from 'node:path';
 import { getAssetIndexPath, getAssetsDir, getVersionDir, getVersionJsonPath } from '../utils/paths';
 
 const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
+/** Idle (no-bytes) timeout for manifest fetches. */
+const IDLE_TIMEOUT_MS = 20_000;
 
 export type OsName = 'windows' | 'osx' | 'linux';
 
@@ -219,7 +221,7 @@ export class MojangService {
         if (new URL(u).protocol !== 'https:') {
           return reject(new Error(`Refusing non-https URL: ${u}`));
         }
-        https
+        const req = https
           .get(u, { headers: { 'User-Agent': 'NatuxWorldLauncher' } }, (res) => {
             if (
               res.statusCode &&
@@ -242,6 +244,11 @@ export class MojangService {
             res.on('end', () => resolve(body));
           })
           .on('error', reject);
+        // Bound the wait: a connected-but-silent peer must not pin the promise
+        // open forever (the retry wrapper only reacts to rejections).
+        req.setTimeout(IDLE_TIMEOUT_MS, () => {
+          req.destroy(new Error(`Manifest request timeout: ${u}`));
+        });
       };
       tryGet(url);
     });

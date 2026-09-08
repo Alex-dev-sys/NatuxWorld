@@ -58,6 +58,64 @@ export async function authenticatedUser(headers: Headers) {
   return user
 }
 
+/**
+ * Confirm the account's CURRENTLY enabled second factor: an app code for method
+ * 'totp', the emailed code for method 'email', or any unused backup code. A
+ * backup code is consumed atomically, so one code proves one action.
+ *
+ * Every operation that replaces or removes an enabled factor must pass through
+ * here — gating only the 'totp' method would let a stolen session swap an
+ * email-2FA account over to an attacker-controlled authenticator.
+ */
+export async function consumeSecondFactor(
+  user: {
+    id: string
+    twoFactorMethod: string | null
+    totpSecretEnc: string | null
+    twoFactorCode: string | null
+    twoFactorCodeExpires: Date | null
+  },
+  code: string,
+): Promise<boolean> {
+  const trimmed = code.trim()
+  if (!trimmed) return false
+
+  const { prisma } = await import('@/lib/db')
+  const { verifyTotp } = await import('@/lib/totp')
+  const { decryptSecret } = await import('@/lib/twofaCrypto')
+  const { hashBackupCode } = await import('@/lib/backupCodes')
+
+  if (user.twoFactorMethod === 'totp' && user.totpSecretEnc && verifyTotp(trimmed, decryptSecret(user.totpSecretEnc))) {
+    return true
+  }
+  if (
+    user.twoFactorMethod === 'email' &&
+    user.twoFactorCode &&
+    user.twoFactorCodeExpires &&
+    user.twoFactorCodeExpires > new Date() &&
+    user.twoFactorCode === hashBackupCode(trimmed)
+  ) {
+    // Single-use: exactly one caller may burn the emailed code. The count is the
+    // proof — ignoring it let the same code authorize several concurrent 2FA
+    // changes, since every racer saw the pre-read value and returned true.
+    const burned = await prisma.user.updateMany({
+      where: {
+        id: user.id,
+        twoFactorCode: user.twoFactorCode,
+        twoFactorCodeExpires: { gt: new Date() },
+      },
+      data: { twoFactorCode: null, twoFactorCodeExpires: null },
+    })
+    return burned.count === 1
+  }
+
+  const consumed = await prisma.twoFactorBackupCode.updateMany({
+    where: { userId: user.id, codeHash: hashBackupCode(trimmed), usedAt: null },
+    data: { usedAt: new Date() },
+  })
+  return consumed.count === 1
+}
+
 export function generateCode(): string {
   return String(randomInt(100000, 1000000))
 }

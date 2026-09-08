@@ -4,6 +4,29 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/Toast'
 
+/**
+ * Fetch JSON and fail loudly. A bare `.then(r => r.json())` stored 401/404 error
+ * bodies as if they were the requested entity, and the render then crashed on
+ * the fields that body does not have.
+ */
+async function fetchJson<T>(input: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(input, init)
+  let body: unknown = null
+  try { body = await r.json() } catch { /* non-JSON error page */ }
+  if (!r.ok) {
+    if (r.status === 401) {
+      // Session gone — send the admin back to the login screen.
+      if (typeof window !== 'undefined') window.location.href = '/admin/login'
+      throw new Error('Сессия истекла')
+    }
+    const message = typeof body === 'object' && body !== null && typeof (body as { error?: unknown }).error === 'string'
+      ? (body as { error: string }).error
+      : `Ошибка ${r.status}`
+    throw new Error(message)
+  }
+  return body as T
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Stats {
   users: { total: number; verified: number }
@@ -206,9 +229,15 @@ function UserModal({ userId, onClose, onUpdate }: { userId: string; onClose: () 
   const [editField, setEditField] = useState<'email' | 'username' | null>(null)
   const [editVal, setEditVal] = useState('')
   const [tempPw, setTempPw] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`/api/admin/users/${userId}`).then(r => r.json()).then(d => { setUser(d); setLoading(false) })
+    let cancelled = false
+    fetchJson<UserDetail>(`/api/admin/users/${userId}`)
+      .then(d => { if (!cancelled) { setUser(d); setLoadError(null) } })
+      .catch(e => { if (!cancelled) setLoadError(e instanceof Error ? e.message : 'Ошибка загрузки') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [userId])
 
   const action = async (act: string, extra?: Record<string, unknown>) => {
@@ -221,7 +250,7 @@ function UserModal({ userId, onClose, onUpdate }: { userId: string; onClose: () 
       const data = await r.json()
       if (!r.ok) { toast(data.error ?? 'Ошибка', 'error'); return }
       toast('Готово', 'success')
-      const fresh = await fetch(`/api/admin/users/${userId}`).then(x => x.json())
+      const fresh = await fetchJson<UserDetail>(`/api/admin/users/${userId}`)
       setUser(fresh)
       onUpdate({ id: userId, bannedAt: fresh.bannedAt, banReason: fresh.banReason, tokenVersion: fresh.tokenVersion, emailVerified: fresh.emailVerified })
     } catch { toast('Ошибка', 'error') } finally { setActing(null); setShowBanForm(false) }
@@ -259,9 +288,15 @@ function UserModal({ userId, onClose, onUpdate }: { userId: string; onClose: () 
     } catch { toast('Ошибка', 'error') } finally { setGivingRank(false) }
   }
 
-  if (loading || !user) return (
+  if (loading) return (
     <Modal title="Пользователь" onClose={onClose}>
       <div className="py-16 text-center text-site-muted">Загрузка...</div>
+    </Modal>
+  )
+
+  if (!user) return (
+    <Modal title="Пользователь" onClose={onClose}>
+      <div className="py-16 text-center text-red-400">{loadError ?? 'Не удалось загрузить пользователя'}</div>
     </Modal>
   )
 
@@ -1040,7 +1075,14 @@ function ServerTab() {
     finally { setBusy(null) }
   }
 
-  const online = /running|active/i.test(status)
+  // Match the systemd STATE, not the "Active:" field label — a word-bounded
+  // /active/ still matched "Active: inactive (dead)" and "Active: failed (…)".
+  // Read the value after the label when present, and require the running state
+  // explicitly rather than hunting for a substring anywhere in the output.
+  const activeValue = /^[ \t]*Active:[ \t]*(.*)$/im.exec(status)?.[1] ?? status
+  const online = /\bactive \(running\)/i.test(activeValue) ||
+    // Fall back to a bare state word for non-systemd output (e.g. a custom script).
+    /^[ \t]*(?:active|running)\b/i.test(activeValue.trim())
   return (
     <div className="space-y-4">
       <div className="bg-site-block border border-site-border rounded-lg p-4 space-y-3">
@@ -1158,8 +1200,14 @@ function OnlineTab() {
 function AuditTab() {
   const [rows, setRows] = useState<AuditRow[]>([])
   const [filter, setFilter] = useState('')
+  const [error, setError] = useState<string | null>(null)
   useEffect(() => {
-    fetch(`/api/admin/audit${filter ? `?action=${filter}` : ''}`).then(r => r.json()).then(setRows)
+    let cancelled = false
+    fetchJson<AuditRow[]>(`/api/admin/audit${filter ? `?action=${filter}` : ''}`)
+      // An error body is not a row list — guard the shape before rows.map runs.
+      .then(d => { if (!cancelled) { setRows(Array.isArray(d) ? d : []); setError(Array.isArray(d) ? null : 'Неожиданный ответ сервера') } })
+      .catch(e => { if (!cancelled) { setRows([]); setError(e instanceof Error ? e.message : 'Ошибка загрузки') } })
+    return () => { cancelled = true }
   }, [filter])
   const FILTERS = ['', 'user', 'player', 'rcon', 'coupon', 'order']
   return (
@@ -1172,6 +1220,7 @@ function AuditTab() {
           </button>
         ))}
       </div>
+      {error && <div className="text-xs text-red-400">{error}</div>}
       <Table cols={['Время', 'Действие', 'Цель', 'Параметры', 'IP', 'OK']}>
         {rows.map(r => (
           <Tr key={r.id}>
@@ -1269,7 +1318,18 @@ export default function AdminPage() {
     } catch { toast('Ошибка', 'error') } finally { setRefunding(null) }
   }
   const updateUser = (update: Partial<AdminUser>) => setUsers(prev => prev.map(u => u.id === update.id ? { ...u, ...update } : u))
-  const logout = async () => { await fetch('/api/admin/logout', { method: 'POST' }); router.push('/admin/login') }
+  const logout = async () => {
+    try {
+      const response = await fetch('/api/admin/logout', { method: 'POST' })
+      if (!response.ok) {
+        toast('Не удалось завершить сессию. Повторите выход.', 'error')
+        return
+      }
+      router.push('/admin/login')
+    } catch {
+      toast('Ошибка соединения. Не удалось завершить сессию — повторите выход.', 'error')
+    }
+  }
 
   return (
     <div className="min-h-screen bg-site-bg">

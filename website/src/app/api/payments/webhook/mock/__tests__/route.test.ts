@@ -6,7 +6,11 @@ const { getOrder, claimOrderForDelivery, fulfillOrder } = vi.hoisted(() => ({
   fulfillOrder: vi.fn(),
 }))
 
-vi.mock('@/lib/store', () => ({ getOrder, claimOrderForDelivery }))
+vi.mock('@/lib/store', () => ({
+  getOrder,
+  claimOrderForDelivery,
+  deliveryAttemptIdFor: (id: string) => `payment:${id}`,
+}))
 vi.mock('@/lib/fulfillment', () => ({ fulfillOrder }))
 vi.mock('@/lib/paymentConfig', () => ({ isMockPaymentsEnabled: () => true }))
 

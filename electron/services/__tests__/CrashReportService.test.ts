@@ -67,6 +67,45 @@ describe('CrashReportService consent gating', () => {
     expect(body).not.toHaveProperty('user');
   });
 
+  it('strips the player identity the onboarding screen promised not to send', async () => {
+    const logs = [
+      '[Client thread/INFO]: Setting user: Alice',
+      '[Server thread/INFO]: [CHAT] <Alice> hello there',
+      'profile username="Alice" loaded',
+      'Alice joined the game',
+      String.raw`Loading C:\Users\Alice\AppData\Roaming\.minecraft`,
+      'accessToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9abcdefghijklmnop',
+      'uuid 069a79f4-44e9-4726-a5be-fca90e38aaf5',
+    ];
+
+    await new CrashReportService(fakeSettings(true)).report({
+      ...sample,
+      message: 'crash for Alice',
+      logs,
+      username: 'Alice',
+    });
+
+    const body = JSON.parse(requests[0].body);
+    const blob = JSON.stringify(body);
+    expect(blob).not.toMatch(/Alice/i);
+    expect(blob).not.toContain('069a79f4-44e9-4726-a5be-fca90e38aaf5');
+    expect(blob).not.toContain('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9');
+    // The username is used only for redaction, never transmitted.
+    expect(body).not.toHaveProperty('username');
+    // Still diagnostic: the stage and the shape of the path survive.
+    expect(body.stage).toBe('running');
+    expect(blob).toContain('.minecraft');
+  });
+
+  it('keeps JVM frames readable while redacting nicknames', async () => {
+    await new CrashReportService(fakeSettings(true)).report({
+      ...sample,
+      logs: ['at java.lang.Object.<init>(Object.java:37)'],
+    });
+    const body = JSON.parse(requests[0].body);
+    expect(body.logs[0]).toContain('<init>');
+  });
+
   it('caps logs to the last 300 lines', async () => {
     const logs = Array.from({ length: 500 }, (_, i) => `line ${i}`);
     await new CrashReportService(fakeSettings(true)).report({ ...sample, logs });

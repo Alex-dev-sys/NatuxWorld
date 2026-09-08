@@ -77,10 +77,13 @@ export default function HeroParticles() {
     }
 
     if (reduce) {
-      // Render one static depth field, no animation.
+      // Render one static depth field, no animation. The same function
+      // reference must be used to add and remove, otherwise the listener (and
+      // its closure over this canvas) outlives the component.
       drawStatic()
-      window.addEventListener('resize', () => { resize(); drawStatic() })
-      return () => window.removeEventListener('resize', resize)
+      const onResize = () => { resize(); drawStatic() }
+      window.addEventListener('resize', onResize)
+      return () => window.removeEventListener('resize', onResize)
     }
 
     const tick = () => {

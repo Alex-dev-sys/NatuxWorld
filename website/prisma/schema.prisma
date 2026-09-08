@@ -24,6 +24,11 @@ model User {
   twoFactorEnabled     Boolean   @default(false)
   twoFactorMethod      String?
   totpSecretEnc        String?
+  /// Enrollment-in-progress secret. Kept apart from totpSecretEnc so that opening
+  /// the QR screen never invalidates the authenticator that is currently active;
+  /// promoted by /2fa/totp/enable and discarded after pendingTotpExpires.
+  pendingTotpSecretEnc String?
+  pendingTotpExpires   DateTime?
   twoFactorCode        String?
   twoFactorCodeExpires DateTime?
   backupCodes          TwoFactorBackupCode[]
@@ -150,6 +155,28 @@ model Order {
   fulfillmentCommands String[]
   rconCommands         String[]
   retryCount           Int       @default(0)
+  /// Owner of the in-flight delivery attempt, plus the lease it holds. A retry
+  /// may only start by winning an atomic claim, so concurrent admin retries of
+  /// the same order cannot both reach RCON. A stale lease (past its expiry) is
+  /// reclaimable — a crashed attempt must not block the order forever.
+  deliveryAttemptId    String?
+  deliveryLeaseUntil   DateTime?
+  /// Provider checkout link for an order still awaiting payment, so the buyer
+  /// can return to THIS order instead of starting a duplicate one in the shop.
+  /// Cleared once the order leaves waiting_payment.
+  paymentUrl           String?
+}
+
+/// Server-side allowlist of live admin sessions. A cookie is only accepted while
+/// its row exists, so logout (or a wiped table) genuinely ends the session —
+/// an in-process revocation set forgot everything on restart and let a
+/// logged-out cookie back in for the rest of its seven-day lifetime.
+model AdminSession {
+  sid       String   @id
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
 }
 
 model AdminAudit {

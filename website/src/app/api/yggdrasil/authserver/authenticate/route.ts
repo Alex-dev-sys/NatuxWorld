@@ -15,8 +15,15 @@ export async function POST(req: NextRequest) {
   let body: unknown
   try { body = await req.json() } catch { return Response.json({ error: 'ForbiddenOperationException', errorMessage: 'Invalid credentials' }, { status: 403 }) }
 
-  const { username, password, clientToken, requestUser } = body as Record<string, string>
-  if (!username || !password || password.length > 200) {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return Response.json({ error: 'ForbiddenOperationException', errorMessage: 'Invalid credentials' }, { status: 403 })
+  }
+  const { username, password, clientToken, requestUser } = body as Record<string, unknown>
+  if (
+    typeof username !== 'string' || typeof password !== 'string' ||
+    !username || !password || username.length > 200 || password.length > 200 ||
+    (clientToken !== undefined && typeof clientToken !== 'string')
+  ) {
     return Response.json({ error: 'ForbiddenOperationException', errorMessage: 'Invalid credentials' }, { status: 403 })
   }
 

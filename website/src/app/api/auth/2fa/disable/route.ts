@@ -37,6 +37,8 @@ export async function POST(req: NextRequest) {
           twoFactorEnabled: false,
           twoFactorMethod: null,
           totpSecretEnc: null,
+          pendingTotpSecretEnc: null,
+          pendingTotpExpires: null,
           twoFactorCode: null,
           twoFactorCodeExpires: null,
           tokenVersion: { increment: 1 },

@@ -1,6 +1,6 @@
 // src/app/api/payments/webhook/mock/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { getOrder, claimOrderForDelivery } from '@/lib/store'
+import { getOrder, claimOrderForDelivery, deliveryAttemptIdFor } from '@/lib/store'
 import { fulfillOrder } from '@/lib/fulfillment'
 import { isMockPaymentsEnabled } from '@/lib/paymentConfig'
 
@@ -23,11 +23,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 })
   }
 
-  const claimed = await claimOrderForDelivery(order.publicId, `mock_${Date.now()}`)
+  const paymentId = `mock_${Date.now()}`
+  const claimed = await claimOrderForDelivery(order.publicId, paymentId)
   if (!claimed) {
     return NextResponse.json({ message: 'Уже обработан', order })
   }
 
-  const updated = await fulfillOrder(claimed)
+  const updated = await fulfillOrder(claimed, deliveryAttemptIdFor(paymentId))
   return NextResponse.json({ message: 'Обработан', order: updated })
 }

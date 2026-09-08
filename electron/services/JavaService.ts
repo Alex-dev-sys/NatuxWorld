@@ -9,6 +9,14 @@ import { pipeline } from 'node:stream/promises';
 import yauzl from 'yauzl';
 import { getJrePath, getRuntimeDir } from '../utils/paths';
 
+/**
+ * Idle (no-bytes) timeouts. A peer that completes the TCP handshake and then
+ * stops sending would otherwise keep the request pending indefinitely, with no
+ * error and therefore no retry.
+ */
+const IDLE_TIMEOUT_MS = 20_000;
+const DOWNLOAD_IDLE_TIMEOUT_MS = 60_000;
+
 export interface JavaInstallation {
   version: string;
   vendor: 'Temurin' | 'system';
@@ -99,12 +107,13 @@ export class JavaService extends EventEmitter {
     return version ? { version, vendor: 'system', path: 'java' } : null;
   }
 
-  async install(): Promise<JavaInstallation> {
+  async install(signal?: AbortSignal): Promise<JavaInstallation> {
     const os = JavaService.platformOs(process.platform);
     const arch = JavaService.platformArch(process.arch);
 
+    signal?.throwIfAborted();
     this.emit('progress', { progress: 0, message: 'Запрос метаданных Java...' });
-    const asset = await JavaService.withRetries(() => this.fetchAssetMetadata(os, arch));
+    const asset = await JavaService.withRetries(() => this.fetchAssetMetadata(os, arch, signal), 3, signal);
     const pkg = asset.binaries[0]?.package;
     if (!pkg) throw new Error('Adoptium: no JRE binary returned');
 
@@ -114,8 +123,13 @@ export class JavaService extends EventEmitter {
 
     this.emit('progress', { progress: 5, message: 'Загрузка JRE 21...' });
     // ~50 MB off GitHub releases — transient resets (ECONNRESET) are routine, so retry.
-    await JavaService.withRetries(() => this.downloadVerified(pkg.link, archivePath, pkg.checksum));
+    await JavaService.withRetries(
+      () => this.downloadVerified(pkg.link, archivePath, pkg.checksum, signal),
+      3,
+      signal,
+    );
 
+    signal?.throwIfAborted();
     this.emit('progress', { progress: 90, message: 'Распаковка JRE...' });
     // Wipe any half-extracted runtime from a previous failed attempt before extracting.
     await fsp.rm(path.join(runtimeDir, 'jre-21'), { recursive: true, force: true }).catch(() => undefined);
@@ -138,13 +152,16 @@ export class JavaService extends EventEmitter {
   }
 
   /** Retry a flaky network operation with exponential backoff (handles ECONNRESET etc.). */
-  static async withRetries<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  static async withRetries<T>(fn: () => Promise<T>, attempts = 3, signal?: AbortSignal): Promise<T> {
     let lastError: unknown;
     for (let i = 0; i < attempts; i += 1) {
+      // A cancelled install must stop retrying, not grind through the backoff.
+      signal?.throwIfAborted();
       try {
         return await fn();
       } catch (err) {
         lastError = err;
+        if (signal?.aborted) throw err;
         if (i < attempts - 1) await new Promise((r) => setTimeout(r, 2 ** i * 1000));
       }
     }
@@ -172,10 +189,10 @@ export class JavaService extends EventEmitter {
     return this.extractZip(archive, destDir);
   }
 
-  private fetchAssetMetadata(os: string, arch: string): Promise<AdoptiumAsset> {
+  private fetchAssetMetadata(os: string, arch: string, signal?: AbortSignal): Promise<AdoptiumAsset> {
     const url = JavaService.adoptiumAssetUrl(os, arch, 21);
     return new Promise((resolve, reject) => {
-      this.httpGetJson(url)
+      this.httpGetJson(url, signal)
         .then((json) => {
           if (!Array.isArray(json) || json.length === 0) {
             reject(new Error('Adoptium: empty asset list'));
@@ -187,12 +204,12 @@ export class JavaService extends EventEmitter {
     });
   }
 
-  private httpGetJson(url: string): Promise<unknown> {
+  private httpGetJson(url: string, signal?: AbortSignal): Promise<unknown> {
     return new Promise((resolve, reject) => {
-      https
-        .get(url, { headers: { 'User-Agent': 'NatuxWorldLauncher' } }, (res) => {
+      const req = https
+        .get(url, { headers: { 'User-Agent': 'NatuxWorldLauncher' }, signal }, (res) => {
           if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            this.httpGetJson(new URL(res.headers.location, url).toString()).then(resolve, reject);
+            this.httpGetJson(new URL(res.headers.location, url).toString(), signal).then(resolve, reject);
             return;
           }
           if (res.statusCode !== 200) {
@@ -212,10 +229,20 @@ export class JavaService extends EventEmitter {
           });
         })
         .on('error', reject);
+      // Without this a server that accepts the connection and then goes silent
+      // leaves the promise pending forever — no error, no retry.
+      req.setTimeout(IDLE_TIMEOUT_MS, () => {
+        req.destroy(new Error(`Тайм-аут запроса метаданных: ${url}`));
+      });
     });
   }
 
-  private async downloadVerified(url: string, dest: string, expectedSha256: string): Promise<void> {
+  private async downloadVerified(
+    url: string,
+    dest: string,
+    expectedSha256: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
     const tmp = `${dest}.tmp`;
     const hash = createHash('sha256');
     let downloaded = 0;
@@ -227,8 +254,8 @@ export class JavaService extends EventEmitter {
           reject(new Error('Too many redirects'));
           return;
         }
-        https
-          .get(u, { headers: { 'User-Agent': 'NatuxWorldLauncher' } }, (res) => {
+        const req = https
+          .get(u, { headers: { 'User-Agent': 'NatuxWorldLauncher' }, signal }, (res) => {
             if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
               tryGet(new URL(res.headers.location, u).toString(), redirects + 1);
               return;
@@ -254,6 +281,10 @@ export class JavaService extends EventEmitter {
             pipeline(res, out).then(resolve, reject);
           })
           .on('error', reject);
+        // A stalled connection must fail, not hang the whole install.
+        req.setTimeout(DOWNLOAD_IDLE_TIMEOUT_MS, () => {
+          req.destroy(new Error(`Тайм-аут загрузки JRE: ${u}`));
+        });
       };
       tryGet(url);
     });

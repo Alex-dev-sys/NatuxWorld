@@ -54,7 +54,10 @@ function Badge({ status }: { status: string }) {
 
 // ─── main ─────────────────────────────────────────────────────────────────────
 
-export default function OrderClient({ initialOrder }: { initialOrder: PublicOrder }) {
+export default function OrderClient({
+  initialOrder,
+  mockPayments = false,
+}: { initialOrder: PublicOrder; mockPayments?: boolean }) {
   const { toast } = useToast()
   const [order, setOrder] = useState<PublicOrder>(initialOrder)
   const [paying, setPaying] = useState(false)
@@ -216,8 +219,8 @@ export default function OrderClient({ initialOrder }: { initialOrder: PublicOrde
 
       {/* Actions */}
       <div className="space-y-3">
-        {/* Mock pay */}
-        {isWaiting && (
+        {/* Mock pay — dev only; the production endpoint refuses it. */}
+        {isWaiting && mockPayments && (
           <div className="bg-site-secondary border border-site-dark-red/40 rounded-lg p-4">
             <p className="text-site-muted text-xs mb-3 text-center">
               🧪 Режим разработки — реальная оплата не подключена
@@ -232,6 +235,32 @@ export default function OrderClient({ initialOrder }: { initialOrder: PublicOrde
                 : 'Mock: Оплатить и выдать'
               }
             </button>
+          </div>
+        )}
+
+        {/* Resume THIS order via the provider link stored at checkout. Sending
+            the buyer to /shop instead would have them create a second order. */}
+        {isWaiting && !mockPayments && (
+          <div className="bg-site-secondary border border-site-border rounded-lg p-4 space-y-3">
+            {order.paymentUrl ? (
+              <>
+                <p className="text-site-muted text-xs text-center">
+                  Заказ ожидает оплаты — можно вернуться к оплате этого же заказа.
+                </p>
+                <a
+                  href={order.paymentUrl}
+                  rel="noopener noreferrer"
+                  className="block w-full py-3 bg-site-accent hover:bg-red-600 text-white font-semibold rounded transition-colors text-center"
+                >
+                  Продолжить оплату
+                </a>
+              </>
+            ) : (
+              <p className="text-site-muted text-xs text-center">
+                Заказ ожидает оплаты. Ссылка на оплату недоступна — обратитесь в поддержку,
+                указав номер заказа, чтобы не оформлять его повторно.
+              </p>
+            )}
           </div>
         )}
 

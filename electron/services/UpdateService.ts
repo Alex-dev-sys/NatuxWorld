@@ -157,15 +157,21 @@ export class UpdateService {
 
   /**
    * Self-integrity check: when the signed manifest describes the CURRENT
-   * version, hash our own executable and compare with the manifest SHA-512.
-   * A mismatch means the installed binary was modified after install — warn
-   * the user (dialog) and let them decide. Never blocks startup.
+   * version, hash our own executable and compare with the manifest's
+   * `executableSha512`. A mismatch means the installed binary was modified
+   * after install — warn the user (dialog) and let them decide. Never blocks
+   * startup.
+   *
+   * `manifest.sha512` is the INSTALLER's hash — a different file — so comparing
+   * against it flagged every healthy installation as corrupt. Releases signed
+   * before `executableSha512` existed simply have nothing to check.
    */
   async checkSelfIntegrity(): Promise<'ok' | 'stale-manifest' | 'mismatch' | 'error'> {
     if (!app.isPackaged || MANUAL_UPDATE) return 'stale-manifest';
     try {
       const manifest = await fetchTrustedUpdateManifest();
       if (manifest.version !== app.getVersion()) return 'stale-manifest';
+      if (!manifest.executableSha512) return 'stale-manifest';
 
       const hash = createHash('sha512');
       await new Promise<void>((resolve, reject) => {
@@ -174,7 +180,7 @@ export class UpdateService {
         stream.on('end', resolve);
         stream.on('error', reject);
       });
-      if (hash.digest('base64') === manifest.sha512) return 'ok';
+      if (hash.digest('base64') === manifest.executableSha512) return 'ok';
 
       this.emit({ type: 'error', message: 'Launcher integrity check failed: binary does not match the signed manifest' });
       dialog.showMessageBox({

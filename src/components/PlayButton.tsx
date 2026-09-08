@@ -5,15 +5,18 @@ import { useLang, pick } from '../i18n';
 
 const ru = {
   retry: 'ПОВТОРИТЬ', launching: 'ЗАПУСК...', play: 'ИГРАТЬ', cancelLaunch: 'Отменить запуск',
+  running: 'ИГРА ИДЁТ',
 };
 const en: typeof ru = {
   retry: 'RETRY', launching: 'LAUNCHING...', play: 'PLAY', cancelLaunch: 'Cancel launch',
+  running: 'IN GAME',
 };
 const TR = { ru, en };
 
 export function PlayButton() {
   const t = pick(useLang(), TR);
   const isLaunching = useLauncherStore((s) => s.isLaunching);
+  const isRunning = useLauncherStore((s) => s.isRunning);
   const progress = useLauncherStore((s) => s.progress);
   const message = useLauncherStore((s) => s.progressMessage);
   const stage = useLauncherStore((s) => s.stage);
@@ -23,15 +26,17 @@ export function PlayButton() {
 
   const showCancel = isLaunching && stage !== 'spawn' && stage !== 'running';
   const isError = stage === 'error' && !!errorMessage;
+  // Pressing PLAY while the game is alive can only produce a bogus error.
+  const isBusy = isLaunching || isRunning;
 
   return (
     <div className="flex flex-col gap-1.5">
       <div className="relative flex items-stretch gap-1.5">
         <motion.button
           onClick={play}
-          disabled={isLaunching}
-          whileHover={{ scale: isLaunching ? 1 : 1.02 }}
-          whileTap={{ scale: isLaunching ? 1 : 0.98 }}
+          disabled={isBusy}
+          whileHover={{ scale: isBusy ? 1 : 1.02 }}
+          whileTap={{ scale: isBusy ? 1 : 0.98 }}
           transition={{ type: 'spring', stiffness: 320, damping: 22 }}
           className="group relative flex-1 overflow-hidden rounded-2xl bg-play-gradient p-[1px] shadow-glow"
         >
@@ -47,7 +52,7 @@ export function PlayButton() {
               <Play className="h-6 w-6 fill-white text-white drop-shadow" />
             )}
             <span className="font-display text-2xl tracking-[0.18em] text-white drop-shadow">
-              {isError ? t.retry : isLaunching ? t.launching : t.play}
+              {isError ? t.retry : isLaunching ? t.launching : isRunning ? t.running : t.play}
             </span>
           </span>
           {isLaunching && (

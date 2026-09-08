@@ -34,19 +34,47 @@ public class ApiSender {
         }
     }
 
-    public void flush(EventBuffer buffer) {
-        if (buffer.isEmpty()) return;
+    /**
+     * Sends one batch. Returns false when the batch could not be delivered (it is
+     * restored to the buffer), so callers can stop looping instead of hammering a
+     * dead endpoint.
+     */
+    /**
+     * Held for the whole drain-send-restore cycle. A batch that has been taken
+     * out of the buffer but not yet delivered is invisible to anyone inspecting
+     * the queue, so shutdown must not snapshot the buffer in the middle of a
+     * send — the in-flight batch would be restored to memory afterwards and die
+     * with the JVM.
+     */
+    private final Object sendLock = new Object();
+
+    /** Runs `action` with no send in flight, so the buffer contents are stable. */
+    public void withNoSendInFlight(Runnable action) {
+        synchronized (sendLock) {
+            action.run();
+        }
+    }
+
+    public boolean flush(EventBuffer buffer) {
+        synchronized (sendLock) {
+            return flushLocked(buffer);
+        }
+    }
+
+    private boolean flushLocked(EventBuffer buffer) {
+        if (buffer.isEmpty()) return true;
         List<GameEvent> events = buffer.drain();
-        if (events.isEmpty()) return;
+        if (events.isEmpty()) return true;
 
         if (plaintextBlocked) {
             plugin.getLogger().warning(
                 "Refusing to send telemetry over plaintext HTTP to a remote host (" + apiUrl + "). " +
                 "Use HTTPS or keep the API on localhost.");
             buffer.restore(events);
-            return;
+            return false;
         }
 
+        boolean ok = true;
         try {
             String body = gson.toJson(Collections.singletonMap("events", events));
 
@@ -67,14 +95,30 @@ public class ApiSender {
             if (status != 200) {
                 plugin.getLogger().warning("API returned " + status + " for " + events.size() + " events");
                 buffer.restore(events);
+                ok = false;
             }
             conn.disconnect();
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to send events: " + e.getMessage());
             buffer.restore(events);
+            ok = false;
         }
 
         long dropped = buffer.drainDroppedCount();
         if (dropped > 0) plugin.getLogger().warning("Event queue overflow: dropped " + dropped + " events");
+        return ok;
+    }
+
+    /**
+     * Drains as many batches as fit in `budgetMillis`. drain() hands out at most
+     * one batch, so a single flush on shutdown left everything beyond batch_size
+     * in memory — and it died with the process. Bounded by both the budget and a
+     * failed send, so stopping the server is never blocked by network retries.
+     */
+    public void flushUntilEmpty(EventBuffer buffer, long budgetMillis) {
+        long deadline = System.nanoTime() + budgetMillis * 1_000_000L;
+        while (!buffer.isEmpty() && System.nanoTime() < deadline) {
+            if (!flush(buffer)) return;
+        }
     }
 }

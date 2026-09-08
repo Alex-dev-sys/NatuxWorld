@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/adminAuth', () => ({ requireAdmin: async () => true }))
 const db = vi.hoisted(() => ({
-  user: { findUnique: vi.fn(), update: vi.fn() },
+  user: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
   order: { updateMany: vi.fn() },
   gameEvent: { updateMany: vi.fn() },
   gameToken: { deleteMany: vi.fn() },
@@ -26,6 +26,8 @@ beforeEach(() => {
   db.$transaction.mockImplementation((ops: unknown[]) => Promise.all(ops))
   db.user.findUnique.mockImplementation(({ where }: { where: { id?: string; email?: string; username?: string } }) =>
     where.id === 'u1' ? Promise.resolve(theUser) : Promise.resolve(null))
+  // set-email looks up clashes case-insensitively; no clash by default.
+  db.user.findFirst.mockResolvedValue(null)
   db.user.update.mockResolvedValue(theUser)
   db.order.updateMany.mockResolvedValue({}); db.gameEvent.updateMany.mockResolvedValue({})
   db.gameToken.deleteMany.mockResolvedValue({}); db.twoFactorBackupCode.deleteMany.mockResolvedValue({})

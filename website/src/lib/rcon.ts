@@ -3,9 +3,16 @@ import type { Duration } from './types'
 
 export interface RconResult {
   success: boolean
+  /** Cumulative list of commands with a confirmed successful response. */
   commands: string[]
   responses?: string[]
   error?: string
+  /**
+   * The command that was in flight when the connection broke. It may or may not
+   * have taken effect server-side, so it is deliberately NOT counted as done —
+   * re-running it is an explicit admin decision, not an automatic one.
+   */
+  unknownCommand?: string
 }
 
 const DURATION_DAYS: Record<Duration, string> = {
@@ -51,22 +58,46 @@ function mockRconResponse(cmd: string): string {
   return 'OK'
 }
 
+/**
+ * Why an attempt stopped. The distinction decides whether the remainder may be
+ * re-sent automatically: a command whose reply was lost may already have taken
+ * effect server-side, so replaying it would grant the purchase twice.
+ */
+class RconAttemptError extends Error {
+  constructor(
+    message: string,
+    /** Nothing was written to the server, so re-sending is safe. */
+    readonly retryable: boolean,
+    /** Set when a command was sent but its reply never arrived. */
+    readonly unknownCommand?: string,
+  ) {
+    super(message)
+  }
+}
+
 // `progress` accumulates every command that received a successful response,
 // across attempts — executeRcon uses it as a checkpoint so a mid-list failure
 // never re-runs commands that already executed server-side.
 async function tryRcon(
   commands: string[],
-  progress: { commands: string[]; responses: string[] }
+  progress: { commands: string[]; responses: string[] },
+  beforeCommand: () => Promise<void>,
 ): Promise<RconResult> {
   if (process.env.RCON_MOCK === 'true') {
     console.log('[MOCK RCON] Commands:', commands)
     if (process.env.RCON_MOCK_FAIL === 'true') {
-      return { success: false, commands, error: 'Connection refused (mock fail mode)' }
+      // Nothing ran, so nothing may be recorded as progress — returning a
+      // "result" here previously persisted the UNSENT commands as executed, and
+      // the next retry then marked the order delivered. Not retryable: the mock
+      // fails deterministically, so backing off twice only wastes six seconds.
+      throw new RconAttemptError('Connection refused (mock fail mode)', false)
     }
     await new Promise(r => setTimeout(r, 200))
-    const responses = commands.map(c => mockRconResponse(c.trim()))
-    progress.commands.push(...commands)
-    progress.responses.push(...responses)
+    for (const cmd of commands) {
+      await beforeCommand()
+      progress.commands.push(cmd)
+      progress.responses.push(mockRconResponse(cmd.trim()))
+    }
     return { success: true, commands: [...progress.commands], responses: [...progress.responses] }
   }
 
@@ -78,44 +109,110 @@ async function tryRcon(
     timeout: 5000,
   })
 
-  await rcon.connect()
+  try {
+    await rcon.connect()
+  } catch (err) {
+    // Never reached the server — the whole remainder is safe to retry.
+    throw new RconAttemptError(`RCON connect failed: ${String(err)}`, true)
+  }
+
   try {
     for (const cmd of commands) {
-      const response = await rcon.send(cmd)
+      await beforeCommand()
+      let response: string
+      try {
+        response = await rcon.send(cmd)
+      } catch (err) {
+        // The command went out but no reply came back. It may already have
+        // applied, so it must NOT be resent automatically — that is exactly how
+        // one purchase turned into three.
+        throw new RconAttemptError(`RCON response lost for "${cmd}": ${String(err)}`, false, cmd)
+      }
       console.log(`[RCON] ${cmd} → ${response}`)
       if (RCON_ERROR_RESPONSE.test(response)) {
-        throw new Error(`RCON command rejected: ${response}`)
+        // The server answered and refused: it did not apply, and resending would
+        // be refused identically. Stop rather than burn attempts.
+        throw new RconAttemptError(`RCON command rejected: ${response}`, false)
       }
       progress.commands.push(cmd)
       progress.responses.push(response)
     }
     return { success: true, commands: [...progress.commands], responses: [...progress.responses] }
   } finally {
-    await rcon.end()
+    await rcon.end().catch(() => undefined)
   }
 }
 
-export async function executeRcon(commands: string[]): Promise<RconResult> {
+/**
+ * `alreadyDone` is the number of leading commands confirmed executed by an
+ * EARLIER call (persisted on the order). They are never sent again, so a retry
+ * after a mid-list failure cannot re-apply a grant that already took effect.
+ * The returned `commands` stays cumulative, covering both calls.
+ */
+export async function executeRcon(
+  commands: string[],
+  alreadyDone = 0,
+  canSend?: () => Promise<boolean>,
+): Promise<RconResult> {
+  const beforeCommand = async () => {
+    if (!canSend) return
+    let allowed = false
+    try { allowed = await canSend() } catch { /* ownership could not be proven */ }
+    if (!allowed) throw new RconAttemptError('Delivery lease lost; remaining commands cancelled', false)
+  }
   const MAX_ATTEMPTS = 3
   let lastError = ''
-  const progress: { commands: string[]; responses: string[] } = { commands: [], responses: [] }
+  const resumeFrom = Math.min(Math.max(alreadyDone, 0), commands.length)
+  const progress: { commands: string[]; responses: string[] } = {
+    commands: commands.slice(0, resumeFrom),
+    // Keep responses index-aligned with commands for diagnostics.
+    responses: commands.slice(0, resumeFrom).map(() => '(выполнено ранее)'),
+  }
   // Only commands without a recorded successful response are ever retried.
-  let completedCount = 0
+  let completedCount = resumeFrom
+
+  if (completedCount >= commands.length) {
+    return { success: true, commands: [...progress.commands], responses: [] }
+  }
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS && completedCount < commands.length; attempt++) {
     try {
-      return await tryRcon(commands.slice(completedCount), progress)
+      await beforeCommand()
+      return await tryRcon(commands.slice(completedCount), progress, beforeCommand)
     } catch (err) {
-      lastError = String(err)
+      lastError = err instanceof Error ? err.message : String(err)
       console.error(`[RCON] Attempt ${attempt}/${MAX_ATTEMPTS} failed: ${lastError}`)
       completedCount = progress.commands.length
+
+      // Only a failure that provably sent nothing may be retried. Anything else
+      // (a lost reply, an outright rejection, or an unexpected error we cannot
+      // classify) stops here — re-sending could apply a grant a second time.
+      const retryable = err instanceof RconAttemptError && err.retryable
+      if (!retryable) {
+        return {
+          success: false,
+          commands: [...progress.commands],
+          responses: [...progress.responses],
+          error: lastError,
+          unknownCommand: err instanceof RconAttemptError
+            ? err.unknownCommand
+            : commands[completedCount],
+        }
+      }
+
       if (attempt < MAX_ATTEMPTS) {
         await new Promise(r => setTimeout(r, attempt * 2000))
       }
     }
   }
 
-  return { success: false, commands: [...progress.commands], error: lastError }
+  // Exhausted retries without ever reaching the server: nothing was applied.
+  return {
+    success: false,
+    commands: [...progress.commands],
+    responses: [...progress.responses],
+    error: lastError,
+  }
 }
 
 export { DURATION_DAYS }
