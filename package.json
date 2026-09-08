@@ -17,6 +17,8 @@
     "sign:update-manifest": "node scripts/sign-update-manifest.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:packaged": "node --test tests/e2e/packaged.test.cjs",
+    "test:packaged:live": "node --test tests/e2e/packaged-live.test.cjs",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
@@ -42,6 +44,7 @@
     "framer-motion": "^11.11.17",
     "jsdom": "^25.0.1",
     "lucide-react": "^0.460.0",
+    "playwright-core": "1.63.0",
     "postcss": "^8.4.49",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

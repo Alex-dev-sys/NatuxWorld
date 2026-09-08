@@ -1,176 +1,79 @@
-# Ruflo — Codex Configuration
+# NatuxWorld — agent instructions
 
 ## Rules
 
-- Do what has been asked; nothing more, nothing less
-- NEVER create files unless absolutely necessary — prefer editing existing files
-- NEVER create documentation files unless explicitly requested
-- NEVER save working files or tests to root — use `/src`, `/tests`, `/docs`, `/config`, `/scripts`
-- ALWAYS read a file before editing it
-- NEVER commit secrets, credentials, or .env files
-- NEVER add a `Co-Authored-By` trailer to user commits unless this project's `.Codex/settings.json` has `attribution.commit` set (#2078). The Codex Bash tool may suggest one in its default commit-message template — ignore it. `Co-Authored-By` is semantic authorship attribution under git/GitHub convention; the tool is the facilitator, not a co-author.
-- Keep files under 500 lines
-- Validate input at system boundaries
+- Do what has been asked; nothing more, nothing less.
+- Read each file before editing it.
+- Prefer editing existing files. Create files only when necessary, including modules extracted to meet the line limit.
+- Do not create documentation files unless explicitly requested.
+- Put working files and tests in `src/`, `tests/`, `docs/`, `config/`, or `scripts/`, not the repository root.
+- Keep source files under 500 lines.
+- Validate input at system boundaries.
+- Never commit secrets, credentials, or `.env` files.
+- Never add a `Co-Authored-By` trailer unless `.Codex/settings.json` explicitly enables `attribution.commit`.
+- Preserve changes made by the user and other agents.
 
-## Agent Comms (SendMessage-First Coordination)
+## Repository layout
 
-Named agents coordinate via `SendMessage`, not polling or shared state.
+- `src/`: React launcher renderer and its component tests.
+- `electron/`: Electron main process, IPC, services, and service tests.
+- `website/`: Next.js site, auth/API, shop, admin, Prisma database, and server plugin.
+- `brand.config.ts`: launcher build-time brand and public endpoints.
+- `website/src/lib/brand.ts`: website brand, configured through `NEXT_PUBLIC_*` variables.
+- `docs/BUYER_HANDOVER.md`: current handover and release instructions.
 
-```
-Lead (you) ←→ architect ←→ developer ←→ tester ←→ reviewer
-              (named agents message each other directly)
-```
+## Build and tests
 
-### Spawning a Coordinated Team
+Run tests after code changes and verify the relevant build before committing.
+Commands below are separate steps so failures cannot be hidden by a later command.
 
-```javascript
-// ALL agents in ONE message, each knows WHO to message next
-Agent({ prompt: "Research the codebase. SendMessage findings to 'architect'.",
-  subagent_type: "researcher", name: "researcher", run_in_background: true })
-Agent({ prompt: "Wait for 'researcher'. Design solution. SendMessage to 'coder'.",
-  subagent_type: "system-architect", name: "architect", run_in_background: true })
-Agent({ prompt: "Wait for 'architect'. Implement it. SendMessage to 'tester'.",
-  subagent_type: "coder", name: "coder", run_in_background: true })
-Agent({ prompt: "Wait for 'coder'. Write tests. SendMessage results to 'reviewer'.",
-  subagent_type: "tester", name: "tester", run_in_background: true })
-Agent({ prompt: "Wait for 'tester'. Review code quality and security.",
-  subagent_type: "reviewer", name: "reviewer", run_in_background: true })
-
-// Kick off the pipeline
-SendMessage({ to: "researcher", summary: "Start", message: "[task context]" })
-```
-
-### Patterns
-
-| Pattern | Flow | Use When |
-|---------|------|----------|
-| **Pipeline** | A → B → C → D | Sequential dependencies (feature dev) |
-| **Fan-out** | Lead → A, B, C → Lead | Independent parallel work (research) |
-| **Supervisor** | Lead ↔ workers | Ongoing coordination (complex refactor) |
-
-### Rules
-
-- ALWAYS name agents — `name: "role"` makes them addressable
-- ALWAYS include comms instructions in prompts — who to message, what to send
-- Spawn ALL agents in ONE message with `run_in_background: true`
-- After spawning: STOP, tell user what's running, wait for results
-- NEVER poll status — agents message back or complete automatically
-
-## Swarm & Routing
-
-### Config
-- **Topology**: hierarchical-mesh (anti-drift)
-- **Max Agents**: 15
-- **Memory**: hybrid
-- **HNSW**: Enabled
-- **Neural**: Enabled
+Launcher (repository root):
 
 ```bash
-npx @Codex-flow/cli@latest swarm init --topology hierarchical --max-agents 8 --strategy specialized
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build:web
 ```
 
-### Agent Routing
-
-| Task | Agents | Topology |
-|------|--------|----------|
-| Bug Fix | researcher, coder, tester | hierarchical |
-| Feature | architect, coder, tester, reviewer | hierarchical |
-| Refactor | architect, coder, reviewer | hierarchical |
-| Performance | perf-engineer, coder | hierarchical |
-| Security | security-architect, auditor | hierarchical |
-
-### When to Swarm
-- **YES**: 3+ files, new features, cross-module refactoring, API changes, security, performance
-- **NO**: single file edits, 1-2 line fixes, docs updates, config changes, questions
-
-### 3-Tier Model Routing
-
-| Tier | Handler | Use Cases |
-|------|---------|-----------|
-| 1 | Agent Booster (WASM) | Simple transforms — skip LLM, use Edit directly |
-| 2 | Haiku | Simple tasks, low complexity |
-| 3 | Sonnet/Opus | Architecture, security, complex reasoning |
-
-## Memory & Learning
-
-### Before Any Task
-```bash
-npx @Codex-flow/cli@latest memory search --query "[task keywords]" --namespace patterns
-npx @Codex-flow/cli@latest hooks route --task "[task description]"
-```
-
-### After Success
-```bash
-npx @Codex-flow/cli@latest memory store --namespace patterns --key "[name]" --value "[what worked]"
-npx @Codex-flow/cli@latest hooks post-task --task-id "[id]" --success true --store-results true
-```
-
-### MCP Tools (use `ToolSearch("keyword")` to discover)
-
-| Category | Key Tools |
-|----------|-----------|
-| **Memory** | `memory_store`, `memory_search`, `memory_search_unified` |
-| **Bridge** | `memory_import_claude`, `memory_bridge_status` |
-| **Swarm** | `swarm_init`, `swarm_status`, `swarm_health` |
-| **Agents** | `agent_spawn`, `agent_list`, `agent_status` |
-| **Hooks** | `hooks_route`, `hooks_post-task`, `hooks_worker-dispatch` |
-| **Security** | `aidefence_scan`, `aidefence_is_safe`, `aidefence_has_pii` |
-| **Hive-Mind** | `hive-mind_init`, `hive-mind_consensus`, `hive-mind_spawn` |
-
-### Background Workers
-
-| Worker | When |
-|--------|------|
-| `audit` | After security changes |
-| `optimize` | After performance work |
-| `testgaps` | After adding features |
-| `map` | Every 5+ file changes |
-| `document` | After API changes |
+Package the launcher on the target operating system:
 
 ```bash
-npx @Codex-flow/cli@latest hooks worker dispatch --trigger audit
+npm run build
+npm run test:packaged
 ```
 
-## Agents
-
-**Core**: `coder`, `reviewer`, `tester`, `planner`, `researcher`
-**Architecture**: `system-architect`, `backend-dev`, `mobile-dev`
-**Security**: `security-architect`, `security-auditor`
-**Performance**: `performance-engineer`, `perf-analyzer`
-**Coordination**: `hierarchical-coordinator`, `mesh-coordinator`, `adaptive-coordinator`
-**GitHub**: `pr-manager`, `code-review-swarm`, `issue-tracker`, `release-manager`
-
-Any string works as a custom agent type.
-
-## Build & Test
-
-- ALWAYS run tests after code changes
-- ALWAYS verify build succeeds before committing
+Website (working directory `website/`):
 
 ```bash
-npm run build && npm test
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
 ```
 
-## CLI Quick Reference
+Website builds require its configured environment and generated Prisma client.
+`npm test` includes React integration tests and service tests, but does not prove
+that a real Minecraft client joined a server. `npm run test:packaged:live` is a
+separate opt-in acceptance test; see the handover prerequisites. Never use a
+player's normal account or game data as a test fixture.
 
-```bash
-npx @Codex-flow/cli@latest init --wizard           # Setup
-npx @Codex-flow/cli@latest swarm init --v3-mode     # Start swarm
-npx @Codex-flow/cli@latest memory search --query "" # Vector search
-npx @Codex-flow/cli@latest hooks route --task ""    # Route to agent
-npx @Codex-flow/cli@latest doctor --fix             # Diagnostics
-npx @Codex-flow/cli@latest security scan            # Security scan
-npx @Codex-flow/cli@latest performance benchmark    # Benchmarks
-```
+## Agent coordination
 
-26 commands, 140+ subcommands. Use `--help` on any command for details.
+Use the agent tools actually provided by the current host. For independent work
+across three or more files, use named agents where available, with one owner per
+file/module and an explicit recipient for results. Agents must not revert other
+agents' edits. Coordinate through direct messages and completion events rather
+than polling. The lead integrates the changes and runs shared build checks.
+Small edits, documentation updates, configuration changes, and questions do not
+require a team. If agent tools are unavailable, continue locally.
 
-## Setup
+## Optional automation
 
-```bash
-Codex mcp add Codex-flow -- npx -y @Codex-flow/cli@latest
-npx @Codex-flow/cli@latest daemon start
-npx @Codex-flow/cli@latest doctor --fix
-```
-
-**Agent tool** handles execution (agents, files, code, git). **MCP tools** handle coordination (swarm, memory, hooks). **CLI** is the same via Bash.
+This project does not require an external swarm daemon, memory service, or hooks
+CLI to build, test, or contribute. The previous `@Codex-flow/cli` commands returned
+npm E404 and have been removed. Do not run them or guess a replacement package.
+Only use optional memory/hooks tools when they are installed, exposed by the host,
+and their invocation has been verified. Missing optional tools must not block work.

@@ -1,20 +1,10 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
-import http from 'node:http';
 import path from 'node:path';
-import https from 'node:https';
-import yauzl from 'yauzl';
 import type { BrowserWindow } from 'electron';
-import {
-  filterByOsRules,
-  platformOsName,
-  type AssetIndex,
-  type Library,
-  type VanillaVersion,
-} from './MojangService';
 import { MojangService } from './MojangService';
-import { DownloadService, type DownloadJob } from './DownloadService';
+import { DownloadService } from './DownloadService';
 import { JavaService } from './JavaService';
 import { AuthService } from './AuthService';
 import { ForgeService } from './ForgeService';
@@ -24,17 +14,19 @@ import { CrashReportService } from './CrashReportService';
 import { playtime } from './PlaytimeService';
 import { discordRpc } from './DiscordRpcService';
 import { TelemetryService } from './TelemetryService';
-import { BRAND } from '../../brand.config';
+import { LauncherServerService, type ServerStatus, type ServerInfo } from './LauncherServerService';
+import { buildLibraryJobs, buildAssetJobs, extractNatives, selectNativeLibs } from './LauncherResources';
 import {
-  getAssetObjectPath,
   getAssetsDir,
   getAuthlibPath,
-  getLibrariesDir,
   getMinecraftDir,
   getNativesDir,
   getRuntimeDir,
   getVersionJarPath,
 } from '../utils/paths';
+
+export type { ServerStatus, ServerInfo } from './LauncherServerService';
+export { ASSET_BASE_URL } from './LauncherResources';
 
 export type Stage =
   | 'idle'
@@ -55,25 +47,6 @@ export interface LaunchProgress {
   detail?: string;
 }
 
-export interface ServerStatus {
-  online: boolean;
-  players: number;
-  maxPlayers: number;
-  ping: number;
-  tps: number;
-}
-
-export interface ServerInfo {
-  ip: string;
-  version: string;
-  mode: string;
-  map: string;
-  difficulty: string;
-  whitelist: boolean;
-  tps: number;
-  ping: number;
-}
-
 export interface PlayOptions {
   version: string;
   loader?: 'forge' | 'fabric' | 'neoforge' | 'vanilla';
@@ -91,8 +64,6 @@ export function parseVersionId(id: string): { loader: string; mcVersion: string 
   if (id.startsWith('neoforge-')) return { loader: 'neoforge', mcVersion: id.slice('neoforge-'.length) };
   return { loader: 'vanilla', mcVersion: id };
 }
-
-export const ASSET_BASE_URL = 'https://resources.download.minecraft.net';
 
 /** Free disk space required before we start pulling libraries/assets (~1.5 GB). */
 const MIN_FREE_BYTES = 1.5 * 1024 * 1024 * 1024;
@@ -123,6 +94,7 @@ export class LauncherService extends EventEmitter {
   private readonly settingsSvc = new SettingsService();
   private readonly crashReporter = new CrashReportService();
   private readonly telemetry = new TelemetryService();
+  private readonly server = new LauncherServerService();
 
   // Rolling tail of recent log lines, retained for opt-in crash reports. Separate from
   // logBuffer (which is drained on each IPC flush), so a report still has context.
@@ -256,7 +228,7 @@ export class LauncherService extends EventEmitter {
     this.throwIfCancelled();
 
     this.report({ stage: 'libraries', progress: 0, message: 'Загрузка библиотек...' });
-    const libJobs = this.buildLibraryJobs(version.libraries);
+    const libJobs = buildLibraryJobs(version.libraries);
     await this.download.downloadMany(libJobs, (done, total, file) => {
       const pct = total > 0 ? Math.round((done / total) * 100) : 0;
       this.report({
@@ -285,7 +257,7 @@ export class LauncherService extends EventEmitter {
 
     this.report({ stage: 'assets', progress: 0, message: 'Получение индекса ресурсов...' });
     const index = await this.mojang.resolveAssetIndex(version);
-    const assetJobs = this.buildAssetJobs(index);
+    const assetJobs = buildAssetJobs(index);
     await this.download.downloadMany(assetJobs, (done, total) => {
       const pct = total > 0 ? Math.round((done / total) * 100) : 0;
       this.report({ stage: 'assets', progress: pct, message: `Ресурсы ${pct}%` });
@@ -293,7 +265,7 @@ export class LauncherService extends EventEmitter {
     this.throwIfCancelled();
 
     this.report({ stage: 'natives-extract', progress: 0, message: 'Распаковка нативных библиотек...' });
-    await this.extractNatives(version);
+    await extractNatives(version);
     this.throwIfCancelled();
 
     if (loader !== 'vanilla' && loader !== 'forge') {
@@ -425,122 +397,7 @@ export class LauncherService extends EventEmitter {
     }
   }
 
-  private buildLibraryJobs(libs: Library[]): DownloadJob[] {
-    const filtered = filterByOsRules(libs, platformOsName());
-    const jobs: DownloadJob[] = [];
-    for (const lib of filtered) {
-      const artifact = lib.downloads?.artifact;
-      if (artifact?.path && artifact.url) {
-        jobs.push({
-          url: artifact.url,
-          dest: path.join(getLibrariesDir(), ...artifact.path.split('/')),
-          sha1: artifact.sha1,
-          size: artifact.size,
-        });
-      }
-    }
-    return jobs;
-  }
-
-  private buildAssetJobs(index: AssetIndex): DownloadJob[] {
-    const jobs: DownloadJob[] = [];
-    for (const obj of Object.values(index.objects)) {
-      const prefix = obj.hash.slice(0, 2);
-      jobs.push({
-        url: `${ASSET_BASE_URL}/${prefix}/${obj.hash}`,
-        dest: getAssetObjectPath(obj.hash),
-        sha1: obj.hash,
-        size: obj.size,
-      });
-    }
-    return jobs;
-  }
-
-  private async extractNatives(version: VanillaVersion): Promise<void> {
-    const os = platformOsName();
-    const nativesDir = getNativesDir(version.id);
-    await fsp.mkdir(nativesDir, { recursive: true });
-
-    const nativeLibs = LauncherService.selectNativeLibs(version.libraries, os, process.arch);
-
-    for (const lib of nativeLibs) {
-      const artifactPath = lib.downloads?.artifact?.path;
-      if (!artifactPath) continue;
-      const jar = path.join(getLibrariesDir(), ...artifactPath.split('/'));
-      if (!fs.existsSync(jar)) continue;
-      await this.extractNonClassEntries(jar, nativesDir);
-    }
-  }
-
-  /**
-   * Pick the native jars matching BOTH the current OS and CPU arch. Mojang's rules
-   * carry only os.name (no arch), so `org.lwjgl:lwjgl:3.3.3:natives-macos` (x64) and
-   * `...:natives-macos-arm64` both pass rule filtering on any Mac. Their dylib/dll file
-   * names collide when flattened into the natives dir, so extracting both means the
-   * wrong-arch binary can win and the game dies on load (Apple Silicon hit this).
-   * Base names are x64; `-arm64` / `-x86` suffixes are the other arches; an unsuffixed
-   * variant (e.g. freetype's `natives-macos-patch`) is kept on arm64 only when no
-   * `-arm64` twin exists.
-   */
-  static selectNativeLibs(libraries: Library[], os: ReturnType<typeof platformOsName>, arch: string): Library[] {
-    const token = os === 'osx' ? 'macos' : os;
-    const candidates = filterByOsRules(libraries, os).filter(
-      (lib) => lib.name.includes(`:natives-${token}`) || lib.name.includes(`:natives-${os}`),
-    );
-    const names = new Set(candidates.map((l) => l.name));
-    return candidates.filter((lib) => {
-      const isArm64 = lib.name.endsWith('-arm64');
-      const isX86 = lib.name.endsWith('-x86');
-      if (arch === 'arm64') {
-        if (isArm64) return true;
-        if (isX86) return false;
-        return !names.has(`${lib.name}-arm64`);
-      }
-      return !isArm64 && !isX86;
-    });
-  }
-
-  private extractNonClassEntries(jar: string, destDir: string): Promise<void> {
-    const root = path.resolve(destDir);
-    return new Promise((resolve, reject) => {
-      yauzl.open(jar, { lazyEntries: true }, (err, zip) => {
-        if (err || !zip) return reject(err ?? new Error('zip open failed'));
-        zip.readEntry();
-        zip.on('entry', (entry) => {
-          const lower = entry.fileName.toLowerCase();
-          if (
-            entry.fileName.includes('\0') ||
-            (process.platform !== 'win32' && entry.fileName.includes('\\'))
-          ) {
-            return reject(new Error(`Unsafe entry: ${entry.fileName}`));
-          }
-          const skip =
-            lower.startsWith('meta-inf/') ||
-            lower.endsWith('.class') ||
-            lower.endsWith('.git') ||
-            /\/$/.test(entry.fileName);
-          if (skip) {
-            zip.readEntry();
-            return;
-          }
-          const resolved = path.resolve(root, path.basename(entry.fileName));
-          const rel = path.relative(root, resolved);
-          if (rel.startsWith('..') || path.isAbsolute(rel)) {
-            return reject(new Error(`Unsafe entry escapes natives dir: ${entry.fileName}`));
-          }
-          zip.openReadStream(entry, (e, stream) => {
-            if (e || !stream) return reject(e ?? new Error('zip read failed'));
-            const out = fs.createWriteStream(resolved);
-            stream.pipe(out);
-            out.on('finish', () => zip.readEntry());
-            out.on('error', reject);
-          });
-        });
-        zip.on('end', () => resolve());
-        zip.on('error', reject);
-      });
-    });
-  }
+  static selectNativeLibs = selectNativeLibs;
 
   // Thousands of small asset downloads each fire a progress callback. Forwarding every
   // one over IPC makes the renderer re-render at hundreds of FPS and the whole app lags.
@@ -581,71 +438,12 @@ export class LauncherService extends EventEmitter {
     if (this.cancelled) throw new Error('Отменено пользователем');
   }
 
-  private async fetchSiteApi<T>(path: string): Promise<T> {
-    return new Promise((resolve, reject) => {
-      const url = new URL(`${BRAND.siteOrigin}${path}`);
-      const transport = url.protocol === 'http:' ? http : https;
-      const req = transport.get(url, { timeout: 6000 }, (res) => {
-        let data = '';
-        res.on('data', (chunk) => { data += chunk; });
-        res.on('end', () => {
-          try { resolve(JSON.parse(data)); }
-          catch { reject(new Error('Invalid JSON')); }
-        });
-      });
-      req.on('error', reject);
-      req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
-    });
+  getServerStatus(): Promise<ServerStatus> {
+    return this.server.getServerStatus();
   }
 
-  async getServerStatus(): Promise<ServerStatus> {
-    try {
-      const t0 = Date.now();
-      const data = await this.fetchSiteApi<{
-        online: boolean; players: { online: number; max: number }; tps?: number;
-      }>('/api/server/status');
-      const ping = Date.now() - t0;
-      return {
-        online: data.online,
-        players: data.players?.online ?? 0,
-        maxPlayers: data.players?.max ?? 100,
-        ping,
-        tps: data.tps ?? 20.0,
-      };
-    } catch {
-      return { online: false, players: 0, maxPlayers: 100, ping: 0, tps: 0 };
-    }
-  }
-
-  async getServerInfo(): Promise<ServerInfo> {
-    try {
-      const t0 = Date.now();
-      const data = await this.fetchSiteApi<{
-        online: boolean; players: { online: number; max: number }; version: string; tps?: number;
-      }>('/api/server/status');
-      const ping = Date.now() - t0;
-      return {
-        ip: BRAND.serverHost,
-        version: data.version || '1.20.1+',
-        mode: 'Анархия · PvP · Выживание',
-        map: 'world_anarchy',
-        difficulty: 'Hard',
-        whitelist: false,
-        tps: data.tps ?? 20.0,
-        ping,
-      };
-    } catch {
-      return {
-        ip: BRAND.serverHost,
-        version: '1.20.1+',
-        mode: 'Анархия · PvP · Выживание',
-        map: 'world_anarchy',
-        difficulty: 'Hard',
-        whitelist: false,
-        tps: 0,
-        ping: 0,
-      };
-    }
+  getServerInfo(): Promise<ServerInfo> {
+    return this.server.getServerInfo();
   }
 }
 
