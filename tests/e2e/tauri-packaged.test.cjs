@@ -181,7 +181,9 @@ test('packaged Tauri app reads and preserves an isolated legacy Electron profile
         '/FI', 'IMAGENAME eq msedgewebview2.exe', '/FO', 'CSV',
       ], { windowsHide: true, timeout: 5_000 });
       webViewProcesses = processes.stdout.trim();
-    } catch { }
+    } catch (diagnosticError) {
+      webViewProcesses = `process list unavailable (${diagnosticError.message})`;
+    }
     throw new Error(`${error.message}; last CDP response: ${lastEndpointState}; WebView2 processes: ${webViewProcesses}`);
   }
 
