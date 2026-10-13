@@ -194,17 +194,14 @@ async fn process_tree_guard_kills_descendants_after_root_exits() {
 
     let directory = tempfile::tempdir().expect("temporary process-test directory");
     let pid_path = directory.path().join("descendant.pid");
-    let start_path = directory.path().join("start");
-    let script = "$ErrorActionPreference='Stop'; while (-not (Test-Path $env:NATUX_TEST_START_FILE)) { Start-Sleep -Milliseconds 20 }; $p=Start-Process -FilePath ($env:SystemRoot + '\\System32\\ping.exe') -ArgumentList @('-t','127.0.0.1') -PassThru; Set-Content -NoNewline -Path $env:NATUX_TEST_CHILD_PID_FILE -Value $p.Id; Start-Sleep -Seconds 60";
-    let mut child = Command::new("powershell.exe")
+    let executable = std::env::current_exe().expect("current Rust test executable");
+    let mut child = Command::new(executable)
         .args([
-            "-NoLogo",
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            script,
+            "--exact",
+            "launcher::process::tests::process_tree_descendant_fixture",
+            "--nocapture",
         ])
-        .env("NATUX_TEST_START_FILE", &start_path)
+        .env("NATUX_TEST_PROCESS_TREE_HELPER", "1")
         .env("NATUX_TEST_CHILD_PID_FILE", &pid_path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -213,7 +210,6 @@ async fn process_tree_guard_kills_descendants_after_root_exits() {
         .spawn()
         .expect("spawn process-tree root");
     let mut process_tree = ProcessTreeGuard::attach(&child).expect("attach Windows job object");
-    fs::write(&start_path, "start").expect("release PowerShell process-tree fixture");
     let descendant_pid = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             if let Ok(pid) = fs::read_to_string(&pid_path) {
@@ -221,11 +217,14 @@ async fn process_tree_guard_kills_descendants_after_root_exits() {
                     break pid;
                 }
             }
+            if let Some(status) = child.try_wait().expect("poll Rust process-tree fixture") {
+                panic!("Rust process-tree fixture exited before starting descendant: {status}");
+            }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
     })
     .await
-    .expect("PowerShell should start its descendant");
+    .expect("Rust process-tree fixture should start its descendant");
 
     child.start_kill().expect("stop process-tree root only");
     let _ = child.wait().await;
@@ -240,6 +239,44 @@ async fn process_tree_guard_kills_descendants_after_root_exits() {
     })
     .await
     .expect("descendant should exit after the job is terminated");
+}
+
+#[cfg(windows)]
+#[test]
+fn process_tree_descendant_fixture() {
+    use std::fs;
+    use std::path::PathBuf;
+    use std::process::Stdio;
+
+    if std::env::var_os("NATUX_TEST_PROCESS_TREE_HELPER").is_none() {
+        return;
+    }
+
+    let pid_path = PathBuf::from(
+        std::env::var_os("NATUX_TEST_CHILD_PID_FILE").expect("descendant PID file path"),
+    );
+    let ping_path = PathBuf::from(std::env::var_os("SystemRoot").expect("Windows system root"))
+        .join("System32")
+        .join("ping.exe");
+    let mut descendant = std::process::Command::new(ping_path)
+        .args(["-t", "127.0.0.1"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn ping descendant");
+    fs::write(pid_path, descendant.id().to_string()).expect("write descendant PID");
+
+    loop {
+        if descendant
+            .try_wait()
+            .expect("poll ping descendant")
+            .is_some()
+        {
+            panic!("ping descendant exited before process-tree termination");
+        }
+        std::thread::sleep(Duration::from_secs(60));
+    }
 }
 
 #[cfg(unix)]

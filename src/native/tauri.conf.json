@@ -38,7 +38,7 @@
         "silent": true
       }
     },
-    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
     "resources": {
       "../../build/lock-runtime/natux-lock-agent.jar": "natux-lock/natux-lock-agent.jar"
     }
