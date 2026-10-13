@@ -64,9 +64,11 @@ test('packaged Tauri macOS app starts with and preserves an isolated legacy prof
   const configuredExecutable = process.env.NATUX_TAURI_MACOS_E2E_EXECUTABLE;
   assert.ok(configuredExecutable, 'set NATUX_TAURI_MACOS_E2E_EXECUTABLE to the built app executable');
   const repository = await fs.realpath(root);
-  const executable = await fs.realpath(path.resolve(configuredExecutable));
+  const packagedExecutable = path.resolve(configuredExecutable);
+  const executable = await fs.realpath(packagedExecutable);
+  assert.ok(isWithin(repository, packagedExecutable), 'Tauri executable path must be a repository build artifact');
   assert.ok(isWithin(repository, executable), 'Tauri executable must be a repository build artifact');
-  assert.ok(executable.includes(`${path.sep}.app${path.sep}Contents${path.sep}MacOS${path.sep}`),
+  assert.ok(packagedExecutable.includes(`${path.sep}.app${path.sep}Contents${path.sep}MacOS${path.sep}`),
     'Tauri executable must be inside a macOS app bundle');
 
   const tempParent = await fs.realpath(os.tmpdir());
@@ -159,7 +161,7 @@ test('packaged Tauri macOS app starts with and preserves an isolated legacy prof
     }
   });
 
-  child = spawn(executable, [], { cwd: repository, env, detached: true, stdio: 'ignore' });
+  child = spawn(packagedExecutable, [], { cwd: repository, env, detached: true, stdio: 'ignore' });
   child.on('error', (error) => { spawnError = error; });
 
   let profileLockReady = false;
