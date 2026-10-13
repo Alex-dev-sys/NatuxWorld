@@ -349,6 +349,49 @@ jobs:
         if: needs.plan.outputs.tauri != 'true'
         run: node scripts/run-tauri.mjs build --bundles nsis
 
+      - name: Ensure WebView2 Runtime for Tauri packaged smoke test
+        shell: pwsh
+        run: |
+          $runtimeKeyPaths = @(
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+            'HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          )
+          $runtimeVersion = $null
+          foreach ($keyPath in $runtimeKeyPaths) {
+            $versionText = (Get-ItemProperty -LiteralPath $keyPath -Name pv -ErrorAction SilentlyContinue).pv
+            if ($versionText) {
+              try {
+                $parsedVersion = [version]$versionText
+                if ($parsedVersion -gt [version]'0.0.0.0') {
+                  $runtimeVersion = $parsedVersion
+                  break
+                }
+              } catch { }
+            }
+          }
+          if (-not $runtimeVersion) {
+            $bootstrapper = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebView2Setup.exe'
+            Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $bootstrapper
+            $installation = Start-Process -FilePath $bootstrapper -ArgumentList '/silent', '/install' -Wait -PassThru -WindowStyle Hidden
+            if ($installation.ExitCode -notin @(0, 3010)) {
+              throw "WebView2 Runtime bootstrapper failed with exit code $($installation.ExitCode)."
+            }
+            foreach ($keyPath in $runtimeKeyPaths) {
+              $versionText = (Get-ItemProperty -LiteralPath $keyPath -Name pv -ErrorAction SilentlyContinue).pv
+              if ($versionText) {
+                try {
+                  $parsedVersion = [version]$versionText
+                  if ($parsedVersion -gt [version]'0.0.0.0') {
+                    $runtimeVersion = $parsedVersion
+                    break
+                  }
+                } catch { }
+              }
+            }
+          }
+          if (-not $runtimeVersion) { throw 'WebView2 Runtime is still missing after the silent install.' }
+          Write-Host "WebView2 Runtime $runtimeVersion is available for the Tauri smoke test."
+
       - name: Packaged Tauri smoke test
         run: npm run test:tauri:packaged
         env:

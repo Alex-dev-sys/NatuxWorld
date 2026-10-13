@@ -223,6 +223,21 @@ test('macOS Tauri validation retains the app bundle required by the startup smok
   );
 });
 
+test('Windows Tauri packaged smoke has the WebView2 Runtime available', () => {
+  const windowsJob = sectionBetween('  windows:\n', '  macos:\n');
+  const runtimeSetup = sectionBetween(
+    '      - name: Ensure WebView2 Runtime for Tauri packaged smoke test\n',
+    '      - name: Packaged Tauri smoke test\n',
+  );
+  const packagedSmoke = windowsJob.indexOf('      - name: Packaged Tauri smoke test\n');
+
+  assert.ok(packagedSmoke > windowsJob.indexOf('      - name: Ensure WebView2 Runtime for Tauri packaged smoke test\n'));
+  assert.match(runtimeSetup, /MicrosoftEdgeWebView2Setup\.exe/);
+  assert.match(runtimeSetup, /WEBVIEW2Setup/i);
+  assert.match(runtimeSetup, /\/silent', '\/install/);
+  assert.match(runtimeSetup, /F3017226-FE2A-4295-8BDF-00C3A9A7E4C5/);
+});
+
 test('macOS updater job searches DMG in the Tauri dmg output directory', () => {
   const macosUpdater = sectionBetween(
     '      - name: Build Tauri macOS updater bundles\n',
