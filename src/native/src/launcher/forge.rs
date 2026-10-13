@@ -92,11 +92,7 @@ pub(crate) async fn install(
     let cancel_for_download = cancellation.clone();
     downloads
         .download_many_cancelable(vec![job], cancel_for_download, move |done, total, path| {
-            let percent = if total == 0 {
-                0
-            } else {
-                (done.saturating_mul(25) / total) as u8
-            };
+            let percent = done.saturating_mul(25).checked_div(total).unwrap_or(0) as u8;
             progress_for_download(
                 LaunchProgress::new(
                     "forge-install",

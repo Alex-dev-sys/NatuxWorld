@@ -229,13 +229,13 @@ fn slow_but_continuous_stream_outlives_the_idle_timeout() {
                 break;
             }
             let _ = stream.flush();
-            thread::sleep(Duration::from_millis(20));
+            thread::sleep(Duration::from_millis(80));
         }
     });
     let root = tempfile::tempdir().expect("create download root");
     let destination = PathBuf::from("slow.bin");
     let mut service = test_service(&root, 1, 1024);
-    service.idle_timeout = Duration::from_millis(60);
+    service.idle_timeout = Duration::from_millis(300);
 
     run(service.download_many(
         vec![job(

@@ -388,3 +388,33 @@ fn commit_runtime(candidate: &Path, target: &Path, runtime_dir: &Path) -> Result
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use super::{copy_exact_cancelable, COPY_BUFFER_BYTES};
+
+    #[test]
+    fn cancellation_during_archive_copy_stops_before_the_next_chunk() {
+        let contents = vec![b'x'; COPY_BUFFER_BYTES * 2];
+        let mut input = Cursor::new(contents.as_slice());
+        let mut output = Vec::new();
+        let mut checks = 0;
+        let mut cancel_after_first_chunk = || {
+            checks += 1;
+            checks > 1
+        };
+
+        let result = copy_exact_cancelable(
+            &mut input,
+            &mut output,
+            contents.len() as u64,
+            &mut cancel_after_first_chunk,
+            "truncated test archive",
+        );
+
+        assert_eq!(result, Err("Отменено".to_owned()));
+        assert_eq!(output, vec![b'x'; COPY_BUFFER_BYTES]);
+    }
+}

@@ -55,7 +55,7 @@ where
         }
         let newline = available.iter().position(|byte| *byte == b'\n');
         let consumed = newline.map_or(available.len(), |position| position + 1);
-        let content_length = newline.map_or(consumed, |position| position);
+        let content_length = newline.unwrap_or(consumed);
         if line.len().saturating_add(content_length) > super::MAX_LOG_LINE_BYTES {
             reader.consume(consumed);
             return Err(std::io::Error::new(

@@ -1,12 +1,9 @@
-use std::fs;
-use std::io::{Cursor, Read, Write};
-use std::path::{Path, PathBuf};
-use std::thread;
-use std::time::{Duration, Instant};
-
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use std::fs;
+use std::io::{Cursor, Read, Write};
+use std::path::{Path, PathBuf};
 use tar::{Builder as TarBuilder, EntryType, Header};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
@@ -252,7 +249,7 @@ fn install_archive_replaces_runtime_atomically_and_keeps_old_runtime_on_validati
 }
 
 #[test]
-fn cancellation_during_archive_copy_cleans_staging_and_preserves_old_runtime() {
+fn cancellation_before_archive_commit_cleans_staging_and_preserves_old_runtime() {
     let temp = tempfile::tempdir().expect("temp directory");
     let contents = vec![b'x'; 256 * 1024];
 
@@ -274,41 +271,18 @@ fn cancellation_during_archive_copy_cleans_staging_and_preserves_old_runtime() {
         fs::write(target.join("old.marker"), b"old").expect("old marker");
         let archive = write_archive(&temp.path().join(filename), &bytes);
         let cancellation = CancellationToken::default();
-        let watcher_token = cancellation.clone();
-        let watcher_runtime = runtime.clone();
-        let watcher = thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(5);
-            while Instant::now() < deadline {
-                let copied_data_exists = fs::read_dir(&watcher_runtime)
-                    .expect("runtime directory")
-                    .filter_map(Result::ok)
-                    .filter(|entry| {
-                        entry
-                            .file_name()
-                            .to_string_lossy()
-                            .starts_with(".jre-21-stage-")
-                    })
-                    .any(|entry| {
-                        entry
-                            .path()
-                            .join("payload/package/bin/java")
-                            .metadata()
-                            .is_ok_and(|metadata| metadata.len() > 0)
-                    });
-                if copied_data_exists {
-                    watcher_token.cancel();
-                    return true;
-                }
-                thread::sleep(Duration::from_millis(1));
-            }
-            false
-        });
-
-        let result =
-            install_archive_cancelable(&archive, &runtime, kind, "bin/java", &cancellation, |_| {
+        let cancel_before_commit = cancellation.clone();
+        let result = install_archive_cancelable(
+            &archive,
+            &runtime,
+            kind,
+            "bin/java",
+            &cancellation,
+            move |_| {
+                cancel_before_commit.cancel();
                 Ok(())
-            });
-        assert!(watcher.join().expect("cancellation watcher"));
+            },
+        );
         assert_eq!(result, Err("Отменено".to_owned()));
         assert_eq!(fs::read(target.join("old.marker")).unwrap(), b"old");
         assert!(fs::read_dir(&runtime).unwrap().all(|entry| !entry

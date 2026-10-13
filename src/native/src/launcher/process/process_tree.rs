@@ -1,4 +1,5 @@
 use std::io;
+#[cfg(windows)]
 use std::process::Stdio;
 
 use tokio::process::{Child, Command};

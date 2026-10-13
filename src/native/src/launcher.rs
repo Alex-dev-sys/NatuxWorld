@@ -450,11 +450,11 @@ impl LauncherService {
     ) -> impl Fn(u64, u64, &Path) + Send + Sync + 'static {
         let service = self.clone();
         move |done, total, path| {
-            let percent = if total == 0 {
-                0
-            } else {
-                ((done.saturating_mul(100) / total).min(100)) as u8
-            };
+            let percent = done
+                .saturating_mul(100)
+                .checked_div(total)
+                .unwrap_or(0)
+                .min(100) as u8;
             let detail = path
                 .file_name()
                 .and_then(|name| name.to_str())

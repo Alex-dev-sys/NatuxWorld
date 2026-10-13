@@ -190,8 +190,10 @@ fn is_windows_unc(path: impl AsRef<Path>) -> bool {
 }
 
 fn is_java_executable(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
+    path.as_os_str()
+        .to_string_lossy()
+        .rsplit(['/', '\\'])
+        .next()
         .is_some_and(|name| {
             matches!(
                 name.to_ascii_lowercase().as_str(),
