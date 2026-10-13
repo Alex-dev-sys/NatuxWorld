@@ -205,6 +205,9 @@ jobs:
       - name: Test Java lock-agent on Java 21
         run: npm run test:lock-agent
 
+      - name: Build native lock runtime resources
+        run: npm run build:lock-runtime
+
       - name: Lint
         run: npm run lint
 
@@ -254,9 +257,6 @@ jobs:
 
       - name: Shared lock clippy
         run: cargo clippy --manifest-path src/profile-lock-core/Cargo.toml --all-targets --locked -- -D warnings
-
-      - name: Build native lock runtime resources
-        run: npm run build:lock-runtime
 
       - name: Test Tauri control signature verifier
         run: cargo test --manifest-path scripts/tauri-control-verifier/Cargo.toml --locked
@@ -444,6 +444,9 @@ jobs:
       - name: Test Java lock-agent on Java 21
         run: npm run test:lock-agent
 
+      - name: Build native lock runtime resources
+        run: npm run build:lock-runtime
+
       - name: Test Electron legacy userData path on macOS
         run: node --test tests/e2e/electron-safe-storage-interop.test.cjs
 
@@ -492,9 +495,6 @@ jobs:
 
       - name: Shared lock clippy
         run: cargo clippy --manifest-path src/profile-lock-core/Cargo.toml --all-targets --locked -- -D warnings
-
-      - name: Build native lock runtime resources
-        run: npm run build:lock-runtime
 
       - name: Rust lint
         run: cargo clippy --manifest-path src/native/Cargo.toml --all-targets --locked -- -D warnings

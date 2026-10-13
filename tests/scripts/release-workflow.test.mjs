@@ -238,3 +238,15 @@ test('Windows CI runs the Electron to Tauri public API parity contract', () => {
     /Test Tauri release metadata and command permissions\n\x20{8}run: node --test .*native-api-parity\.test\.mjs/,
   );
 });
+
+test('Windows and macOS build native lock resources before compiling Tauri', () => {
+  const windowsJob = sectionBetween('  windows:\n', '  macos:\n');
+  const macosJob = sectionBetween('  macos:\n', '  publish:\n');
+
+  for (const [platform, job] of [['Windows', windowsJob], ['macOS', macosJob]]) {
+    const resourceBuild = job.indexOf('      - name: Build native lock runtime resources\n');
+    const rustTests = job.indexOf('      - name: Rust tests\n');
+    assert.ok(resourceBuild >= 0 && resourceBuild < rustTests,
+      `${platform} CI must create the lock-agent JAR before Tauri build.rs runs`);
+  }
+});
