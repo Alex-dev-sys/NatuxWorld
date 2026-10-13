@@ -120,17 +120,21 @@ test('packaged Tauri app reads and preserves an isolated legacy Electron profile
   await fs.writeFile(path.join(userData, 'account.json'), legacyAccountFile);
   await fs.writeFile(path.join(minecraftDir, 'auth.json'), JSON.stringify(legacyOfflineProfile, null, 2));
   await fs.writeFile(worldFile, worldMarker);
-  const port = await unusedPort();
+  const configuredDebugPort = process.env.NATUX_TAURI_E2E_DEBUG_PORT;
+  const port = configuredDebugPort ? Number(configuredDebugPort) : await unusedPort();
+  assert.ok(Number.isInteger(port) && port >= 1024 && port <= 65535,
+    'Tauri test CDP port must be an integer from 1024 through 65535');
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
     if (key.startsWith('NATUX_TAURI_E2E_')
-      || ['VITE_DEV_SERVER_URL', 'NODE_OPTIONS', 'WEBVIEW2_PIPE_FOR_SCRIPT_DEBUGGER'].includes(key)) {
+      || ['VITE_DEV_SERVER_URL', 'NODE_OPTIONS', 'WEBVIEW2_PIPE_FOR_SCRIPT_DEBUGGER',
+        'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'].includes(key)) {
       delete env[key];
     }
   }
   env.APPDATA = appData;
   env.LOCALAPPDATA = localAppData;
-  env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`;
+  if (!configuredDebugPort) env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = `--remote-debugging-port=${port}`;
 
   let child;
   let browser;

@@ -193,18 +193,22 @@ test('Tauri live login → clean Forge install → PLAY → new server-confirmed
   await fs.mkdir(localAppData);
   const packageJson = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
   const userData = path.join(appData, packageJson.name);
-  const debugPort = await unusedPort();
+  const configuredDebugPort = process.env.NATUX_TAURI_E2E_DEBUG_PORT;
+  const debugPort = configuredDebugPort ? Number(configuredDebugPort) : await unusedPort();
+  assert.ok(Number.isInteger(debugPort) && debugPort >= 1024 && debugPort <= 65535,
+    'Tauri live test CDP port must be an integer from 1024 through 65535.');
   const childEnv = { ...process.env };
   for (const key of Object.keys(childEnv)) {
     if (key.startsWith('NATUX_E2E_') || key.startsWith('NATUX_TAURI_E2E_')
       || key.startsWith('NATUX_TAURI_LIVE_')
-      || ['VITE_DEV_SERVER_URL', 'NODE_OPTIONS', 'WEBVIEW2_PIPE_FOR_SCRIPT_DEBUGGER'].includes(key)) {
+      || ['VITE_DEV_SERVER_URL', 'NODE_OPTIONS', 'WEBVIEW2_PIPE_FOR_SCRIPT_DEBUGGER',
+        'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'].includes(key)) {
       delete childEnv[key];
     }
   }
   childEnv.APPDATA = appData;
   childEnv.LOCALAPPDATA = localAppData;
-  childEnv.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = `--remote-debugging-port=${debugPort}`;
+  if (!configuredDebugPort) childEnv.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = `--remote-debugging-port=${debugPort}`;
 
   let child;
   let browser;

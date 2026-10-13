@@ -346,8 +346,9 @@ jobs:
           Copy-Item $signature.FullName 'release/tauri/NatuxWorld-${{ needs.plan.outputs.version }}-x64-setup.exe.sig'
 
       - name: Build Tauri Windows validation bundle
-        if: needs.plan.outputs.tauri != 'true'
-        run: node scripts/run-tauri.mjs build --bundles nsis
+        run: node scripts/run-tauri-validation-build.mjs --bundles nsis
+        env:
+          NATUX_TAURI_E2E_DEBUG_PORT: '9222'
 
       - name: Ensure WebView2 Runtime for Tauri packaged smoke test
         shell: pwsh
@@ -396,9 +397,12 @@ jobs:
         run: npm run test:tauri:packaged
         env:
           NATUX_TAURI_E2E_EXECUTABLE: src/native/target/release/natux-world-launcher-native.exe
+          NATUX_TAURI_E2E_DEBUG_PORT: '9222'
 
       - name: Tauri live acceptance preflight
         run: npm run test:tauri:live
+        env:
+          NATUX_TAURI_E2E_DEBUG_PORT: '9222'
 
       - name: Package Windows (signed)
         if: needs.plan.outputs.signed == 'true'
@@ -418,6 +422,8 @@ jobs:
 
       - name: Installed Tauri and Electron rollback smoke test
         run: npm run test:tauri:installed
+        env:
+          NATUX_TAURI_E2E_DEBUG_PORT: '9222'
 
       - name: Sign update manifest and write Windows checksums
         if: needs.plan.outputs.release == 'true'
