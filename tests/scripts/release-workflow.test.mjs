@@ -217,6 +217,10 @@ test('macOS Tauri validation retains the app bundle required by the startup smok
   assert.match(validationBuild, /npm run tauri:build -- --bundles app,dmg/);
   assert.match(startupSmoke, /bundle\/macos/);
   assert.match(macosJob, /NATUX_TAURI_MACOS_E2E_EXECUTABLE=.*node --test tests\/e2e\/tauri-macos-packaged\.test\.cjs/);
+  assert.match(
+    macosJob,
+    /Packaged macOS smoke test\n\s+# Manual migration-branch validation runs the dedicated Tauri smoke below;\n\s+# keep the legacy Electron CDP smoke on PRs and main-branch release builds\.\n\s+if: github\.event_name != 'workflow_dispatch' \|\| github\.ref == 'refs\/heads\/main'/,
+  );
 });
 
 test('macOS updater job searches DMG in the Tauri dmg output directory', () => {

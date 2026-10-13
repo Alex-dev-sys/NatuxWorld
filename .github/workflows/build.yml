@@ -315,9 +315,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           if ($env:NATUX_CODE_SIGNING_ENABLED -eq 'true') {
-            npm run tauri:build:updater -- --bundles nsis --config "$env:TAURI_WINDOWS_SIGNING_CONFIG"
+            node scripts/run-tauri.mjs build --config src/native/tauri.updater.conf.json --bundles nsis --config "$env:TAURI_WINDOWS_SIGNING_CONFIG"
           } else {
-            npm run tauri:build:updater -- --bundles nsis
+            node scripts/run-tauri.mjs build --config src/native/tauri.updater.conf.json --bundles nsis
           }
           $bundle = 'src/native/target/release/bundle/nsis'
           $installers = @(Get-ChildItem $bundle -File -Filter '*.exe')
@@ -347,7 +347,7 @@ jobs:
 
       - name: Build Tauri Windows validation bundle
         if: needs.plan.outputs.tauri != 'true'
-        run: npm run tauri:build -- --bundles nsis
+        run: node scripts/run-tauri.mjs build --bundles nsis
 
       - name: Packaged Tauri smoke test
         run: npm run test:tauri:packaged
@@ -620,6 +620,9 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
       - name: Packaged macOS smoke test
+        # Manual migration-branch validation runs the dedicated Tauri smoke below;
+        # keep the legacy Electron CDP smoke on PRs and main-branch release builds.
+        if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
         shell: bash
         run: |
           app_executable="$(find release -type f -path '*/NATUX WORLD.app/Contents/MacOS/NATUX WORLD' -print -quit)"
