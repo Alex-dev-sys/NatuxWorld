@@ -13,6 +13,12 @@ files:
   - dist-electron/**/*
   - package.json
 asar: true
+extraResources:
+  - from: build/lock-runtime
+    to: natux-lock
+    filter:
+      - lock-helper*
+      - natux-lock-agent.jar
 # Hardens the packaged Electron binary (runAsNode / NODE_OPTIONS / inspect off).
 afterPack: scripts/apply-fuses.cjs
 win:

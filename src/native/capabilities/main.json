@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "First-stage local launcher commands with validated native OS integration.",
+  "windows": ["main"],
+  "permissions": [
+    "allow-first-stage",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-start-dragging"
+  ]
+}

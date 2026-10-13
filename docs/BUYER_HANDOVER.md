@@ -129,6 +129,25 @@ Ed25519-подпись `natux-update.json` проверяет канал Windows
 отдельной от подписи executable. macOS-обновления в текущем коде остаются ручными;
 одна настройка Developer ID не включает автоматическое обновление macOS.
 
+Для Tauri действуют отдельные правила. Платные сертификаты подписи Windows/macOS
+не обязательны для сборки и проверки Tauri update-пакетов. Их криптографическая
+подпись обязательна и использует `TAURI_SIGNING_PRIVATE_KEY`; control-feed
+подписывается отдельным `UPDATE_SIGNING_PRIVATE_KEY`. Эти приватные ключи остаются
+в GitHub Actions secrets и не заменяют сертификаты ОС.
+
+Без сертификата CI выпускает Windows installer без Authenticode, поэтому Windows
+может показать SmartScreen. На macOS CI ставит ad-hoc подпись без Apple Developer
+сертификата и notarization; Gatekeeper всё ещё может попросить пользователя
+вручную разрешить приложение в Privacy & Security. Чтобы разрешить Tauri release
+workflow без сертификатов, задайте `TAURI_UPDATES_ENABLED=true` и явный
+`TAURI_ROLLOUT_PCT`; оставьте `CODE_SIGNING_ENABLED` выключенным. Этот workflow
+может опубликовать релиз, поэтому сначала завершите проверки на тестовых профилях.
+`TAURI_MIGRATION_ENABLED` разрешается включать лишь после завершения миграционной
+приёмки. См. официальные инструкции
+[Tauri для Windows](https://v2.tauri.app/distribute/sign/windows/),
+[Tauri для macOS](https://v2.tauri.app/es/distribute/sign/macos/) и
+[Tauri updater](https://v2.tauri.app/plugin/updater/).
+
 ## Передача доступов
 
 Передавайте через защищённый менеджер паролей:

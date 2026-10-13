@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import { bridge } from '../services/electron-bridge';
-import type { ServerStatus, ServerInfo } from '../../electron/services/LauncherService';
+import { bridge } from '../services/native-bridge';
+import type { ServerStatus, ServerInfo } from '../types/native';
 
 interface ServerStatusState {
   status: ServerStatus | null;

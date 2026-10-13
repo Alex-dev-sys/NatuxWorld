@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import type { LaunchProgress } from '../../electron/services/LauncherService';
-import { bridge } from '../services/electron-bridge';
+import type { LaunchProgress } from '../types/native';
+import { bridge } from '../services/native-bridge';
 import { useAccountStore } from './useAccountStore';
 import { useSettingsStore } from './useSettingsStore';
 import { BRAND } from '../../brand.config';

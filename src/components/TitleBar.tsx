@@ -1,6 +1,6 @@
 import { Minus, Square, X, Settings as SettingsIcon, Copy, Check } from 'lucide-react';
-import { bridge } from '../services/electron-bridge';
-import { useIsMaximized } from '../hooks/useElectron';
+import { bridge } from '../services/native-bridge';
+import { useIsMaximized } from '../hooks/useWindowMaximized';
 import { useCopied } from '../hooks/useCopied';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { Tooltip } from './ui/Tooltip';
@@ -25,8 +25,11 @@ export function TitleBar() {
   const t = pick(useLang(), TR);
 
   return (
-    <div className="titlebar-drag relative flex h-12 w-full items-center justify-between px-3">
-      <div className="titlebar-no-drag flex items-center gap-2">
+    <div
+      className="titlebar-drag relative flex h-12 w-full items-center justify-between px-3"
+      data-tauri-drag-region="deep"
+    >
+      <div className="titlebar-no-drag flex items-center gap-2" data-tauri-drag-region="false">
         <div className="flex h-7 items-center gap-2 rounded-lg bg-white/[0.03] px-2.5 ring-1 ring-white/[0.06]">
           <span className="h-1.5 w-1.5 rounded-full bg-success shadow-[0_0_8px_rgba(0,255,127,0.8)]" />
           <span className="text-[11px] font-medium text-white/70">{BRAND.name}</span>
@@ -49,7 +52,7 @@ export function TitleBar() {
         </div>
       </div>
 
-      <div className="titlebar-no-drag flex items-center gap-1.5">
+      <div className="titlebar-no-drag flex items-center gap-1.5" data-tauri-drag-region="false">
         <ProfileMenu />
 
         <Tooltip label={t.settings}>

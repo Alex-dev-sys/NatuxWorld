@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { bridge } from '../services/electron-bridge';
+import { bridge } from '../services/native-bridge';
 
 interface User {
   username: string;

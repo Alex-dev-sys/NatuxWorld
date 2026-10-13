@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
-import type { NewsItem } from '../../electron/services/NewsService';
+import type { NewsItem } from '../types/native';
 
 export function NewsModal({ item, onClose }: { item: NewsItem | null; onClose: () => void }) {
   return (

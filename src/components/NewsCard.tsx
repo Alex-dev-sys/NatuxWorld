@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Sparkles, ShoppingBag, Hammer, Trash2 } from 'lucide-react';
-import type { NewsItem } from '../../electron/services/NewsService';
+import type { NewsItem } from '../types/native';
 import { cn } from '../utils/cn';
 
 const iconMap = {

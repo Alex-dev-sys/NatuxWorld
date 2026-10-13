@@ -1,4 +1,5 @@
 import { ipcMain, shell, dialog } from 'electron';
+import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -12,6 +13,7 @@ import { UpdateService } from '../services/UpdateService';
 import { AccountService, AccountApiError } from '../services/AccountService';
 import { DiagnosticsService } from '../services/DiagnosticsService';
 import { playtime } from '../services/PlaytimeService';
+import { withGameLock } from '../services/NativeLockService';
 import { getScreenshotsDir } from '../utils/paths';
 
 export const launcher = new LauncherService();
@@ -22,6 +24,24 @@ export const settings = new SettingsService();
 export const updater = new UpdateService();
 export const account = new AccountService();
 const diagnostics = new DiagnosticsService();
+
+interface ApprovedJavaSelection {
+  requestedPath: string;
+  executablePath: string;
+  networkPath: boolean;
+}
+
+function pathKey(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function isWindowsNetworkPath(value: string): boolean {
+  if (process.platform !== 'win32') return false;
+  const normalized = value.replace(/\//g, '\\').toLowerCase();
+  if (normalized.startsWith('\\\\?\\')) return normalized.startsWith('\\\\?\\unc\\');
+  return normalized.startsWith('\\\\');
+}
 
 /** Coerce arbitrary IPC input into a sane integer MiB value for JVM heap flags. */
 function clampMemory(value: unknown): number {
@@ -44,6 +64,10 @@ function sanitizeServer(value: unknown): string | undefined {
 }
 
 export function registerIpcHandlers(): void {
+  // VERIFY_JAVA may only execute a path the same renderer just selected in the
+  // native file picker. A compromised renderer cannot use this IPC as spawn().
+  const approvedJavaSelections = new Map<number, ApprovedJavaSelection>();
+
   // Username and game credentials come from the verified account session — never from the renderer.
   ipcMain.handle(IPC.LAUNCHER.PLAY, async (_e, options) => {
     if (!options || typeof options !== 'object') {
@@ -85,13 +109,13 @@ export function registerIpcHandlers(): void {
         ? (creds as { username: string }).username
         : 'Player';
     // Same charset rule as launcher:play — auth.json must never hold an unlaunchable nick.
-    return auth.login(sanitizeUsername(raw));
+    return withGameLock(() => auth.login(sanitizeUsername(raw)));
   });
-  ipcMain.handle(IPC.AUTH.LOGOUT, () => auth.logout());
+  ipcMain.handle(IPC.AUTH.LOGOUT, () => withGameLock(() => auth.logout()));
   ipcMain.handle(IPC.AUTH.GET_USER, () => auth.getUser());
 
   ipcMain.handle(IPC.JAVA.DETECT, () => java.detect());
-  ipcMain.handle(IPC.JAVA.INSTALL, () => java.install());
+  ipcMain.handle(IPC.JAVA.INSTALL, () => withGameLock((signal) => java.install(signal)));
 
   ipcMain.handle(IPC.NEWS.GET_ALL, () => news.getAll());
 
@@ -125,22 +149,60 @@ export function registerIpcHandlers(): void {
   });
   ipcMain.handle(IPC.SETTINGS.GET_SYSTEM_MEMORY, () => Math.floor(os.totalmem() / (1024 * 1024)));
   ipcMain.handle(IPC.SETTINGS.RESET, () => settings.reset());
-  ipcMain.handle(IPC.SETTINGS.PICK_JAVA, async () => {
+  ipcMain.handle(IPC.SETTINGS.PICK_JAVA, async (event) => {
+    approvedJavaSelections.delete(event.sender.id);
     const r = await dialog.showOpenDialog({ properties: ['openFile'], title: 'Выберите java(w).exe' });
-    return r.canceled ? null : r.filePaths[0];
+    if (r.canceled || !r.filePaths[0]) return null;
+    const selectedPath = r.filePaths[0];
+    try {
+      const executablePath = await fsp.realpath(selectedPath);
+      const stat = await fsp.stat(executablePath);
+      if (stat.isFile()) {
+        approvedJavaSelections.set(event.sender.id, {
+          requestedPath: path.resolve(selectedPath),
+          executablePath,
+          networkPath: isWindowsNetworkPath(selectedPath) || isWindowsNetworkPath(executablePath),
+        });
+      }
+    } catch {
+      // Leave verification disabled when the selected file cannot be resolved.
+    }
+    return selectedPath;
   });
-  ipcMain.handle(IPC.SETTINGS.VERIFY_JAVA, (_e, p: { path?: unknown }) =>
-    new Promise<{ ok: boolean; version?: string; error?: string }>((resolve) => {
-      if (!p || typeof p.path !== 'string') {
-        resolve({ ok: false, error: 'Некорректный путь' });
+  ipcMain.handle(IPC.SETTINGS.VERIFY_JAVA, async (event, p: { path?: unknown }) => {
+    const approved = approvedJavaSelections.get(event.sender.id);
+    approvedJavaSelections.delete(event.sender.id);
+    if (!p || typeof p.path !== 'string') {
+      return { ok: false, error: 'Некорректный путь' };
+    }
+    if (!approved || pathKey(p.path) !== pathKey(approved.requestedPath)) {
+      return { ok: false, error: 'Сначала выберите Java в диалоге' };
+    }
+    if (approved.networkPath) {
+      return { ok: false, error: 'Сетевые пути Java не поддерживаются, выберите локальный файл' };
+    }
+    const base = path.basename(approved.executablePath).toLowerCase();
+    if (!['java', 'javaw', 'java.exe', 'javaw.exe'].includes(base)) {
+      return { ok: false, error: 'Путь должен указывать на java(w)' };
+    }
+    try {
+      const currentTarget = await fsp.realpath(approved.requestedPath);
+      const stat = await fsp.stat(currentTarget);
+      if (!stat.isFile() || pathKey(currentTarget) !== pathKey(approved.executablePath)) {
+        return { ok: false, error: 'Выбранный файл Java изменился, выберите его заново' };
+      }
+    } catch {
+      return { ok: false, error: 'Выбранный файл Java недоступен' };
+    }
+
+    return new Promise<{ ok: boolean; version?: string; error?: string }>((resolve) => {
+      let proc: ReturnType<typeof spawn>;
+      try {
+        proc = spawn(approved.executablePath, ['-version'], { windowsHide: true });
+      } catch {
+        resolve({ ok: false, error: 'Файл не запускается' });
         return;
       }
-      const base = path.basename(p.path).toLowerCase();
-      if (!['java', 'javaw', 'java.exe', 'javaw.exe'].includes(base)) {
-        resolve({ ok: false, error: 'Путь должен указывать на java(w)' });
-        return;
-      }
-      const proc = spawn(p.path, ['-version']);
       let out = '';
       let settled = false;
       const finish = (r: { ok: boolean; version?: string; error?: string }) => {
@@ -153,7 +215,7 @@ export function registerIpcHandlers(): void {
         proc.kill();
         finish({ ok: false, error: 'Проверка Java зависла (таймаут)' });
       }, 10000);
-      proc.stderr.on('data', (d) => (out += d.toString()));
+      proc.stderr?.on('data', (d) => (out += d.toString()));
       proc.on('close', () => {
         if (JavaService.isJava21Plus(out)) {
           finish({ ok: true, version: out.match(/version "([^"]+)"/)?.[1] ?? '21+' });
@@ -162,7 +224,8 @@ export function registerIpcHandlers(): void {
         }
       });
       proc.on('error', () => finish({ ok: false, error: 'Файл не запускается' }));
-    }));
+    });
+  });
 
   ipcMain.handle(IPC.UPDATER.CHECK, () => updater.check());
   ipcMain.handle(IPC.UPDATER.INSTALL, () => updater.installNow());
@@ -182,15 +245,15 @@ export function registerIpcHandlers(): void {
   });
 
   // Screenshot manager: reveal the game's screenshots folder (created on demand).
-  ipcMain.handle(IPC.SHELL.OPEN_SCREENSHOTS, async () => {
+  ipcMain.handle(IPC.SHELL.OPEN_SCREENSHOTS, () => withGameLock(async () => {
     const dir = getScreenshotsDir();
     const { mkdir } = await import('node:fs/promises');
     await mkdir(dir, { recursive: true });
     const err = await shell.openPath(dir);
     return err ? { ok: false, error: err } : { ok: true };
-  });
+  }));
 
-  ipcMain.handle(IPC.DIAGNOSTICS.RUN, () => diagnostics.run());
+  ipcMain.handle(IPC.DIAGNOSTICS.RUN, () => withGameLock(() => diagnostics.run()));
   ipcMain.handle(IPC.PLAYTIME.GET, () => playtime.getStats());
 
   ipcMain.handle('account:bootstrap', async () => {
@@ -254,11 +317,24 @@ export function registerIpcHandlers(): void {
       return { twoFactor: false as const, user: session.user };
     }));
 
-  ipcMain.handle('account:2faSetup', () =>
+  ipcMain.handle('account:2faSetup', (_e, request?: unknown) =>
     accountWrap(async () => {
+      let code: string | undefined;
+      if (request !== undefined) {
+        if (!request || typeof request !== 'object' || Array.isArray(request)) {
+          throw new AccountApiError('bad_request', 'Некорректный запрос', 400);
+        }
+        const candidate = (request as { code?: unknown }).code;
+        if (candidate !== undefined) {
+          if (typeof candidate !== 'string' || !candidate.trim() || candidate.length > 64) {
+            throw new AccountApiError('bad_request', 'Некорректный код', 400);
+          }
+          code = candidate;
+        }
+      }
       const s = await account.loadStored();
       if (!s) throw new AccountApiError('token_invalid', 'Сессия истекла', 401);
-      return account.twoFactorSetup(s.token);
+      return account.twoFactorSetup(s.token, code);
     }));
 
   ipcMain.handle('account:2faEnable', (_e, p: { code: string }) =>

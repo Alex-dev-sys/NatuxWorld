@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useNews } from '../hooks/useNews';
 import { NewsCard } from '../components/NewsCard';
 import { NewsModal } from '../components/NewsModal';
-import type { NewsItem } from '../../electron/services/NewsService';
+import type { NewsItem } from '../types/native';
 import { useLang, pick } from '../i18n';
 
 const ru = { title: 'НОВОСТИ' };

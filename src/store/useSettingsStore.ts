@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { bridge } from '../services/electron-bridge';
-import type { LauncherSettings } from '../../electron/services/SettingsService';
+import { bridge } from '../services/native-bridge';
+import type { LauncherSettings } from '../types/native';
 
 interface SettingsState {
   settings: LauncherSettings | null;

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { LaunchProgress, LauncherLog, NatuxAPI, UpdateEvent } from '../src/types/native';
 
-const api = {
+const api: NatuxAPI = {
   getVersion: () => ipcRenderer.invoke('app:version'),
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
@@ -17,13 +18,13 @@ const api = {
     play: (options: unknown) => ipcRenderer.invoke('launcher:play', options),
     getStatus: () => ipcRenderer.invoke('launcher:getStatus'),
     cancel: () => ipcRenderer.invoke('launcher:cancel'),
-    onProgress: (cb: (progress: unknown) => void) => {
-      const listener = (_e: unknown, p: unknown) => cb(p);
+    onProgress: (cb) => {
+      const listener = (_e: unknown, p: LaunchProgress) => cb(p);
       ipcRenderer.on('launcher:progress', listener);
       return () => ipcRenderer.removeListener('launcher:progress', listener);
     },
-    onLog: (cb: (line: unknown) => void) => {
-      const listener = (_e: unknown, line: unknown) => cb(line);
+    onLog: (cb) => {
+      const listener = (_e: unknown, lines: LauncherLog[]) => cb(lines);
       ipcRenderer.on('launcher:log', listener);
       return () => ipcRenderer.removeListener('launcher:log', listener);
     },
@@ -35,7 +36,7 @@ const api = {
   },
   java: {
     detect: () => ipcRenderer.invoke('java:detect'),
-    install: (version: string) => ipcRenderer.invoke('java:install', version),
+    install: () => ipcRenderer.invoke('java:install'),
   },
   news: {
     getAll: () => ipcRenderer.invoke('news:getAll'),
@@ -50,13 +51,13 @@ const api = {
     getSystemMemory: () => ipcRenderer.invoke('settings:getSystemMemory'),
     reset: () => ipcRenderer.invoke('settings:reset'),
     pickJava: () => ipcRenderer.invoke('settings:pickJava'),
-    verifyJava: (p: unknown) => ipcRenderer.invoke('settings:verifyJava', p),
+    verifyJava: (p: { path: string }) => ipcRenderer.invoke('settings:verifyJava', p),
   },
   updater: {
     check: () => ipcRenderer.invoke('updater:check'),
     install: () => ipcRenderer.invoke('updater:install'),
-    onUpdate: (cb: (info: unknown) => void) => {
-      const listener = (_e: unknown, info: unknown) => cb(info);
+    onUpdate: (cb) => {
+      const listener = (_e: unknown, info: UpdateEvent) => cb(info);
       ipcRenderer.on('updater:event', listener);
       return () => ipcRenderer.removeListener('updater:event', listener);
     },
@@ -74,7 +75,7 @@ const api = {
     resend: (p: unknown) => ipcRenderer.invoke('account:resend', p),
     login: (p: unknown) => ipcRenderer.invoke('account:login', p),
     login2fa: (p: unknown) => ipcRenderer.invoke('account:login2fa', p),
-    twoFactorSetup: () => ipcRenderer.invoke('account:2faSetup'),
+    twoFactorSetup: (p?: unknown) => ipcRenderer.invoke('account:2faSetup', p),
     twoFactorEnable: (p: unknown) => ipcRenderer.invoke('account:2faEnable', p),
     logout: () => ipcRenderer.invoke('account:logout'),
     logoutGlobal: () => ipcRenderer.invoke('account:logoutGlobal'),
@@ -95,4 +96,4 @@ const api = {
 
 contextBridge.exposeInMainWorld('natux', api);
 
-export type NatuxAPI = typeof api;
+export type { NatuxAPI };

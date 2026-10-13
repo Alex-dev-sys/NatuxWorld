@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { PlayButton } from './PlayButton';
 import { useServerStatus } from '../hooks/useServerStatus';
-import { bridge } from '../services/electron-bridge';
+import { bridge } from '../services/native-bridge';
 import { cn } from '../utils/cn';
 import { useLang, pick } from '../i18n';
 

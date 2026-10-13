@@ -1,9 +1,9 @@
 import { Check, ChevronLeft, ChevronRight, Cpu, Loader2, MemoryStick, ShieldCheck, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
-import { bridge } from '../services/electron-bridge';
+import { bridge } from '../services/native-bridge';
 import { useSettingsStore } from '../store/useSettingsStore';
-import type { JavaInstallation } from '../../electron/services/JavaService';
+import type { JavaInstallation } from '../types/native';
 
 type Step = 0 | 1 | 2;
 

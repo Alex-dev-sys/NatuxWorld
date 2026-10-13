@@ -1,6 +1,7 @@
 import http from 'node:http';
 import https from 'node:https';
 import { BRAND } from '../../brand.config';
+import { readHttpResponse, waitForHttpResponse } from '../utils/http-response';
 
 export interface NewsItem {
   id: string;
@@ -69,23 +70,18 @@ export class NewsService {
 
   private async fetchFromSite(): Promise<NewsItem[] | null> {
     try {
-      const raw = await new Promise<string>((resolve, reject) => {
-        const url = new URL(NEWS_ENDPOINT);
-        const transport = url.protocol === 'http:' ? http : https;
-        const req = transport.get(url, { timeout: 6000, headers: { Accept: 'application/json' } }, (res) => {
-          if (res.statusCode !== 200) {
-            res.resume();
-            reject(new Error(`HTTP ${res.statusCode}`));
-            return;
-          }
-          let data = '';
-          res.setEncoding('utf-8');
-          res.on('data', (chunk) => { data += chunk; });
-          res.on('end', () => resolve(data));
-        });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+      const url = new URL(NEWS_ENDPOINT);
+      const transport = url.protocol === 'http:' ? http : https;
+      const req = transport.request(url, { method: 'GET', headers: { Accept: 'application/json' } });
+      const response = waitForHttpResponse(req, 6000, 'Timeout', async (res) => {
+        if (res.statusCode !== 200) {
+          res.destroy();
+          throw new Error(`HTTP ${res.statusCode}`);
+        }
+        return (await readHttpResponse(res, 512 * 1024)).toString('utf-8');
       });
+      req.end();
+      const raw = await response;
       const parsed: unknown = JSON.parse(raw);
       if (!Array.isArray(parsed)) return null;
       const items = parsed.slice(0, MAX_ITEMS)

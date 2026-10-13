@@ -1,0 +1,57 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "NATUX WORLD",
+  "version": "1.9.15",
+  "identifier": "world.natux.launcher",
+  "build": {
+    "beforeDevCommand": "npm run dev:tauri:web",
+    "beforeBuildCommand": "npm run build:tauri:web",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../../dist"
+  },
+  "app": {
+    "security": {
+      "capabilities": ["main"],
+      "csp": "default-src 'self' customprotocol: asset:; base-uri 'self'; object-src 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' asset: http://asset.localhost data: blob: https:; connect-src ipc: http://ipc.localhost https://vibestudy.ru http://127.0.0.1:3000 https://*.mojang.com https://*.minecraftforge.net https://piston-meta.mojang.com https://resources.download.minecraft.net https://*.githubusercontent.com https://api.github.com"
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "NATUX WORLD",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1140,
+        "minHeight": 720,
+        "resizable": true,
+        "decorations": false,
+        "backgroundColor": "#070707"
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "category": "Game",
+    "shortDescription": "NATUX WORLD Minecraft Launcher",
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    },
+    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "resources": {
+      "../../build/lock-runtime/natux-lock-agent.jar": "natux-lock/natux-lock-agent.jar"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFGRTVCMTRBNUQwNEZGRDAKUldUUS93UmRTckhsSDNGMWxTakU4cXhqc0RaR091dm9ubGNoRnc4SExXU0MrR24vOHhYcUNGRWwK",
+      "endpoints": [
+        "https://github.com/Alex-dev-sys/NatuxWorld/releases/download/tauri-stable-feed/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

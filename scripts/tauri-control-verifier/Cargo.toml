@@ -1,0 +1,14 @@
+[package]
+name = "natux-tauri-control-verifier"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+[[bin]]
+name = "verify-tauri-control-signature"
+path = "src/main.rs"
+
+[dependencies]
+base64 = "=0.22.1"
+ed25519-dalek = "=3.0.0"

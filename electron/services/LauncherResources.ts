@@ -33,12 +33,20 @@ export function buildLibraryJobs(libs: Library[]): DownloadJob[] {
 
 export function buildAssetJobs(index: AssetIndex): DownloadJob[] {
   const jobs: DownloadJob[] = [];
+  const sizesByHash = new Map<string, number>();
   for (const obj of Object.values(index.objects)) {
-    const prefix = obj.hash.slice(0, 2);
+    const hash = obj.hash.toLowerCase();
+    const existingSize = sizesByHash.get(hash);
+    if (existingSize !== undefined) {
+      if (existingSize !== obj.size) throw new Error(`Conflicting asset sizes for hash ${hash}`);
+      continue;
+    }
+    sizesByHash.set(hash, obj.size);
+    const prefix = hash.slice(0, 2);
     jobs.push({
-      url: `${ASSET_BASE_URL}/${prefix}/${obj.hash}`,
-      dest: getAssetObjectPath(obj.hash),
-      sha1: obj.hash,
+      url: `${ASSET_BASE_URL}/${prefix}/${hash}`,
+      dest: getAssetObjectPath(hash),
+      sha1: hash,
       size: obj.size,
     });
   }

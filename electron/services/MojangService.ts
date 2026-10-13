@@ -4,10 +4,11 @@ import fsp from 'node:fs/promises';
 import https from 'node:https';
 import path from 'node:path';
 import { getAssetIndexPath, getAssetsDir, getVersionDir, getVersionJsonPath } from '../utils/paths';
+import { readHttpResponse, waitForHttpResponse } from '../utils/http-response';
 
 const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
-/** Idle (no-bytes) timeout for manifest fetches. */
-const IDLE_TIMEOUT_MS = 20_000;
+/** Total deadline for manifest and metadata requests. */
+const REQUEST_TIMEOUT_MS = 20_000;
 
 export type OsName = 'windows' | 'osx' | 'linux';
 
@@ -215,42 +216,32 @@ export class MojangService {
 
   /** GET a URL and return the raw response body. https-only; refuses non-https redirects. */
   private httpGetTextOnce(url: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const tryGet = (u: string, redirects = 0) => {
-        if (redirects > 5) return reject(new Error('Too many redirects'));
-        if (new URL(u).protocol !== 'https:') {
-          return reject(new Error(`Refusing non-https URL: ${u}`));
+    const tryGet = (u: string, redirects = 0): Promise<string> => {
+      if (redirects > 5) return Promise.reject(new Error('Too many redirects'));
+      if (new URL(u).protocol !== 'https:') {
+        return Promise.reject(new Error(`Refusing non-https URL: ${u}`));
+      }
+      const req = https.request(u, { headers: { 'User-Agent': 'NatuxWorldLauncher' } });
+      const response = waitForHttpResponse(req, REQUEST_TIMEOUT_MS, `Manifest request timeout: ${u}`, async (res) => {
+        if (
+          res.statusCode &&
+          res.statusCode >= 300 &&
+          res.statusCode < 400 &&
+          res.headers.location
+        ) {
+          const next = new URL(res.headers.location, u).toString();
+          res.resume();
+          return tryGet(next, redirects + 1);
         }
-        const req = https
-          .get(u, { headers: { 'User-Agent': 'NatuxWorldLauncher' } }, (res) => {
-            if (
-              res.statusCode &&
-              res.statusCode >= 300 &&
-              res.statusCode < 400 &&
-              res.headers.location
-            ) {
-              tryGet(new URL(res.headers.location, u).toString(), redirects + 1);
-              res.resume();
-              return;
-            }
-            if (res.statusCode !== 200) {
-              reject(new Error(`HTTP ${res.statusCode} for ${u}`));
-              res.resume();
-              return;
-            }
-            let body = '';
-            res.setEncoding('utf-8');
-            res.on('data', (chunk) => (body += chunk));
-            res.on('end', () => resolve(body));
-          })
-          .on('error', reject);
-        // Bound the wait: a connected-but-silent peer must not pin the promise
-        // open forever (the retry wrapper only reacts to rejections).
-        req.setTimeout(IDLE_TIMEOUT_MS, () => {
-          req.destroy(new Error(`Manifest request timeout: ${u}`));
-        });
-      };
-      tryGet(url);
-    });
+        if (res.statusCode !== 200) {
+          res.destroy();
+          throw new Error(`HTTP ${res.statusCode} for ${u}`);
+        }
+        return (await readHttpResponse(res)).toString('utf-8');
+      });
+      req.end();
+      return response;
+    };
+    return tryGet(url);
   }
 }

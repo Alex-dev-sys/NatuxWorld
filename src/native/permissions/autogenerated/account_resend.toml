@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-account-resend"
+description = "Enables the account_resend command without any pre-configured scope."
+commands.allow = ["account_resend"]
+
+[[permission]]
+identifier = "deny-account-resend"
+description = "Denies the account_resend command without any pre-configured scope."
+commands.deny = ["account_resend"]

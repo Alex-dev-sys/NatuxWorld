@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { bridge } from '../services/electron-bridge';
-import type { NewsItem } from '../../electron/services/NewsService';
+import { bridge } from '../services/native-bridge';
+import type { NewsItem } from '../types/native';
 
 export function useNews(): NewsItem[] {
   const [news, setNews] = useState<NewsItem[]>([]);

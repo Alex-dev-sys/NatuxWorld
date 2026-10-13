@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { bridge } from '../services/electron-bridge';
-import type { LauncherLog } from '../types/electron';
+import { bridge } from '../services/native-bridge';
+import type { LauncherLog } from '../types/native';
 
 export interface LogLine {
   id: number;

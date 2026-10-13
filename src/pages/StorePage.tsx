@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { ExternalLink } from 'lucide-react';
-import { bridge } from '../services/electron-bridge';
+import { bridge } from '../services/native-bridge';
 import { useLang, pick } from '../i18n';
 import { BRAND_URLS } from '../../brand.config';
 

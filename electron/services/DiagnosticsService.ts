@@ -4,7 +4,7 @@ import { app } from 'electron';
 import { JavaService } from './JavaService';
 import { getMinecraftDir } from '../utils/paths';
 import { BRAND_URLS } from '../../brand.config';
-import { UPDATE_MANIFEST_URL } from './UpdateTrust';
+import { UPDATE_MANIFEST_URL, UPDATE_SIGNATURE_URL } from './UpdateTrust';
 
 export interface DiagnosticCheck {
   id: string;
@@ -16,14 +16,25 @@ export interface DiagnosticCheck {
 
 const MIN_FREE_BYTES = 1.5 * 1024 * 1024 * 1024; // ~1.5 GB for libs + assets + client
 
-async function fetchLatency(url: string, timeoutMs = 6000): Promise<number | null> {
+interface HttpProbe {
+  status: number;
+  latencyMs: number;
+}
+
+async function fetchProbe(url: string, timeoutMs = 6000): Promise<HttpProbe | null> {
   const t0 = Date.now();
   try {
-    await fetch(url, { method: 'GET', signal: AbortSignal.timeout(timeoutMs) });
-    return Date.now() - t0;
+    const response = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(timeoutMs) });
+    return { status: response.status, latencyMs: Date.now() - t0 };
   } catch {
     return null;
   }
+}
+
+function probeDetail(probe: HttpProbe): string {
+  return probe.status >= 200 && probe.status < 300
+    ? `Ответ за ${probe.latencyMs} мс`
+    : `HTTP ${probe.status} · Ответ за ${probe.latencyMs} мс`;
 }
 
 /**
@@ -61,17 +72,38 @@ export class DiagnosticsService {
   }
 
   private async checkSite(): Promise<DiagnosticCheck> {
-    const latency = await fetchLatency(BRAND_URLS.serverStatus);
-    return latency !== null
-      ? { id: 'site', label: 'Сайт и авторизация', ok: true, detail: `Ответ за ${latency} мс` }
-      : { id: 'site', label: 'Сайт и авторизация', ok: false, detail: 'Не отвечает — проверьте интернет' };
+    const probe = await fetchProbe(BRAND_URLS.serverStatus);
+    return probe
+      ? {
+          id: 'site',
+          label: 'Сайт и авторизация',
+          ok: probe.status >= 200 && probe.status < 300,
+          detail: probeDetail(probe),
+        }
+      : { id: 'site', label: 'Сайт и авторизация', ok: false, detail: 'Нет ответа — проверьте интернет' };
   }
 
   private async checkUpdates(): Promise<DiagnosticCheck> {
-    const latency = await fetchLatency(UPDATE_MANIFEST_URL);
-    return latency !== null
-      ? { id: 'updates', label: 'Канал обновлений', ok: true, detail: `Доступен (${latency} мс)` }
-      : { id: 'updates', label: 'Канал обновлений', ok: false, detail: 'GitHub недоступен — авто-обновления не сработают' };
+    const [manifest, signature] = await Promise.all([
+      fetchProbe(UPDATE_MANIFEST_URL),
+      fetchProbe(UPDATE_SIGNATURE_URL),
+    ]);
+    if (!manifest || !signature) {
+      return {
+        id: 'updates',
+        label: 'Канал обновлений',
+        ok: false,
+        detail: !manifest && !signature
+          ? 'Манифест и подпись не отвечают — авто-обновления не сработают'
+          : `${!manifest ? 'Манифест' : 'Подпись'} не отвечает — авто-обновления не сработают`,
+      };
+    }
+
+    const ok = [manifest, signature].every((probe) => probe.status >= 200 && probe.status < 300);
+    const detail = ok
+      ? `Манифест и подпись доступны (${Math.max(manifest.latencyMs, signature.latencyMs)} мс)`
+      : `Манифест: HTTP ${manifest.status}; подпись: HTTP ${signature.status}`;
+    return { id: 'updates', label: 'Канал обновлений', ok, detail };
   }
 
   private checkMemory(): DiagnosticCheck {

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-launcher-play"
+description = "Enables the launcher_play command without any pre-configured scope."
+commands.allow = ["launcher_play"]
+
+[[permission]]
+identifier = "deny-launcher-play"
+description = "Denies the launcher_play command without any pre-configured scope."
+commands.deny = ["launcher_play"]

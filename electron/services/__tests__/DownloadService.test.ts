@@ -108,6 +108,64 @@ describe('DownloadService.downloadMany (real local HTTP)', () => {
     }
   });
 
+  it('downloads repeated jobs for one destination only once', async () => {
+    const payload = Buffer.from('shared asset', 'utf-8');
+    const sha1 = createHash('sha1').update(payload).digest('hex');
+    let hits = 0;
+    const server = await startServer((_req, res) => {
+      hits += 1;
+      res.writeHead(200, { 'content-length': String(payload.length) });
+      res.end(payload);
+    });
+
+    try {
+      await fsp.mkdir(tmpRoot, { recursive: true });
+      const dest = path.join(tmpRoot, 'shared-asset.txt');
+      const job = { url: `http://127.0.0.1:${server.port}/shared`, dest, sha1, size: payload.length };
+      let progressCalls = 0;
+      await new DownloadService(4).downloadMany([job, { ...job }], () => { progressCalls += 1; });
+      expect(hits).toBe(1);
+      expect(progressCalls).toBe(1);
+      expect(fs.readFileSync(dest)).toEqual(payload);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('serializes concurrent batches that target the same destination', async () => {
+    const payload = Buffer.from('concurrent shared asset', 'utf-8');
+    const sha1 = createHash('sha1').update(payload).digest('hex');
+    let hits = 0;
+    const server = await startServer((_req, res) => {
+      hits += 1;
+      res.writeHead(200, { 'content-length': String(payload.length) });
+      setTimeout(() => res.end(payload), 10);
+    });
+
+    try {
+      await fsp.mkdir(tmpRoot, { recursive: true });
+      const dest = path.join(tmpRoot, 'concurrent-shared.txt');
+      const job = { url: `http://127.0.0.1:${server.port}/shared`, dest, sha1, size: payload.length };
+      const service = new DownloadService(2);
+      await Promise.all([
+        service.downloadMany([job], () => undefined),
+        service.downloadMany([{ ...job }], () => undefined),
+      ]);
+      expect(hits).toBe(1);
+      expect(fs.readFileSync(dest)).toEqual(payload);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('rejects conflicting jobs that write to the same destination', async () => {
+    const dest = path.join(tmpRoot, 'conflicting.txt');
+    await expect(new DownloadService(2).downloadMany([
+      { url: 'https://one.invalid/file', dest, sha1: 'a'.repeat(40), size: 1 },
+      { url: 'https://two.invalid/file', dest, sha1: 'b'.repeat(40), size: 1 },
+    ], () => undefined)).rejects.toThrow('Conflicting download jobs target the same file');
+  });
+
   it('rejects on SHA-1 mismatch', async () => {
     const payload = Buffer.from('wrong', 'utf-8');
     const server = await startServer((_req, res) => {

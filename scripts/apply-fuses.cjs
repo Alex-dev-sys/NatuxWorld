@@ -24,6 +24,7 @@ module.exports = async function afterPack(context) {
     [FuseV1Options.RunAsNode]: false,
     [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
     [FuseV1Options.EnableNodeCliInspectArguments]: false,
+    // The renderer is served by the restricted app:// protocol handler.
     [FuseV1Options.GrantFileProtocolExtraPrivileges]: false,
   })
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { bridge } from '../services/electron-bridge';
+import { bridge } from '../services/native-bridge';
 
 export function useIsMaximized(): boolean {
   const [isMaximized, setIsMaximized] = useState(false);

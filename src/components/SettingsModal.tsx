@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { X, Cpu, MemoryStick, MonitorPlay, Coffee, Check, Languages, RefreshCw, Rocket, Trash2, FileText, Bug, Minimize2, Power, Activity, GitBranch, Camera } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { bridge } from '../services/electron-bridge';
+import { bridge } from '../services/native-bridge';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useLauncherStore } from '../store/useLauncherStore';
 import { useLang, pick } from '../i18n';

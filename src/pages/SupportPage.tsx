@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { LifeBuoy, MessagesSquare, Send, Mail } from 'lucide-react';
-import { bridge } from '../services/electron-bridge';
+import { bridge } from '../services/native-bridge';
 import { DiagnosticsPanel } from '../components/DiagnosticsPanel';
 import { useLang, pick } from '../i18n';
 
