@@ -68,8 +68,11 @@ test('packaged Tauri macOS app starts with and preserves an isolated legacy prof
   const executable = await fs.realpath(packagedExecutable);
   assert.ok(isWithin(repository, packagedExecutable), 'Tauri executable path must be a repository build artifact');
   assert.ok(isWithin(repository, executable), 'Tauri executable must be a repository build artifact');
-  assert.ok(packagedExecutable.includes(`${path.sep}.app${path.sep}Contents${path.sep}MacOS${path.sep}`),
-    'Tauri executable must be inside a macOS app bundle');
+  const executableParts = packagedExecutable.split(path.sep);
+  const appBundleIndex = executableParts.findIndex((part, index) => part.endsWith('.app')
+    && executableParts[index + 1] === 'Contents'
+    && executableParts[index + 2] === 'MacOS');
+  assert.ok(appBundleIndex >= 0, `Tauri executable must be inside a macOS app bundle: ${packagedExecutable}`);
 
   const tempParent = await fs.realpath(os.tmpdir());
   const tempRoot = await fs.mkdtemp(path.join(tempParent, 'natux-tauri-macos-e2e-'));

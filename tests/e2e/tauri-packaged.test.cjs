@@ -130,7 +130,7 @@ test('packaged Tauri app reads and preserves an isolated legacy Electron profile
   }
   env.APPDATA = appData;
   env.LOCALAPPDATA = localAppData;
-  env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = `--remote-debugging-port=${port}`;
+  env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`;
 
   let child;
   let browser;
@@ -160,14 +160,30 @@ test('packaged Tauri app reads and preserves an isolated legacy Electron profile
   child = spawn(executable, [], { cwd: root, env, windowsHide: true, stdio: 'ignore' });
   child.on('error', (error) => { spawnError = error; });
   const endpoint = `http://127.0.0.1:${port}`;
-  await waitFor(async () => {
-    if (spawnError) throw new Error(`Tauri app failed to spawn (${spawnError.code})`);
-    assert.equal(child.exitCode, null, 'Tauri app exited before WebView initialization');
+  let lastEndpointState = 'not reached';
+  try {
+    await waitFor(async () => {
+      if (spawnError) throw new Error(`Tauri app failed to spawn (${spawnError.code})`);
+      assert.equal(child.exitCode, null, 'Tauri app exited before WebView initialization');
+      try {
+        const response = await fetch(`${endpoint}/json/version`, { signal: AbortSignal.timeout(1000) });
+        lastEndpointState = `HTTP ${response.status}`;
+        return response.ok;
+      } catch (error) {
+        lastEndpointState = error.cause?.code ?? error.code ?? error.message;
+        return false;
+      }
+    }, 30_000, 'Tauri WebView2 did not expose its test-only CDP endpoint');
+  } catch (error) {
+    let webViewProcesses = 'process list unavailable';
     try {
-      const response = await fetch(`${endpoint}/json/version`, { signal: AbortSignal.timeout(1000) });
-      return response.ok;
-    } catch { return false; }
-  }, 30_000, 'Tauri WebView2 did not expose its test-only CDP endpoint');
+      const processes = await runFile('tasklist.exe', [
+        '/FI', 'IMAGENAME eq msedgewebview2.exe', '/FO', 'CSV',
+      ], { windowsHide: true, timeout: 5_000 });
+      webViewProcesses = processes.stdout.trim();
+    } catch { }
+    throw new Error(`${error.message}; last CDP response: ${lastEndpointState}; WebView2 processes: ${webViewProcesses}`);
+  }
 
   browser = await chromium.connectOverCDP(endpoint, { timeout: 15_000 });
   const page = await waitFor(
