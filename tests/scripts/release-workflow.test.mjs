@@ -4,10 +4,10 @@ import { dirname, resolve } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-const workflow = await readFile(
+const workflow = (await readFile(
   resolve(dirname(fileURLToPath(import.meta.url)), '../../.github/workflows/build.yml'),
   'utf8',
-);
+)).replace(/\r\n/g, '\n');
 
 function sectionBetween(startMarker, endMarker) {
   const start = workflow.indexOf(startMarker);
