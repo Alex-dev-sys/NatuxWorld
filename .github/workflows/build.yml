@@ -436,14 +436,14 @@ jobs:
 
       - name: Package Windows (signed)
         if: needs.plan.outputs.signed == 'true'
-        run: npm run electron:package -- --config config/electron-builder.signed.cjs --win --x64 --publish never
+        run: node scripts/run-electron.mjs package --config config/electron-builder.signed.cjs --win --x64 --publish never
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
       - name: Package Windows (unsigned)
         if: needs.plan.outputs.signed != 'true'
-        run: npm run electron:package -- --win --x64 --publish never
+        run: node scripts/run-electron.mjs package --win --x64 --publish never
 
       - name: Packaged Windows smoke test
         run: npm run test:electron:packaged

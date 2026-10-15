@@ -394,13 +394,14 @@ test('legacy CI installs and invokes optional Electron tooling explicitly on bot
     const install = job.indexOf('run: npm ci --prefix electron');
     const test = job.indexOf('run: npm run test:electron\n');
     const renderer = job.indexOf('run: npm run electron:build:web');
-    const packaging = job.indexOf('npm run electron:package --');
+    const packager = platform === 'Windows' ? 'node scripts/run-electron.mjs package' : 'npm run electron:package --';
+    const packaging = job.indexOf(packager);
     assert.ok(install >= 0 && install < test && test < renderer && renderer < packaging,
       `${platform} rollback dependencies and tests must precede the optional renderer and packager`);
     assert.doesNotMatch(job, /npx electron-builder/);
-    assert.match(job, /npm run electron:package -- --config config\/electron-builder\.signed\.cjs/);
+    assert.ok(job.includes(`${packager} --config config/electron-builder.signed.cjs`));
     if (platform === 'Windows') {
-      assert.match(job, /npm run electron:package -- --win --x64/);
+      assert.ok(job.includes(`${packager} --win --x64 --publish never`));
     } else {
       assert.equal((job.match(/for arch in x64 arm64; do/g) ?? []).length, 2);
       assert.equal((job.match(/NATUX_LOCK_RUNTIME_TARGET="\$target" npm run build:lock-runtime/g) ?? []).length, 2);

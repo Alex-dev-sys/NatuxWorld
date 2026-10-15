@@ -111,13 +111,16 @@ Function NatuxProtectKnownFolder
     ${If} $1 != 0
       System::Call 'ole32::CoTaskMemFree(p r1)'
     ${EndIf}
-    ; The optional folder can be unregistered as well as absent on disk.
-    ; Only HRESULT_FROM_WIN32(FILE/PATH_NOT_FOUND) is safe to skip.
+    ; Only Downloads/Saved Games may be unregistered or absent. Required shared
+    ; folders such as ProgramData must resolve even for FILE/PATH_NOT_FOUND.
     ${If} $2 == -2147024894
     ${OrIf} $2 == -2147024893
-      Goto natux_known_folder_done
+      ${If} $0 == "{374DE290-123F-4565-9164-39C4925E467B}"
+      ${OrIf} $0 == "{4C5C32FF-BB9D-43B0-BF7D-478D689A2CF6}"
+        Goto natux_known_folder_done
+      ${EndIf}
     ${EndIf}
-    !insertmacro NATUX_MIGRATION_ABORT "A standard user directory could not be resolved."
+    !insertmacro NATUX_MIGRATION_ABORT "A protected standard directory could not be resolved."
   ${EndIf}
   ${If} $1 == 0
     !insertmacro NATUX_MIGRATION_ABORT "A standard user directory did not return a path."
@@ -151,6 +154,15 @@ FunctionEnd
 !macroend
 
 !macro NATUX_CHECK_PROTECTED_DIRECTORIES
+  ; Protect shared/system roots without excluding ordinary application children.
+  !insertmacro NATUX_PROTECT_DIRECTORY "$WINDIR"
+  !insertmacro NATUX_PROTECT_DIRECTORY "$SYSDIR"
+  !insertmacro NATUX_PROTECT_DIRECTORY "$PROGRAMFILES32"
+  !insertmacro NATUX_PROTECT_DIRECTORY "$PROGRAMFILES64"
+  !insertmacro NATUX_PROTECT_DIRECTORY "$COMMONFILES32"
+  !insertmacro NATUX_PROTECT_DIRECTORY "$COMMONFILES64"
+  Push "{62AB5D82-FDC1-4DC3-A9DD-070D1D495D97}"
+  Call NatuxProtectKnownFolder
   !insertmacro NATUX_PROTECT_PROFILE "$APPDATA\natux-world-launcher"
   !insertmacro NATUX_PROTECT_DIRECTORY "$APPDATA"
   !insertmacro NATUX_PROTECT_DIRECTORY "$LOCALAPPDATA"
@@ -267,7 +279,7 @@ FunctionEnd
     ; Keep the install directory out of the installer's working-directory handle.
     ; _?= runs the uninstaller in place and lets ExecWait observe its real exit.
     ; The old uninstaller recursively deletes its install directory. The canonical
-    ; preflight above excludes preserved profiles and standard user-data roots.
+    ; preflight excludes preserved profiles and standard user/system/shared roots.
     SetOutPath "$TEMP"
     ClearErrors
     ExecWait '$\"$NatuxLegacyUninstaller$\" /S /currentuser _?=$NatuxLegacyDirectory' $R0
