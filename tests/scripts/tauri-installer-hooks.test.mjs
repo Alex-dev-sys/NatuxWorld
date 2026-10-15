@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import test from 'node:test';
@@ -67,25 +67,87 @@ async function compile(filename, source) {
   assert.equal(result.status, 0, result.output);
 }
 
-async function fixture(root, nonce, hook) {
+async function readOnlyProbe(root, hook, statements) {
+  const legacy = path.join(root, 'owned legacy directory');
+  await mkdir(legacy);
+  const include = path.join(root, 'read-only-hook.nsh');
+  await writeFile(include, hook);
+  const executable = path.join(root, 'read-only-probe.exe');
+  const receipt = path.join(root, 'completed.txt');
+  await compile(path.join(root, 'read-only-probe.nsi'), `
+Unicode true
+!include "LogicLib.nsh"
+!include "FileFunc.nsh"
+!include "${nsis(include)}"
+Name "Natux read-only directory probe"
+OutFile "${nsis(executable)}"
+RequestExecutionLevel user
+SilentInstall silent
+Section
+  Push "${nsis(legacy)}"
+  Call NatuxCanonicalDirectory
+  Pop $NatuxCanonicalLegacy
+  ${statements}
+  FileOpen $9 "${nsis(receipt)}" w
+  FileWrite $9 "completed"
+  FileClose $9
+SectionEnd
+`);
+  // No NSIS_HOOK_PRE/POSTINSTALL, uninstaller, registry writes or production
+  // directories are modified. Only the protected-directory preflight is called.
+  return { result: execute(executable, ['/S']), receipt };
+}
+
+async function fixture(root, nonce, hook, scenario) {
   assert.ok(childOf(root, path.join(root, nonce)));
   const base = path.join(root, nonce);
-  const old = path.join(base, 'Old Electron with spaces');
+  const home = path.join(base, 'user long');
+  const roaming = path.join(home, 'AppData', 'Roaming');
+  const local = path.join(home, 'AppData', 'Local');
+  const documents = path.join(home, 'Documents');
+  const profile = path.join(roaming, 'natux-world-launcher');
+  const ordinary = path.join(base, 'Old Electron with spaces');
+  const old = scenario === 'profile-root' || scenario === 'case-trailing' || scenario === 'short-alias' ? profile
+    : scenario === 'profile-child' ? path.join(profile, 'minecraft')
+      : scenario === 'profile-ancestor' ? path.dirname(roaming)
+      : scenario === 'roaming-root' ? roaming : scenario === 'local-root' ? local
+        : scenario === 'home-root' ? home : scenario === 'documents-root' ? documents
+          : scenario === 'programs-child' ? path.join(local, 'Programs', 'NATUX WORLD')
+            : scenario === 'prefix-sibling' ? `${profile}-other` : ordinary;
   const native = path.join(base, 'New Native with spaces');
   const namespace = `Software\\NatuxTauriInstallerHookTests\\${nonce}`;
   const startupEntries = entries.map((_, i) => `fixture-${nonce}-legacy-${i}`);
   const product = `fixture-${nonce}-native`;
+  const optional = path.join(base, 'not-created protected folder');
+  for (const directory of [roaming, local, documents]) await mkdir(directory, { recursive: true });
+  if (scenario === 'protected-file') await writeFile(optional, 'invalid protected directory');
+  if (scenario === 'legacy-junction') {
+    await mkdir(profile);
+    await symlink(profile, old, 'junction');
+  } else if (scenario === 'protected-junction') {
+    const redirectedProfile = path.join(old, 'redirected-profile');
+    await mkdir(redirectedProfile, { recursive: true });
+    await symlink(redirectedProfile, profile, 'junction');
+  }
   await mkdir(path.join(old, 'resources'), { recursive: true });
-  await mkdir(path.join(base, 'profile', 'saves', 'fixture-world'), { recursive: true });
+  await mkdir(path.join(profile, 'minecraft', 'saves', 'fixture-world'), { recursive: true });
   await writeFile(path.join(old, 'NATUX WORLD.exe'), 'MZ owned fixture, never executable');
   await writeFile(path.join(old, 'resources', 'app.asar'), 'owned legacy runtime');
-  await writeFile(path.join(base, 'profile', 'settings.json'), '{"fixture":"preserve"}');
-  await writeFile(path.join(base, 'profile', 'saves', 'fixture-world', 'level.dat'), 'world sentinel');
+  await writeFile(path.join(profile, 'settings.json'), '{"fixture":"preserve"}');
+  await writeFile(path.join(profile, 'minecraft', 'saves', 'fixture-world', 'level.dat'), 'world sentinel');
   let isolated = replaceExact(hook, `Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${legacyGuid}`, `${namespace}\\Legacy`, 1);
   isolated = replaceExact(isolated, runKey, `${namespace}\\Run`, 1);
   for (const [index, entry] of entries.entries()) {
     isolated = replaceExact(isolated, `"${entry}"`, `"${startupEntries[index]}"`, 2);
   }
+  // Only the inputs are remapped. Production canonicalization and abort logic
+  // run unchanged, without reading/writing any real user-data or registry roots.
+  const protectedMacro = isolated.match(/!macro NATUX_CHECK_PROTECTED_DIRECTORIES\r?\n[\s\S]*?!macroend/g);
+  assert.equal(protectedMacro?.length, 1);
+  isolated = replaceExact(isolated, protectedMacro[0], `!macro NATUX_CHECK_PROTECTED_DIRECTORIES
+  !insertmacro NATUX_PROTECT_PROFILE "${nsis(profile)}"
+${[optional, roaming, local, home, documents].map(directory => `  !insertmacro NATUX_PROTECT_DIRECTORY "${nsis(directory)}"`).join('\n')}
+!macroend`, 1);
   assert.ok(!isolated.includes(legacyGuid));
   assert.ok(!isolated.includes(runKey));
   await writeFile(path.join(base, 'isolated-hook.nsh'), isolated);
@@ -109,8 +171,8 @@ Section "Uninstall"
   FileOpen $1 "${nsis(receipt)}" w
   FileWrite $1 "$0"
   FileClose $1
-  Delete "${nsis(path.join(old, 'NATUX WORLD.exe'))}"
-  Delete "${nsis(path.join(old, 'resources', 'app.asar'))}"
+  ; Mirror the published Electron uninstaller's recursive install-root removal.
+  RMDir /r "$INSTDIR"
   DeleteRegKey HKCU "${namespace}\\Legacy"
 SectionEnd
 `);
@@ -137,12 +199,27 @@ Section
   !insertmacro NSIS_HOOK_POSTINSTALL
 SectionEnd
 `);
-  return { base, old, native, namespace, startupEntries, product, receipt, takeover };
+  return { base, old, native, profile, namespace, startupEntries, product, receipt, takeover };
 }
 
 async function preserved(f) {
-  assert.equal(await readFile(path.join(f.base, 'profile', 'settings.json'), 'utf8'), '{"fixture":"preserve"}');
-  assert.equal(await readFile(path.join(f.base, 'profile', 'saves', 'fixture-world', 'level.dat'), 'utf8'), 'world sentinel');
+  assert.equal(await readFile(path.join(f.profile, 'settings.json'), 'utf8'), '{"fixture":"preserve"}');
+  assert.equal(await readFile(path.join(f.profile, 'minecraft', 'saves', 'fixture-world', 'level.dat'), 'utf8'), 'world sentinel');
+}
+
+function shortDirectory(directory) {
+  const literal = directory.replaceAll("'", "''");
+  const result = execute('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `
+    Add-Type -TypeDefinition 'using System; using System.Text; using System.Runtime.InteropServices;
+      public static class NatuxShortPath { [DllImport("kernel32.dll", CharSet=CharSet.Unicode)]
+      public static extern uint GetShortPathName(string path, StringBuilder output, uint length); }'
+    $output = New-Object System.Text.StringBuilder 32768
+    $length = [NatuxShortPath]::GetShortPathName('${literal}', $output, 32768)
+    if ($length -eq 0 -or $length -ge 32768) { throw 'Could not query fixture short path' }
+    $output.ToString()
+  `]);
+  assert.equal(result.status, 0, result.output);
+  return result.output.trim();
 }
 
 async function cleanup(root, f) {
@@ -156,23 +233,84 @@ async function cleanup(root, f) {
   await rm(root, { recursive: true, force: true });
 }
 
-test('compiled NSIS takeover preserves profiles and rejects unsafe uninstall commands', {
+test('production hook guards canonical user-data directories before running an uninstaller', async () => {
+  const hook = await readFile(path.join(repository, 'config', 'tauri-installer-hooks.nsh'), 'utf8');
+  assert.match(hook, /GetFinalPathNameByHandleW/);
+  assert.match(hook, /CreateFileW[\s\S]*?0x02000000/);
+  assert.ok(hook.indexOf('!insertmacro NATUX_CHECK_PROTECTED_DIRECTORIES', hook.indexOf('!macro NSIS_HOOK_PREINSTALL')) < hook.indexOf('ExecWait'));
+  assert.ok(hook.includes('NATUX_PROTECT_PROFILE "$APPDATA\\natux-world-launcher"'));
+  for (const root of ['$APPDATA', '$LOCALAPPDATA', '$PROFILE', '$DOCUMENTS', '$DESKTOP']) {
+    assert.ok(hook.includes(`NATUX_PROTECT_DIRECTORY "${root}"`), root);
+  }
+});
+
+test('compiled real known-folder preflight is read-only and only skips missing optional folders', {
+  timeout: 120_000,
+  skip: process.platform !== 'win32' ? 'Windows known-folder APIs are required.' : false,
+}, async t => {
+  if (!await exists(compiler)) return t.skip('Tauri NSIS compiler is unavailable.');
+  const hook = await readFile(path.join(repository, 'config', 'tauri-installer-hooks.nsh'), 'utf8');
+  const parent = path.join(repository, 'src', 'native', 'target');
+  await mkdir(parent, { recursive: true });
+  const cases = [
+    { name: 'unmodified production macro and actual Windows known-folder APIs', status: 0 },
+    { name: 'optional FILE_NOT_FOUND without an allocated pointer', hresult: -2147024894, status: 0 },
+    { name: 'optional PATH_NOT_FOUND without an allocated pointer', hresult: -2147024893, status: 0 },
+    { name: 'optional FILE_NOT_FOUND frees an API-returned pointer', hresult: -2147024894, pointer: true, status: 0 },
+    { name: 'ACCESS_DENIED still aborts', hresult: -2147024891, status: 2 },
+    { name: 'other lookup errors still abort', hresult: -2147467259, status: 2 },
+    { name: 'success with no path pointer still aborts', hresult: 0, status: 2 },
+  ];
+  for (const scenario of cases) {
+    await t.test(scenario.name, async () => {
+      const root = await mkdtemp(path.join(parent, 'installer-hook-known-folder-'));
+      try {
+        const real = scenario.hresult === undefined;
+        const code = real ? hook : replaceExact(hook,
+          "  System::Call 'shell32::SHGetKnownFolderPath(g r0, i 0x4000, p 0, *p .r1) i.r2'",
+          `${scenario.pointer ? "  System::Call 'ole32::CoTaskMemAlloc(i 16) p.r1'\n" : ''}  StrCpy $2 ${scenario.hresult}`, 1);
+        const statement = real ? '!insertmacro NATUX_CHECK_PROTECTED_DIRECTORIES' : `
+          StrCpy $1 12345
+          Push "{4C5C32FF-BB9D-43B0-BF7D-478D689A2CF6}"
+          Call NatuxProtectKnownFolder
+          \${If} $1 != 12345
+            SetErrorLevel 3
+            Abort "The known-folder helper corrupted its caller registers."
+          \${EndIf}`;
+        const { result, receipt } = await readOnlyProbe(root, code, statement);
+        assert.equal(result.status, scenario.status, result.output);
+        assert.equal(await exists(receipt), scenario.status === 0);
+      } finally { await cleanup(root); }
+    });
+  }
+});
+
+test('compiled NSIS takeover preserves canonical profiles and rejects unsafe uninstall commands', {
   timeout: 240_000,
   skip: process.platform !== 'win32' ? 'NSIS hook runtime acceptance requires Windows.' : false,
 }, async t => {
   if (!await exists(compiler)) return t.skip('Tauri NSIS compiler is unavailable; run this after the Windows Tauri build.');
   const hook = await readFile(path.join(repository, 'config', 'tauri-installer-hooks.nsh'), 'utf8');
   await mkdir(path.join(repository, 'src', 'native', 'target'), { recursive: true });
-  for (const scenario of ['takeover', 'keep-native-startup', 'unquoted', 'incomplete', 'extra-arguments', 'drive-root']) {
-    await t.test(scenario, async () => {
+  for (const scenario of ['takeover', 'programs-child', 'prefix-sibling', 'keep-native-startup',
+    'unquoted', 'incomplete', 'extra-arguments', 'drive-root', 'profile-root', 'profile-child', 'profile-ancestor',
+    'roaming-root', 'local-root', 'home-root', 'documents-root', 'case-trailing', 'short-alias',
+    'legacy-junction', 'protected-junction', 'protected-file']) {
+    await t.test(scenario, async subtest => {
       const root = await mkdtemp(path.join(repository, 'src', 'native', 'target', 'installer-hook-test-'));
       let f;
       try {
-        f = await fixture(root, randomUUID(), hook);
+        f = await fixture(root, randomUUID(), hook, scenario);
         regWrite(f.namespace, 'Legacy', 'Publisher', 'NATUX WORLD');
         regWrite(f.namespace, 'Legacy', 'DisplayName', 'NATUX WORLD 1.9.15');
         const oldUninstaller = path.join(f.old, 'Uninstall NATUX WORLD.exe');
-        const valid = `"${oldUninstaller}" /currentuser`;
+        let commandDirectory = f.old;
+        if (scenario === 'case-trailing') commandDirectory = `${f.old.toUpperCase()}\\`;
+        if (scenario === 'short-alias') {
+          commandDirectory = shortDirectory(f.old);
+          if (commandDirectory.toLowerCase() === f.old.toLowerCase()) return subtest.skip('The fixture volume does not expose a distinct 8.3 alias.');
+        }
+        const valid = `"${commandDirectory}\\Uninstall NATUX WORLD.exe" /currentuser`;
         const command = scenario === 'unquoted' ? oldUninstaller
           : scenario === 'incomplete' ? `"${oldUninstaller}`
             : scenario === 'extra-arguments' ? `${valid} --delete-app-data`
@@ -184,7 +322,7 @@ test('compiled NSIS takeover preserves profiles and rejects unsafe uninstall com
         regWrite(f.namespace, 'Run', f.startupEntries[1], unrelated);
         if (scenario === 'keep-native-startup') regWrite(f.namespace, 'Run', f.product, unrelated);
         const result = execute(f.takeover, ['/S']);
-        const success = scenario === 'takeover' || scenario === 'keep-native-startup';
+        const success = ['takeover', 'programs-child', 'prefix-sibling', 'keep-native-startup'].includes(scenario);
         assert.equal(result.status, success ? 0 : 2, result.output);
         await preserved(f);
         assert.equal(regRead(f.namespace, 'Run', f.startupEntries[1]), unrelated);
