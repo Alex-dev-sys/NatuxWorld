@@ -4,6 +4,7 @@ use std::sync::{Mutex, MutexGuard};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, Wry};
+#[cfg(not(windows))]
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::settings::LauncherSettings;
@@ -20,6 +21,26 @@ pub struct OsIntegration {
 
 impl OsIntegration {
     pub fn apply_settings(&self, app: &AppHandle, settings: &LauncherSettings) {
+        let _ = self.apply_settings_inner(app, settings, false);
+    }
+
+    pub fn apply_user_settings(
+        &self,
+        app: &AppHandle,
+        settings: &LauncherSettings,
+    ) -> Result<(), String> {
+        if self.apply_settings_inner(app, settings, true)? {
+            crate::startup_migration::retire_legacy_autostart()?;
+        }
+        Ok(())
+    }
+
+    fn apply_settings_inner(
+        &self,
+        app: &AppHandle,
+        settings: &LauncherSettings,
+        update_autostart: bool,
+    ) -> Result<bool, String> {
         let _apply_guard = self
             .apply_lock
             .lock()
@@ -33,12 +54,29 @@ impl OsIntegration {
         self.close_to_tray
             .store(settings.minimize_to_tray && tray_ready, Ordering::SeqCst);
 
-        let autolaunch = app.autolaunch();
-        if settings.launch_on_startup {
-            let _ = autolaunch.enable();
-        } else {
-            let _ = autolaunch.disable();
+        // Saved preferences and isolated/portable profiles must not silently change
+        // the installed application's OS startup registration when opening a window.
+        if !update_autostart {
+            return Ok(false);
         }
+        if !autostart_supported() {
+            return Err("Автозапуск недоступен для переносной копии лаунчера".to_owned());
+        }
+        #[cfg(windows)]
+        let applied = crate::startup_migration::set_user_autostart(settings.launch_on_startup);
+        #[cfg(not(windows))]
+        let applied = {
+            let autolaunch = app.autolaunch();
+            let applied = if settings.launch_on_startup {
+                autolaunch.enable()
+            } else {
+                autolaunch.disable()
+            };
+            applied.map_err(|error| error.to_string())
+        };
+        // Migration is restricted to user settings changes after this succeeds.
+        applied?;
+        Ok(true)
     }
 
     pub fn close_to_tray(&self) -> bool {
@@ -94,7 +132,7 @@ impl OsIntegration {
         let result = TrayIconBuilder::with_id(TRAY_ID)
             .icon(icon)
             .menu(&menu)
-            .tooltip("NATUX WORLD")
+            .tooltip(crate::brand::name())
             .show_menu_on_left_click(false)
             .on_menu_event(|app, event| match event.id().as_ref() {
                 "tray-open" => show_main_window(app),
@@ -165,6 +203,10 @@ pub fn should_hide_startup_window(
 
 pub fn tray_supported() -> bool {
     !cfg!(target_os = "macos")
+}
+
+pub(crate) fn autostart_supported() -> bool {
+    matches!(crate::profile_paths::portable_user_data_dir(), Ok(None))
 }
 
 pub fn show_main_window(app: &AppHandle) {

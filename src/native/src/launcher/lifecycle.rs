@@ -6,6 +6,7 @@ use crate::playtime::PlaytimeService;
 use crate::reporting::ReportingService;
 use crate::settings::SettingsStore;
 
+use super::logs::LaunchLogTail;
 use super::LaunchProgress;
 
 pub(super) struct RuntimeState {
@@ -52,4 +53,5 @@ pub(super) struct LaunchContext<'a> {
     pub(super) account: &'a AccountService,
     pub(super) playtime: Arc<PlaytimeService>,
     pub(super) reporting: Arc<ReportingService>,
+    pub(super) logs: LaunchLogTail,
 }

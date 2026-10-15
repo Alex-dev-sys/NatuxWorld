@@ -20,7 +20,6 @@ use crate::java::{self, JavaTarget};
 
 mod updates;
 
-const SITE_ORIGIN: &str = "https://vibestudy.ru";
 const SITE_PATH: &str = "/api/server/status";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(6);
 const MAX_RESPONSE_BYTES: usize = 16 * 1024;
@@ -67,7 +66,8 @@ impl DiagnosticsService {
         Ok(Self {
             client,
             updates,
-            base_url: Url::parse(SITE_ORIGIN).expect("trusted website origin is valid"),
+            base_url: Url::parse(crate::brand::site_origin())
+                .expect("trusted website origin is valid"),
             minecraft_dir,
             #[cfg(test)]
             allow_localhost_test: false,
@@ -185,9 +185,7 @@ impl DiagnosticsService {
                 && url.port().is_some()
                 && url.port() == self.base_url.port();
         }
-        url.scheme() == "https"
-            && url.host_str() == Some("vibestudy.ru")
-            && url.port().is_none_or(|port| port == 443)
+        crate::brand::is_trusted_site_url(url)
     }
 
     #[cfg(test)]

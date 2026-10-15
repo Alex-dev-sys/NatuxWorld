@@ -19,11 +19,6 @@ use self::validation::{
     parse_api_error, parse_credential_record, parse_game_session, parse_session, parse_user,
 };
 
-#[cfg(natux_local_auth_api)]
-const AUTH_API_ORIGIN: &str = "http://127.0.0.1:3000/api/auth";
-#[cfg(not(natux_local_auth_api))]
-const AUTH_API_ORIGIN: &str = "https://vibestudy.ru/api/auth";
-
 #[derive(Clone)]
 struct StoredSession {
     token: String,
@@ -46,7 +41,7 @@ pub struct AccountService {
 impl AccountService {
     pub fn new(legacy_account_file: PathBuf, install_id: &str) -> Result<Self, reqwest::Error> {
         Ok(Self::with_parts_and_legacy_file(
-            Arc::new(ReqwestTransport::new(AUTH_API_ORIGIN.to_owned())?),
+            Arc::new(ReqwestTransport::new(crate::brand::auth_api().to_owned())?),
             Arc::new(SystemCredentialStore::for_profile(install_id)),
             Some(legacy_account_file),
         ))

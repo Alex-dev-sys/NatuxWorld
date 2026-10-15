@@ -29,6 +29,7 @@ use self::process_tree::{
     configure_process_group, terminate_unmanaged_process_tree, ProcessTreeGuard,
 };
 use super::arguments::LaunchArguments;
+use super::logs::LaunchLogTail;
 
 pub(super) const MAX_LOG_LINE_BYTES: usize = 8192;
 const MAX_LOG_BATCH: usize = 100;
@@ -55,6 +56,7 @@ pub(crate) struct GameOutputPipes {
     receiver: mpsc::Receiver<LauncherLog>,
     stderr_reader: JoinHandle<()>,
     pre_ready_logs: Vec<LauncherLog>,
+    launch_logs: LaunchLogTail,
 }
 
 mod installer;
@@ -71,6 +73,7 @@ pub(crate) async fn spawn_game(
     cancellation: &CancellationToken,
     mut game_lock: GameLock,
     profile_dir: &Path,
+    launch_logs: LaunchLogTail,
 ) -> Result<(Child, ProcessTreeGuard, PathBuf, GameOutputPipes), String> {
     if cancellation.is_cancelled() {
         return Err("Отменено".to_owned());
@@ -115,13 +118,18 @@ pub(crate) async fn spawn_game(
                 };
                 let stdout = BufReader::new(stdout);
                 let (sender, receiver) = mpsc::channel(LOG_QUEUE_CAPACITY);
-                let stderr_reader =
-                    spawn_log_reader(stderr, "stderr", plan.access_token.clone(), sender.clone());
+                let mut stderr_reader = spawn_log_reader(
+                    stderr,
+                    "stderr",
+                    plan.access_token.clone(),
+                    sender.clone(),
+                    launch_logs.clone(),
+                );
                 let ready = tokio::select! {
                     _ = cancellation.cancelled() => Err("Отменено".to_owned()),
                     result = tokio::time::timeout(
                         LOCK_READY_TIMEOUT,
-                        wait_for_lock_ready(stdout, plan.access_token.clone()),
+                        wait_for_lock_ready(stdout, plan.access_token.clone(), &launch_logs),
                     ) => match result {
                         Ok(result) => result,
                         Err(_) => Err("Java не подтвердила защиту файлов игры за отведённое время".to_owned()),
@@ -138,14 +146,20 @@ pub(crate) async fn spawn_game(
                             receiver,
                             stderr_reader,
                             pre_ready_logs,
+                            launch_logs,
                         },
                     )),
                     Err(error) => {
                         let _ = process_tree.terminate();
                         let _ = child.kill().await;
                         let _ = child.wait().await;
-                        stderr_reader.abort();
-                        let _ = stderr_reader.await;
+                        if tokio::time::timeout(POST_EXIT_LOG_DRAIN, &mut stderr_reader)
+                            .await
+                            .is_err()
+                        {
+                            stderr_reader.abort();
+                            let _ = stderr_reader.await;
+                        }
                         drop(sender);
                         let _ = std::fs::remove_file(argfile);
                         Err(error)
@@ -177,7 +191,13 @@ pub(crate) async fn monitor_game(
 ) -> Result<GameProcessOutcome, String> {
     let mut receiver = output.receiver;
     let sender = output.sender;
-    let stdout_reader = spawn_log_reader(output.stdout, "stdout", access_token, sender.clone());
+    let stdout_reader = spawn_log_reader(
+        output.stdout,
+        "stdout",
+        access_token,
+        sender.clone(),
+        output.launch_logs,
+    );
     drop(sender);
     let readers = vec![stdout_reader, output.stderr_reader];
 
@@ -286,6 +306,7 @@ fn spawn_log_reader<R>(
     stream: &'static str,
     access_token: String,
     sender: mpsc::Sender<LauncherLog>,
+    launch_logs: LaunchLogTail,
 ) -> JoinHandle<()>
 where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
@@ -305,10 +326,11 @@ where
                         let text = String::from_utf8_lossy(&line)
                             .trim_end_matches('\r')
                             .replace(&access_token, "[redacted]");
-                        let _ = sender.try_send(LauncherLog {
+                        let log = launch_logs.record(LauncherLog {
                             stream: stream.to_owned(),
                             line: text,
                         });
+                        let _ = sender.try_send(log);
                     }
                     line.clear();
                     dropping = false;
@@ -325,10 +347,11 @@ where
             let text = String::from_utf8_lossy(&line)
                 .trim_end_matches('\r')
                 .replace(&access_token, "[redacted]");
-            let _ = sender.try_send(LauncherLog {
+            let log = launch_logs.record(LauncherLog {
                 stream: stream.to_owned(),
                 line: text,
             });
+            let _ = sender.try_send(log);
         }
     })
 }

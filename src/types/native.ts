@@ -94,6 +94,8 @@ export interface LauncherSettings {
   onboardingCompleted: boolean;
   minimizeToTray: boolean;
   launchOnStartup: boolean;
+  /** Host capability; portable distributions do not register OS startup. */
+  startupSupported?: boolean;
   updateChannel: 'stable' | 'beta';
   telemetryEnabled: boolean;
   installId: string;

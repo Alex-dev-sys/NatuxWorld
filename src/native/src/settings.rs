@@ -30,6 +30,7 @@ const SETTING_FIELDS: &[&str] = &[
     "updateChannel",
     "telemetryEnabled",
     "installId",
+    "startupSupported",
 ];
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -53,6 +54,8 @@ pub struct LauncherSettings {
     pub update_channel: String,
     pub telemetry_enabled: bool,
     pub install_id: String,
+    #[serde(skip_serializing_if = "Option::is_none", skip_deserializing)]
+    pub startup_supported: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -84,6 +87,7 @@ impl Default for LauncherSettings {
             update_channel: "stable".to_owned(),
             telemetry_enabled: false,
             install_id: String::new(),
+            startup_supported: None,
         }
     }
 }
@@ -436,6 +440,9 @@ fn missing_legacy_root() -> io::Error {
 }
 
 fn legacy_settings_path_from_environment() -> io::Result<PathBuf> {
+    if let Some(directory) = crate::profile_paths::portable_user_data_dir()? {
+        return Ok(directory.join("settings.json"));
+    }
     #[cfg(target_os = "windows")]
     let platform = LegacyPlatform::Windows;
     #[cfg(target_os = "macos")]

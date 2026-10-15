@@ -9,6 +9,7 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 use url::Url;
 
 mod control_signature;
+mod integrity;
 mod manifest;
 mod policy;
 
@@ -66,6 +67,7 @@ pub struct UpdaterState {
     pending: Mutex<Option<DownloadedUpdate>>,
     operation: tokio::sync::Mutex<()>,
     background_started: AtomicBool,
+    integrity_started: AtomicBool,
 }
 
 impl Default for UpdaterState {
@@ -74,6 +76,7 @@ impl Default for UpdaterState {
             pending: Mutex::new(None),
             operation: tokio::sync::Mutex::new(()),
             background_started: AtomicBool::new(false),
+            integrity_started: AtomicBool::new(false),
         }
     }
 }
@@ -100,6 +103,16 @@ pub async fn updater_install(
     updater: State<'_, UpdaterState>,
 ) -> Result<(), String> {
     let _operation = updater.operation.lock().await;
+    // Re-evaluate the on-disk portable marker at install time as well as check
+    // time. A pending NSIS must never convert a portable copy to an installed one.
+    if policy::current_update_mode()? != UpdateMode::Automatic {
+        clear_pending(updater.inner())?;
+        emit_error(
+            &app,
+            "This distribution requires a manual update from its versioned release",
+        );
+        return Ok(());
+    }
     let pending = updater
         .pending
         .lock()
@@ -120,10 +133,13 @@ pub async fn updater_install(
 }
 
 pub fn schedule_background_checks(app: &AppHandle, settings: &SettingsStore) {
-    if policy::update_mode(std::env::consts::OS) == UpdateMode::Unsupported
+    if !policy::current_update_mode().is_ok_and(|mode| mode != UpdateMode::Unsupported)
         || !updates_enabled()
-        || !settings.get().is_ok_and(|settings| settings.auto_update)
     {
+        return;
+    }
+    integrity::schedule(app);
+    if !settings.get().is_ok_and(|settings| settings.auto_update) {
         return;
     }
 
@@ -151,7 +167,7 @@ async fn check_update(
     settings: &SettingsStore,
     updater: &UpdaterState,
 ) -> Result<UpdateInfo, String> {
-    let mode = policy::update_mode(std::env::consts::OS);
+    let mode = policy::current_update_mode()?;
     if mode == UpdateMode::Unsupported {
         return Err("Tauri updates are not available for Linux builds yet".to_owned());
     }

@@ -18,6 +18,16 @@ dist/
 dist-electron/
 release/
 
+# Native compiler output
+/src/native/target/
+/scripts/tauri-control-verifier/target/
+/website/natux-plugin/target/
+/src/lock-agent/build/
+
 # Ruflo / claude-flow — local runtime and per-machine config
 .claude/
 .claude-flow/
+
+# The launcher metadata endpoint is source, not a release artifact.
+!/website/src/app/api/launcher/release/
+!/website/src/app/api/launcher/release/route.ts

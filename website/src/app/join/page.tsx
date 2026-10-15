@@ -10,9 +10,8 @@ const MONO = '"JetBrains Mono", monospace'
 const DISPLAY = '"Bebas Neue", sans-serif'
 
 // ─── лаунчер NATUX WORLD ───────────────────────────────────────────────────────
-// Релизы: https://github.com/Alex-dev-sys/NatuxWorld/releases
-// Имена ассетов содержат версию — при бампе достаточно поменять LAUNCHER_VERSION.
-const LAUNCHER_VERSION = '1.9.4'
+// The server adopts new installers only after signed migration metadata is published.
+const LAUNCHER_VERSION = '1.9.15'
 const REL = `https://github.com/Alex-dev-sys/NatuxWorld/releases/download/v${LAUNCHER_VERSION}`
 const DL_WIN = `${REL}/NATUX-WORLD-Setup-${LAUNCHER_VERSION}-x64.exe`
 const DL_MAC_ARM = `${REL}/NATUX-WORLD-${LAUNCHER_VERSION}-arm64.dmg`
@@ -29,9 +28,9 @@ const LAUNCHER_PERKS = [
 
 // Три шага для пути через лаунчер.
 const STEPS = [
-  { n: '01', subtitle: 'ЗАГРУЗКА ПАКЕТА', title: 'СКАЧАТЬ ЛАУНЧЕР', desc: 'Скачай установщик для своей ОС кнопкой выше. Размер ~90 МБ.', note: 'Windows · macOS' },
+  { n: '01', subtitle: 'ЗАГРУЗКА ПАКЕТА', title: 'СКАЧАТЬ ЛАУНЧЕР', desc: 'Скачай установщик для своей ОС кнопкой выше.', note: 'Windows · macOS' },
   { n: '02', subtitle: 'РАЗВЁРТЫВАНИЕ', title: 'УСТАНОВИТЬ', desc: 'Запусти установщик. На первом старте лаунчер сам докачает клиент и сборку.', note: 'Первый старт ~1 мин' },
-  { n: '03', subtitle: 'ВХОД В ОПЕРАЦИЮ', title: 'НАЖАТЬ «ИГРАТЬ»', desc: 'Введи ник, нажми «Играть» — подключение к узлу автоматическое.', note: 'Лицензия не требуется' },
+  { n: '03', subtitle: 'ВХОД В ОПЕРАЦИЮ', title: 'НАЖАТЬ «ИГРАТЬ»', desc: 'Войди в аккаунт и нажми «Играть» — подключение к узлу автоматическое.', note: 'Аккаунт NATUX WORLD' },
 ]
 
 const VERSIONS = ['1.20.1', '1.20.2', '1.20.4', '1.20.6', '1.21', '1.21.1', '1.21.4']
@@ -42,6 +41,23 @@ export default function JoinPage() {
   const [copied, setCopied] = useState(false)
   const [os, setOs] = useState<OS>(null)
   const [showManual, setShowManual] = useState(false)
+  const [release, setRelease] = useState({ version: LAUNCHER_VERSION, downloads: {
+    'windows-x86_64': DL_WIN, 'darwin-aarch64': DL_MAC_ARM, 'darwin-x86_64': DL_MAC_X64,
+  } })
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/launcher/release', { signal: controller.signal }).then(async response => {
+      if (!response.ok) return
+      const value = await response.json()
+      if (typeof value.version === 'string' && value.downloads
+        && ['windows-x86_64', 'darwin-x86_64', 'darwin-aarch64'].every(platform =>
+          typeof value.downloads[platform] === 'string' && value.downloads[platform].startsWith('https://github.com/Alex-dev-sys/NatuxWorld/releases/download/'))) {
+        setRelease(value)
+      }
+    }).catch(() => {})
+    return () => controller.abort()
+  }, [])
 
   // Авто-определение ОС — подсветить нужную кнопку загрузки.
   useEffect(() => {
@@ -140,7 +156,7 @@ export default function JoinPage() {
             {/* кнопки загрузки */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <a
-                href={DL_WIN}
+                href={release.downloads['windows-x86_64']}
                 className={`dl-btn ${os === 'win' ? 'dl-primary' : ''}`}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px',
@@ -162,7 +178,7 @@ export default function JoinPage() {
                     СКАЧАТЬ ДЛЯ WINDOWS
                   </div>
                   <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.15em', color: os === 'win' ? '#ffffffcc' : '#888' }}>
-                    .EXE · 64-bit · v{LAUNCHER_VERSION}
+                    .EXE · 64-bit · v{release.version}
                   </div>
                 </div>
                 {os === 'win' && (
@@ -173,7 +189,7 @@ export default function JoinPage() {
               </a>
 
               <a
-                href={DL_MAC_ARM}
+                href={release.downloads['darwin-aarch64']}
                 className={`dl-btn ${os === 'mac' ? 'dl-primary' : ''}`}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px',
@@ -195,7 +211,7 @@ export default function JoinPage() {
                     СКАЧАТЬ ДЛЯ MACOS
                   </div>
                   <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.15em', color: os === 'mac' ? '#ffffffcc' : '#888' }}>
-                    .DMG · Apple Silicon (M1–M4) · v{LAUNCHER_VERSION}
+                    .DMG · Apple Silicon · v{release.version}
                   </div>
                 </div>
                 {os === 'mac' && (
@@ -207,7 +223,7 @@ export default function JoinPage() {
 
               {/* macOS Intel — вторичный билд (у Apple Silicon нет универсального .dmg) */}
               <a
-                href={DL_MAC_X64}
+                href={release.downloads['darwin-x86_64']}
                 className="join-link"
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px',

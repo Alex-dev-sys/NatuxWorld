@@ -3,8 +3,8 @@
 //! News uses a five-minute in-memory cache. On a failed, invalid, or empty
 //! refresh it returns the last cached list, or a bundled welcome item when no
 //! cache exists. Server status and info fall back to the same offline values
-//! as the Electron services. Production requests always target vibestudy.ru
-//! over HTTPS; the localhost origin constructor exists only in unit tests.
+//! as the Electron services. Network trust is restricted to the shared build-time
+//! brand origin; local development uses its explicitly selected loopback profile.
 
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -14,9 +14,6 @@ use reqwest::{redirect::Policy, Client, StatusCode, Url};
 use serde::Serialize;
 use serde_json::Value;
 
-const SITE_ORIGIN: &str = "https://vibestudy.ru";
-const SITE_HOST: &str = "vibestudy.ru";
-const SERVER_HOST: &str = "mc.vibestudy.ru";
 const NEWS_PATH: &str = "/api/news";
 const SERVER_STATUS_PATH: &str = "/api/server/status";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(6);
@@ -87,7 +84,8 @@ impl PublicApiService {
             .connect_timeout(REQUEST_TIMEOUT)
             .redirect(Policy::none())
             .build()?;
-        let base_url = Url::parse(SITE_ORIGIN).expect("trusted website origin is valid");
+        let base_url =
+            Url::parse(crate::brand::site_origin()).expect("trusted website origin is valid");
         Ok(Self {
             client,
             base_url,
@@ -151,7 +149,7 @@ impl PublicApiService {
         let started = Instant::now();
         match self.fetch_server_payload().await {
             Ok(data) => ServerInfo {
-                ip: SERVER_HOST.to_owned(),
+                ip: crate::brand::server_host().to_owned(),
                 version: data
                     .version
                     .filter(|version| !version.is_empty())
@@ -164,7 +162,7 @@ impl PublicApiService {
                 ping: elapsed_ms(started),
             },
             Err(()) => ServerInfo {
-                ip: SERVER_HOST.to_owned(),
+                ip: crate::brand::server_host().to_owned(),
                 version: "1.20.1+".to_owned(),
                 mode: "Анархия · PvP · Выживание".to_owned(),
                 map: "world_anarchy".to_owned(),
@@ -241,9 +239,7 @@ impl PublicApiService {
         if self.allow_localhost_test {
             return is_localhost_test_url(url) && url.port() == self.base_url.port();
         }
-        url.scheme() == "https"
-            && url.host_str() == Some(SITE_HOST)
-            && url.port().is_none_or(|port| port == 443)
+        crate::brand::is_trusted_site_url(url)
     }
 
     #[cfg(test)]

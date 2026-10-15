@@ -1,4 +1,5 @@
 fn main() {
+    println!("cargo:rerun-if-changed=../../config/launcher-brand.json");
     println!("cargo:rerun-if-env-changed=NATUX_LOCAL_AUTH_API");
     println!("cargo:rerun-if-env-changed=NATUX_TAURI_UPDATES_ENABLED");
     println!("cargo:rustc-check-cfg=cfg(natux_local_auth_api)");

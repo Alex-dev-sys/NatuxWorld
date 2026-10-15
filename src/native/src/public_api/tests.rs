@@ -9,7 +9,7 @@ use serde_json::json;
 
 use super::{
     NewsCache, PublicApiService, ServerInfo, ServerStatus, MAX_NEWS_ITEMS, NEWS_BODY_LIMIT,
-    NEWS_CACHE_TTL, SERVER_BODY_LIMIT, SERVER_HOST, SITE_HOST, SITE_ORIGIN,
+    NEWS_CACHE_TTL, SERVER_BODY_LIMIT,
 };
 
 fn run<F: Future>(future: F) -> F::Output {
@@ -63,16 +63,20 @@ fn public_service(origin: Url) -> PublicApiService {
 }
 
 #[test]
-fn production_origin_is_fixed_https_and_rejects_other_hosts() {
+fn build_origin_and_server_host_match_the_shared_brand_without_expanding_trust() {
     let service = PublicApiService::new().unwrap();
-    assert_eq!(SITE_ORIGIN, "https://vibestudy.ru");
-    assert_eq!(SITE_HOST, "vibestudy.ru");
     assert!(service.endpoint("/api/news").is_some());
-    assert!(service.url_is_trusted(&Url::parse("https://vibestudy.ru/api/news").unwrap()));
-    assert!(!service.url_is_trusted(&Url::parse("http://vibestudy.ru/api/news").unwrap()));
+    let endpoint = Url::parse(&format!("{}/api/news", crate::brand::site_origin())).unwrap();
+    assert!(service.url_is_trusted(&endpoint));
+    let mut different_port = endpoint.clone();
+    different_port.set_port(Some(9999)).unwrap();
+    assert!(!service.url_is_trusted(&different_port));
     assert!(!service.url_is_trusted(&Url::parse("https://evil.example/api/news").unwrap()));
     assert!(service.endpoint("https://evil.example/steal").is_none());
-    assert_eq!(SERVER_HOST, "mc.vibestudy.ru");
+    assert_eq!(
+        service.base_url.as_str().trim_end_matches('/'),
+        crate::brand::site_origin()
+    );
 }
 
 #[test]
@@ -213,7 +217,7 @@ fn server_status_and_info_match_renderer_dtos() {
     assert_eq!(
         info,
         ServerInfo {
-            ip: "mc.vibestudy.ru".to_owned(),
+            ip: crate::brand::server_host().to_owned(),
             version: "1.21.1".to_owned(),
             mode: "Анархия · PvP · Выживание".to_owned(),
             map: "world_anarchy".to_owned(),
@@ -253,7 +257,7 @@ fn server_services_use_documented_offline_defaults_on_http_failure() {
     assert_eq!(
         run(service.get_server_info()),
         ServerInfo {
-            ip: "mc.vibestudy.ru".to_owned(),
+            ip: crate::brand::server_host().to_owned(),
             version: "1.20.1+".to_owned(),
             mode: "Анархия · PvP · Выживание".to_owned(),
             map: "world_anarchy".to_owned(),

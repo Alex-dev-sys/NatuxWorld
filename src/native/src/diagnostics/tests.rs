@@ -41,6 +41,19 @@ fn memory_check_reports_memory_build_and_platform() {
 }
 
 #[test]
+fn site_diagnostics_use_the_selected_build_profile_and_reject_other_origins() {
+    let temporary = tempfile::tempdir().unwrap();
+    let service = DiagnosticsService::new(temporary.path().to_path_buf()).unwrap();
+    let expected = Url::parse(&format!(
+        "{}/api/server/status",
+        crate::brand::site_origin()
+    ))
+    .unwrap();
+    assert_eq!(service.site_endpoint(), Some(expected));
+    assert!(!service.url_is_trusted(&Url::parse("https://evil.example/api/server/status").unwrap()));
+}
+
+#[test]
 fn disk_probe_uses_an_existing_parent_without_creating_the_requested_directory() {
     let temporary = tempfile::tempdir().expect("temporary directory");
     let missing = temporary.path().join("minecraft").join("future");

@@ -1,11 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { execFile } = require('node:child_process');
+const { createHash } = require('node:crypto');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { promisify } = require('node:util');
 const { launchPackaged, waitForLogin } = require('./packaged-helpers.cjs');
+const { assertNoExistingInstallation, isolatedInstallerEnvironment, selectCurrentInstaller } = require('./tauri-installed-helpers.cjs');
 
 const runFile = promisify(execFile);
 const root = path.resolve(__dirname, '../..');
@@ -73,21 +75,28 @@ test('NSIS install and uninstall preserve the isolated legacy user profile', {
     ? path.resolve(process.env.NATUX_TAURI_E2E_INSTALLER)
     : null;
   if (!installerCandidate) {
-    const installers = (await fs.readdir(INSTALLER_DIRECTORY))
-      .filter((name) => /-setup\.exe$/i.test(name))
-      .map((name) => path.join(INSTALLER_DIRECTORY, name));
-    assert.equal(installers.length, 1, 'expected exactly one current NSIS setup artifact');
-    [installerCandidate] = installers;
+    const packageJson = JSON.parse(await fs.readFile(path.join(repository, 'package.json'), 'utf8'));
+    const config = JSON.parse(await fs.readFile(path.join(repository, 'src', 'native', 'tauri.conf.json'), 'utf8'));
+    const installers = (await fs.readdir(INSTALLER_DIRECTORY, { withFileTypes: true }))
+      .filter((entry) => entry.isFile()).map((entry) => entry.name);
+    installerCandidate = path.join(INSTALLER_DIRECTORY,
+      selectCurrentInstaller(installers, config.productName, packageJson.version));
   }
   const installer = await fs.realpath(installerCandidate).catch(() => {
     throw new Error('Tauri NSIS installer missing. Run npm run tauri:build -- --bundles nsis first.');
   });
   assert.ok(isWithin(repository, installer), 'installer must be a repository build artifact');
   assert.match(path.basename(installer), /-setup\.exe$/i);
+  await assertNoExistingInstallation();
 
   const tempParent = await fs.realpath(os.tmpdir());
   const testRoot = await fs.mkdtemp(path.join(tempParent, 'natux-tauri-installed-'));
   const installDirectory = path.join(testRoot, 'app');
+  const appData = path.join(testRoot, 'appdata');
+  const localAppData = path.join(testRoot, 'local-appdata');
+  await fs.mkdir(appData);
+  await fs.mkdir(localAppData);
+  const installerEnvironment = isolatedInstallerEnvironment(appData, localAppData);
   let installationStarted = false;
   let uninstalled = false;
 
@@ -97,6 +106,7 @@ test('NSIS install and uninstall preserve the isolated legacy user profile', {
       windowsHide: true,
       timeout: 120_000,
       maxBuffer: 1024 * 1024,
+      env: installerEnvironment,
     });
     assert.equal(installResult.error, undefined);
 
@@ -109,6 +119,19 @@ test('NSIS install and uninstall preserve the isolated legacy user profile', {
     assert.ok(isWithin(installDirectory, executableRealPath), 'installed executable must remain in the isolated directory');
     const installedFootprint = await measureInstalledDirectory(installDirectory);
     t.diagnostic(`Installed Tauri app: ${installedFootprint.fileCount} files, ${installedFootprint.bytes} bytes (${(installedFootprint.bytes / 1024 / 1024).toFixed(2)} MiB)`);
+    const installedFiles = await listInstalledFiles(installDirectory);
+    assert.deepEqual(installedFiles.filter((file) => /(?:^|[\\/])(?:app\.asar|electron\.exe|node\.exe|chrome_elf\.dll|preload\.cjs)$/i.test(file)), [],
+      'Tauri installation must not ship Electron or a Node.js sidecar');
+    const hashFile = process.env.NATUX_TAURI_E2E_EXECUTABLE_HASH_FILE;
+    if (hashFile) {
+      const hashPath = await fs.realpath(path.resolve(hashFile));
+      assert.ok(isWithin(repository, hashPath), 'executable hash must be a repository release artifact');
+      assert.ok((await fs.stat(hashPath)).size <= 132, 'executable hash artifact must be bounded');
+      const expectedHash = (await fs.readFile(hashPath, 'utf8')).trim();
+      assert.match(expectedHash, /^[0-9a-f]{128}$/);
+      const installedHash = createHash('sha512').update(await fs.readFile(executableRealPath)).digest('hex');
+      assert.equal(installedHash, expectedHash, 'published installer must install exactly the signed native executable');
+    }
 
     const smokeEnvironment = {
       ...process.env,
@@ -149,14 +172,15 @@ test('NSIS install and uninstall preserve the isolated legacy user profile', {
       windowsHide: true,
       timeout: 60_000,
       maxBuffer: 1024 * 1024,
+      env: installerEnvironment,
     });
     assert.equal(uninstallResult.error, undefined);
-    uninstalled = true;
     const removed = await waitForRemoval(installDirectory, 10_000);
     if (!removed) {
       const remaining = await listInstalledFiles(installDirectory).catch(() => []);
       assert.fail(`NSIS uninstall left the isolated application directory behind: ${remaining.join(', ')}`);
     }
+    uninstalled = true;
 
     const account = JSON.parse(await fs.readFile(path.join(userData, 'account.json'), 'utf8'));
     assert.equal(account.user.id, 'legacy-fixture', 'legacy account file must remain after uninstall');
@@ -207,7 +231,11 @@ test('NSIS install and uninstall preserve the isolated legacy user profile', {
         (name) => /^(?:uninstall|unins\d*|uninstaller)\.exe$/i.test(name),
       ).catch(() => null);
       if (uninstaller) {
-        await runFile(uninstaller, ['/S'], { windowsHide: true, timeout: 60_000 }).catch(() => {});
+        await runFile(uninstaller, ['/S'], { env: installerEnvironment, windowsHide: true, timeout: 60_000 });
+        assert.ok(await waitForRemoval(installDirectory, 10_000),
+          `Failed to uninstall isolated test application; preserving recovery files at ${testRoot}`);
+      } else {
+        assert.fail(`Isolated installer left files without an uninstaller; preserving recovery files at ${testRoot}`);
       }
     }
 

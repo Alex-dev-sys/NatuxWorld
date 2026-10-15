@@ -1,9 +1,11 @@
 const assert = require('node:assert/strict');
+const { createRequire } = require('node:module');
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const legacyRequire = createRequire(path.resolve(__dirname, '../../electron/package.json'));
 
 test('Electron userData uses the packaged app identity used by the Tauri legacy resolver', {
   skip: !['win32', 'darwin'].includes(process.platform),
@@ -35,7 +37,7 @@ test('Electron userData uses the packaged app identity used by the Tauri legacy 
   `, 'utf8');
 
   try {
-    const electronPath = require('electron');
+    const electronPath = legacyRequire('electron');
     const childEnvironment = {
       ...process.env,
       NATUX_E2E_APP_DATA: appDataPath,
@@ -93,7 +95,7 @@ test('Electron async safeStorage reads a token encrypted by the legacy sync API'
   `, 'utf8');
 
   try {
-    const electronPath = require('electron');
+    const electronPath = legacyRequire('electron');
     assert.equal(typeof electronPath, 'string', 'Electron binary path should be available to Node');
     const childEnvironment = { ...process.env };
     delete childEnvironment.ELECTRON_RUN_AS_NODE;

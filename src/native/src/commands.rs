@@ -249,7 +249,12 @@ pub fn window_is_maximized(window: WebviewWindow) -> Result<bool, String> {
 
 #[tauri::command]
 pub fn settings_get(settings: State<'_, SettingsStore>) -> Result<LauncherSettings, String> {
-    settings.get()
+    settings.get().map(settings_capabilities)
+}
+
+fn settings_capabilities(mut settings: LauncherSettings) -> LauncherSettings {
+    settings.startup_supported = Some(crate::os_integration::autostart_supported());
+    settings
 }
 
 #[tauri::command]
@@ -259,9 +264,18 @@ pub fn settings_set(
     integration: State<'_, crate::os_integration::OsIntegration>,
     settings: Value,
 ) -> Result<LauncherSettings, String> {
+    let previous = state.get()?;
     let saved = state.set(settings)?;
-    integration.apply_settings(&app, &saved);
-    Ok(saved)
+    if saved.launch_on_startup != previous.launch_on_startup {
+        if let Err(error) = integration.apply_user_settings(&app, &saved) {
+            let _ = integration.apply_user_settings(&app, &previous);
+            state.set(serde_json::json!({ "launchOnStartup": previous.launch_on_startup }))?;
+            return Err(error);
+        }
+    } else {
+        integration.apply_settings(&app, &saved);
+    }
+    Ok(settings_capabilities(saved))
 }
 
 #[tauri::command]
@@ -277,9 +291,18 @@ pub fn settings_reset(
     settings: State<'_, SettingsStore>,
     integration: State<'_, crate::os_integration::OsIntegration>,
 ) -> Result<LauncherSettings, String> {
+    let previous = settings.get()?;
     let saved = settings.reset()?;
-    integration.apply_settings(&app, &saved);
-    Ok(saved)
+    if saved.launch_on_startup != previous.launch_on_startup {
+        if let Err(error) = integration.apply_user_settings(&app, &saved) {
+            let _ = integration.apply_user_settings(&app, &previous);
+            settings.set(serde_json::json!({ "launchOnStartup": previous.launch_on_startup }))?;
+            return Err(error);
+        }
+    } else {
+        integration.apply_settings(&app, &saved);
+    }
+    Ok(settings_capabilities(saved))
 }
 
 #[tauri::command]

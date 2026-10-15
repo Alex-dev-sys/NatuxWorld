@@ -12,7 +12,7 @@ const VERSION: &str = r#"{
   "mainClass":"net.minecraft.client.main.Main",
   "assetIndex":{"id":"17","url":"https://piston-meta.mojang.com/index.json","sha1":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":1},
   "libraries":[{"name":"com.example:library:1.0","downloads":{"artifact":{"path":"com/example/library/1.0/library-1.0.jar","url":"https://libraries.minecraft.net/library.jar","sha1":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","size":1}}}],
-  "arguments":{"game":["--username","${auth_player_name}","--accessToken","${auth_access_token}"],"jvm":["-cp","${classpath}"]}
+  "arguments":{"game":["--username","${auth_player_name}","--accessToken","${auth_access_token}"],"jvm":["-cp","${classpath}","-Dlauncher.fixture=${launcher_name}"]}
 }"#;
 
 #[test]
@@ -56,10 +56,13 @@ fn builds_game_arguments_from_native_session_and_verified_files() {
         Some(format!("-javaagent:{}", lock_agent.display()).as_str())
     );
     assert!(plan.args.iter().any(|arg| arg == "secret-game-token"));
+    assert!(plan.args.iter().any(|arg| arg.contains(&format!(
+        "authlib-injector.jar={}/api/yggdrasil",
+        crate::brand::site_origin()
+    ))));
     assert!(plan
         .args
-        .iter()
-        .any(|arg| arg.contains("authlib-injector.jar=https://vibestudy.ru/api/yggdrasil")));
+        .contains(&format!("-Dlauncher.fixture={}", crate::brand::name())));
     assert!(plan
         .args
         .windows(2)

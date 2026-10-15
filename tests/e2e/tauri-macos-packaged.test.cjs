@@ -1,12 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { randomUUID } = require('node:crypto');
-const { spawn } = require('node:child_process');
+const { createHash, randomUUID } = require('node:crypto');
+const { execFile, spawn } = require('node:child_process');
+const { promisify } = require('node:util');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '../..');
+const runFile = promisify(execFile);
 
 function isWithin(directory, candidate) {
   const relative = path.relative(directory, candidate);
@@ -59,20 +61,28 @@ async function stopProcessGroup(child) {
 
 test('packaged Tauri macOS app starts with and preserves an isolated legacy profile', {
   skip: process.platform !== 'darwin',
-  timeout: 45_000,
+  timeout: 120_000,
 }, async (t) => {
   const configuredExecutable = process.env.NATUX_TAURI_MACOS_E2E_EXECUTABLE;
-  assert.ok(configuredExecutable, 'set NATUX_TAURI_MACOS_E2E_EXECUTABLE to the built app executable');
+  const configuredDmg = process.env.NATUX_TAURI_MACOS_E2E_DMG;
+  const expectedArchitecture = process.env.NATUX_TAURI_MACOS_E2E_ARCH;
+  if (expectedArchitecture) {
+    assert.ok(['x86_64', 'aarch64'].includes(expectedArchitecture));
+    assert.equal(process.arch, expectedArchitecture === 'x86_64' ? 'x64' : 'arm64',
+      'acceptance must run natively on the intended CPU architecture');
+    assert.ok(configuredDmg && process.env.NATUX_TAURI_MACOS_E2E_EXECUTABLE_HASH_FILE,
+      'native architecture acceptance requires an exact DMG and executable hash');
+  }
+  assert.ok(configuredExecutable || configuredDmg, 'set a repository DMG or built app executable');
   const repository = await fs.realpath(root);
-  const packagedExecutable = path.resolve(configuredExecutable);
-  const executable = await fs.realpath(packagedExecutable);
-  assert.ok(isWithin(repository, packagedExecutable), 'Tauri executable path must be a repository build artifact');
-  assert.ok(isWithin(repository, executable), 'Tauri executable must be a repository build artifact');
-  const executableParts = packagedExecutable.split(path.sep);
-  const appBundleIndex = executableParts.findIndex((part, index) => part.endsWith('.app')
-    && executableParts[index + 1] === 'Contents'
-    && executableParts[index + 2] === 'MacOS');
-  assert.ok(appBundleIndex >= 0, `Tauri executable must be inside a macOS app bundle: ${packagedExecutable}`);
+  let packagedExecutable;
+  if (configuredExecutable) {
+    packagedExecutable = await fs.realpath(path.resolve(configuredExecutable));
+    assert.ok(isWithin(repository, packagedExecutable), 'Tauri executable must be a repository build artifact');
+    const parts = packagedExecutable.split(path.sep);
+    assert.ok(parts.some((part, index) => part.endsWith('.app') && parts[index + 1] === 'Contents'
+      && parts[index + 2] === 'MacOS'), 'Tauri executable must be inside a macOS app bundle');
+  }
 
   const tempParent = await fs.realpath(os.tmpdir());
   const tempRoot = await fs.mkdtemp(path.join(tempParent, 'natux-tauri-macos-e2e-'));
@@ -138,6 +148,8 @@ test('packaged Tauri macOS app starts with and preserves an isolated legacy prof
 
   let child;
   let spawnError;
+  let mounted = false;
+  const mount = path.join(tempRoot, 'mount');
   t.after(async () => {
     let processStopped = false;
     try {
@@ -156,6 +168,7 @@ test('packaged Tauri macOS app starts with and preserves an isolated legacy prof
       assert.deepEqual(await fs.readFile(worldFile), worldMarker);
     } finally {
       if (processStopped) {
+        if (mounted) await runFile('hdiutil', ['detach', mount], { timeout: 30_000 });
         const resolvedTempRoot = await fs.realpath(tempRoot);
         assert.equal(path.dirname(resolvedTempRoot), tempParent);
         assert.ok(path.basename(resolvedTempRoot).startsWith('natux-tauri-macos-e2e-'));
@@ -163,6 +176,46 @@ test('packaged Tauri macOS app starts with and preserves an isolated legacy prof
       }
     }
   });
+
+  if (configuredDmg) {
+    const dmg = await fs.realpath(path.resolve(configuredDmg));
+    assert.ok(isWithin(repository, dmg), 'DMG must be a repository release artifact');
+    assert.match(dmg, /\.dmg$/i);
+    await fs.mkdir(mount);
+    await runFile('hdiutil', ['attach', '-readonly', '-nobrowse', '-mountpoint', mount, dmg], { timeout: 30_000 });
+    mounted = true;
+    const bundles = (await fs.readdir(mount)).filter((name) => name.endsWith('.app'));
+    assert.equal(bundles.length, 1, 'DMG must contain exactly one app bundle');
+    const installedApp = path.join(tempRoot, 'installed', bundles[0]);
+    await fs.mkdir(path.dirname(installedApp));
+    await fs.cp(path.join(mount, bundles[0]), installedApp, { recursive: true, verbatimSymlinks: true });
+    const { stdout } = await runFile('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleExecutable', path.join(installedApp, 'Contents', 'Info.plist')]);
+    const name = stdout.trim();
+    assert.ok(name && !/[\\/]/.test(name), 'CFBundleExecutable must be a filename');
+    packagedExecutable = await fs.realpath(path.join(installedApp, 'Contents', 'MacOS', name));
+    assert.ok(isWithin(installedApp, packagedExecutable));
+    if (expectedArchitecture) {
+      const { stdout: architecture } = await runFile('lipo', ['-archs', packagedExecutable]);
+      assert.deepEqual(architecture.trim().split(/\s+/), [expectedArchitecture === 'aarch64' ? 'arm64' : 'x86_64'],
+        'DMG must contain the exact thin native architecture being accepted');
+    }
+    const expectedVersion = process.env.NATUX_TAURI_MACOS_E2E_VERSION;
+    if (expectedVersion) {
+      const { stdout: version } = await runFile('/usr/libexec/PlistBuddy',
+        ['-c', 'Print :CFBundleShortVersionString', path.join(installedApp, 'Contents', 'Info.plist')]);
+      assert.equal(version.trim(), expectedVersion, 'DMG must contain the planned launcher version');
+    }
+    const hashFile = process.env.NATUX_TAURI_MACOS_E2E_EXECUTABLE_HASH_FILE;
+    if (hashFile) {
+      const hashPath = await fs.realpath(path.resolve(hashFile));
+      assert.ok(isWithin(repository, hashPath));
+      assert.ok((await fs.stat(hashPath)).size <= 132);
+      const expectedHash = (await fs.readFile(hashPath, 'utf8')).trim();
+      assert.match(expectedHash, /^[0-9a-f]{128}$/);
+      assert.equal(createHash('sha512').update(await fs.readFile(packagedExecutable)).digest('hex'), expectedHash,
+        'published DMG must install exactly the signed native executable');
+    }
+  }
 
   child = spawn(packagedExecutable, [], { cwd: repository, env, detached: true, stdio: 'ignore' });
   child.on('error', (error) => { spawnError = error; });

@@ -218,26 +218,15 @@ fn telemetry_platform_and_arch_labels_match_existing_electron_values() {
 }
 
 #[test]
-fn production_endpoints_are_fixed_https_brand_routes() {
-    if cfg!(natux_local_auth_api) {
-        assert_eq!(
-            ReportingEndpoint::Crash.url(),
-            "http://127.0.0.1:3000/api/crash-report"
-        );
-        assert_eq!(
-            ReportingEndpoint::Telemetry.url(),
-            "http://127.0.0.1:3000/api/launcher-events"
-        );
-    } else {
-        assert_eq!(
-            ReportingEndpoint::Crash.url(),
-            "https://vibestudy.ru/api/crash-report"
-        );
-        assert_eq!(
-            ReportingEndpoint::Telemetry.url(),
-            "https://vibestudy.ru/api/launcher-events"
-        );
-    }
+fn report_routes_follow_the_selected_build_origin() {
+    assert_eq!(
+        ReportingEndpoint::Crash.url(),
+        format!("{}/api/crash-report", crate::brand::site_origin())
+    );
+    assert_eq!(
+        ReportingEndpoint::Telemetry.url(),
+        format!("{}/api/launcher-events", crate::brand::site_origin())
+    );
 }
 
 #[test]

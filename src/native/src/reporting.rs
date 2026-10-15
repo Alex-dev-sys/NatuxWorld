@@ -1,4 +1,4 @@
-//! Opt-in reports use fixed `brand.config.ts` routes and never carry credentials.
+//! Opt-in reports use shared build-time brand routes and never carry credentials.
 //! Crash data is redacted; telemetry contains only aggregate event fields.
 
 use std::collections::VecDeque;
@@ -15,15 +15,6 @@ use serde_json::{json, to_vec};
 mod environment;
 
 use crate::settings::{LauncherSettings, SettingsStore};
-
-#[cfg(natux_local_auth_api)]
-const CRASH_REPORT_URL: &str = "http://127.0.0.1:3000/api/crash-report";
-#[cfg(not(natux_local_auth_api))]
-const CRASH_REPORT_URL: &str = "https://vibestudy.ru/api/crash-report";
-#[cfg(natux_local_auth_api)]
-const TELEMETRY_URL: &str = "http://127.0.0.1:3000/api/launcher-events";
-#[cfg(not(natux_local_auth_api))]
-const TELEMETRY_URL: &str = "https://vibestudy.ru/api/launcher-events";
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(6);
 // The existing crash-report route accepts at most 1 MiB. Leave room below that
@@ -119,8 +110,8 @@ enum ReportingEndpoint {
 impl ReportingEndpoint {
     fn url(self) -> &'static str {
         match self {
-            Self::Crash => CRASH_REPORT_URL,
-            Self::Telemetry => TELEMETRY_URL,
+            Self::Crash => crate::brand::crash_report_url(),
+            Self::Telemetry => crate::brand::telemetry_url(),
         }
     }
 }

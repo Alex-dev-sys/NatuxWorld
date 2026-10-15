@@ -2534,7 +2534,7 @@ dependencies = [
 
 [[package]]
 name = "natux-world-launcher-native"
-version = "1.9.15"
+version = "1.10.0"
 dependencies = [
  "atomicwrites",
  "base64 0.22.1",
@@ -2552,6 +2552,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2 0.10.9",
+ "smappservice-rs",
  "sysinfo",
  "tar",
  "tauri",

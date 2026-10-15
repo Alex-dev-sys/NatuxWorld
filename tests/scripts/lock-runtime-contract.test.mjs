@@ -10,8 +10,8 @@ test('all desktop package entry points prepare the lock runtime before bundling'
   const packageJson = JSON.parse(await readFile(path.join(repositoryRoot, 'package.json'), 'utf8'));
   const scripts = packageJson.scripts;
   assert.equal(scripts['build:lock-runtime'], 'node scripts/build-lock-runtime.mjs');
-  assert.match(scripts.build, /build:lock-runtime.*electron-builder/);
-  assert.match(scripts['electron:build'], /build:lock-runtime.*electron-builder/);
+  assert.match(scripts.build, /build:lock-runtime.*run-tauri\.mjs build/);
+  assert.match(scripts['electron:build'], /run-electron\.mjs build/);
   assert.match(scripts['tauri:dev'], /build:lock-runtime.*run-tauri\.mjs dev/);
   assert.match(scripts['tauri:build'], /build:lock-runtime.*run-tauri\.mjs build/);
   assert.match(scripts['tauri:build:updater'], /build:lock-runtime.*run-tauri\.mjs build/);

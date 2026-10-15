@@ -10,6 +10,7 @@ use crate::downloads::{DownloadJob, DownloadService};
 use crate::metadata::{merge_inherited, VersionMetadata};
 
 use super::arguments::console_java_path;
+use super::logs::LaunchLogTail;
 use super::process::run_installer;
 use super::LaunchProgress;
 
@@ -44,6 +45,7 @@ pub(crate) async fn install(
     downloads: &DownloadService,
     cancellation: &CancellationToken,
     progress: Arc<dyn Fn(LaunchProgress) + Send + Sync>,
+    logs: LaunchLogTail,
 ) -> Result<VersionMetadata, String> {
     let (build, sha1) = FORGE_BUILDS
         .iter()
@@ -125,6 +127,7 @@ pub(crate) async fn install(
         root,
         &installer_path,
         cancellation,
+        logs,
     )
     .await?;
     if cancellation.is_cancelled() {

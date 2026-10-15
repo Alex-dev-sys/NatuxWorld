@@ -4,7 +4,9 @@
 // (electron-builder 25 has no built-in electronFuses config, so we use
 // @electron/fuses directly).
 const path = require('path')
-const { flipFuses, FuseVersion, FuseV1Options } = require('@electron/fuses')
+const { createRequire } = require('node:module')
+const optionalRequire = createRequire(path.join(__dirname, '..', 'electron', 'package.json'))
+const { flipFuses, FuseVersion, FuseV1Options } = optionalRequire('@electron/fuses')
 
 module.exports = async function afterPack(context) {
   const { appOutDir, electronPlatformName, packager } = context

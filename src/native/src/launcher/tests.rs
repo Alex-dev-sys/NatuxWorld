@@ -62,11 +62,13 @@ fn launch_failure_report_carries_verified_username_as_a_redaction_hint() {
         "forge-install".to_owned(),
         "Failed to launch for VerifiedPlayer".to_owned(),
         Some("VerifiedPlayer".to_owned()),
+        vec!["[forge] processor failed".to_owned()],
     );
 
     assert_eq!(report.kind, CrashKind::LaunchError);
     assert_eq!(report.username.as_deref(), Some("VerifiedPlayer"));
     assert!(report.message.contains("VerifiedPlayer"));
+    assert_eq!(report.logs, vec!["[forge] processor failed"]);
 }
 
 #[test]

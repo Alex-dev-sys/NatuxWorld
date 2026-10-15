@@ -122,6 +122,18 @@ describe('update visibility (channel + staged rollout)', () => {
 });
 
 describe('signed Electron-to-Tauri migration control', () => {
+  it('preserves signed native executable hashes and rejects unexpected platforms or malformed hashes', () => {
+    const fixtureValue = tauriControlFixture({ executableHashes: { 'windows-x86_64': 'a'.repeat(128) } });
+    expect(verifyTauriControl(fixtureValue.raw, fixtureValue.signature, fixtureValue.publicKey))
+      .toEqual(fixtureValue.control);
+    const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+    for (const hashes of [{ 'windows-x86_64': 'bad' }, { unknown: 'a'.repeat(128) }, []]) {
+      const raw = JSON.stringify({ ...fixtureValue.control, executableHashes: hashes });
+      const signature = sign(null, Buffer.from(raw), privateKey).toString('base64');
+      expect(() => verifyTauriControl(raw, signature, publicKey.export({ type: 'spki', format: 'pem' }).toString()))
+        .toThrow('executable hashes');
+    }
+  });
   const context = {
     channel: 'stable' as const,
     installId: '00000000-0000-4000-8000-000000000001',

@@ -1,5 +1,6 @@
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 
+use super::super::logs::LaunchLogTail;
 use super::LauncherLog;
 
 const LOCK_READY_LINE: &[u8] = b"NATUX_LOCK_READY_V1";
@@ -10,6 +11,7 @@ pub(super) const LOCK_READY_TIMEOUT: std::time::Duration = std::time::Duration::
 pub(super) async fn wait_for_lock_ready<R>(
     mut stdout: BufReader<R>,
     access_token: String,
+    launch_logs: &LaunchLogTail,
 ) -> Result<(BufReader<R>, Vec<LauncherLog>), String>
 where
     R: AsyncRead + Unpin,
@@ -31,10 +33,10 @@ where
             return Err("Java вывела слишком много данных до проверки защиты игры".to_owned());
         }
         let text = String::from_utf8_lossy(&raw).replace(&access_token, "[redacted]");
-        logs.push(LauncherLog {
+        logs.push(launch_logs.record(LauncherLog {
             stream: "stdout".to_owned(),
             line: text,
-        });
+        }));
     }
 }
 
@@ -96,14 +98,17 @@ mod tests {
                 .expect("write fake Java output");
         });
 
-        let (mut stdout, logs) = wait_for_lock_ready(BufReader::new(reader), "token-secret".into())
-            .await
-            .expect("agent marker should confirm the game lock");
+        let tail = super::LaunchLogTail::default();
+        let (mut stdout, logs) =
+            wait_for_lock_ready(BufReader::new(reader), "token-secret".into(), &tail)
+                .await
+                .expect("agent marker should confirm the game lock");
         output.await.expect("writer task");
 
         assert_eq!(logs.len(), 1);
         assert_eq!(logs[0].line, "Java startup [redacted]");
         assert_eq!(logs[0].stream, "stdout");
+        assert_eq!(tail.snapshot(), vec!["[stdout] Java startup [redacted]"]);
         let mut remaining = String::new();
         stdout
             .read_line(&mut remaining)
@@ -121,10 +126,15 @@ mod tests {
             .expect("write fake Java failure");
         drop(writer);
 
-        let error = wait_for_lock_ready(BufReader::new(reader), String::new())
+        let tail = super::LaunchLogTail::default();
+        let error = wait_for_lock_ready(BufReader::new(reader), "irrelevant-token".into(), &tail)
             .await
             .expect_err("exit without lock-ready marker must not count as running");
         assert!(error.contains("до подтверждения защиты"));
+        assert_eq!(
+            tail.snapshot(),
+            vec!["[stdout] agent failed before Minecraft main"]
+        );
     }
 
     #[tokio::test]
@@ -135,9 +145,13 @@ mod tests {
             .await
             .expect("write oversized line");
 
-        let error = wait_for_lock_ready(BufReader::new(reader), String::new())
-            .await
-            .expect_err("unbounded startup output must not bypass readiness");
+        let error = wait_for_lock_ready(
+            BufReader::new(reader),
+            String::new(),
+            &super::LaunchLogTail::default(),
+        )
+        .await
+        .expect_err("unbounded startup output must not bypass readiness");
         assert!(error.contains("не подтвердила"));
     }
 }

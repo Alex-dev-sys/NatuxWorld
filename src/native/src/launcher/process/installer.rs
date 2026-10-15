@@ -7,6 +7,7 @@ use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
+use super::super::logs::LaunchLogTail;
 use crate::cancellation::CancellationToken;
 
 use super::process_tree::{
@@ -23,6 +24,7 @@ pub(crate) async fn run_installer(
     working_dir: &Path,
     installer_path: &Path,
     cancellation: &CancellationToken,
+    logs: LaunchLogTail,
 ) -> Result<(), String> {
     if cancellation.is_cancelled() {
         return Err("Отменено".to_owned());
@@ -53,10 +55,10 @@ pub(crate) async fn run_installer(
     };
     let (sender, mut receiver) = mpsc::channel(LOG_QUEUE_CAPACITY);
     if let Some(stdout) = child.stdout.take() {
-        spawn_installer_log_reader(stdout, false, sender.clone());
+        spawn_installer_log_reader(stdout, false, sender.clone(), logs.clone());
     }
     if let Some(stderr) = child.stderr.take() {
-        spawn_installer_log_reader(stderr, true, sender.clone());
+        spawn_installer_log_reader(stderr, true, sender.clone(), logs);
     }
     drop(sender);
     let mut interval = tokio::time::interval(Duration::from_millis(100));
@@ -130,6 +132,7 @@ pub(super) fn spawn_installer_log_reader<R>(
     mut input: R,
     is_stderr: bool,
     sender: mpsc::Sender<(LauncherLog, bool)>,
+    logs: LaunchLogTail,
 ) where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
 {
@@ -148,7 +151,8 @@ pub(super) fn spawn_installer_log_reader<R>(
                         let text = String::from_utf8_lossy(&line)
                             .trim_end_matches('\r')
                             .to_owned();
-                        if sender.send((installer_log(text), is_stderr)).await.is_err() {
+                        let log = logs.record(installer_log(text));
+                        if sender.send((log, is_stderr)).await.is_err() {
                             return;
                         }
                     }
@@ -167,7 +171,9 @@ pub(super) fn spawn_installer_log_reader<R>(
             let text = String::from_utf8_lossy(&line)
                 .trim_end_matches('\r')
                 .to_owned();
-            let _ = sender.send((installer_log(text), is_stderr)).await;
+            let _ = sender
+                .send((logs.record(installer_log(text)), is_stderr))
+                .await;
         }
     });
 }

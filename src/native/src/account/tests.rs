@@ -416,10 +416,10 @@ fn http_errors_keep_safe_envelope_and_compile_time_origin_is_fixed() {
         serde_json::to_value(result).unwrap(),
         json!({"ok":false,"error":{"code":"validation_failed","message":"Проверьте данные"}})
     );
-    #[cfg(natux_local_auth_api)]
-    assert_eq!(super::AUTH_API_ORIGIN, "http://127.0.0.1:3000/api/auth");
-    #[cfg(not(natux_local_auth_api))]
-    assert_eq!(super::AUTH_API_ORIGIN, "https://vibestudy.ru/api/auth");
+    assert_eq!(
+        crate::brand::auth_api(),
+        format!("{}/api/auth", crate::brand::site_origin())
+    );
 }
 
 #[test]

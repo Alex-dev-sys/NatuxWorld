@@ -1,8 +1,10 @@
 mod account;
+mod brand;
 mod cancellation;
 mod commands;
 mod data_recovery;
 mod diagnostics;
+mod discord;
 mod downloads;
 mod java;
 mod java_picker;
@@ -11,11 +13,13 @@ mod metadata;
 mod offline_auth;
 mod os_integration;
 mod playtime;
+mod profile_paths;
 mod public_api;
 mod reporting;
 mod resources;
 mod settings;
 mod shell_integration;
+mod startup_migration;
 mod updater;
 
 use std::io;
@@ -83,6 +87,12 @@ fn game_busy_message() -> String {
 }
 
 pub fn run() {
+    let mut context = tauri::generate_context!();
+    if let Some(profile) = profile_paths::portable_user_data_dir()
+        .expect("failed to resolve the portable launcher profile")
+    {
+        profile_paths::configure_portable_context(&mut context, &profile);
+    }
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             os_integration::show_main_window(app);
@@ -195,7 +205,7 @@ pub fn run() {
         ]);
 
     let app = builder
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("failed to build NATUX WORLD Tauri launcher");
     app.run(|app, event| {
         if matches!(&event, tauri::RunEvent::Exit) {

@@ -1,13 +1,14 @@
 appId: world.natux.launcher
 productName: NATUX WORLD
+extraMetadata:
+  main: dist-electron/main.js
 copyright: Copyright © 2025 NATUX WORLD
 directories:
+  app: build/electron-app
   output: release
   buildResources: build
-# Renderer-only libs (react, react-dom, framer-motion, recharts, react-router-dom,
-# zustand, lucide-react, clsx, tailwind-merge) are bundled into dist/ by Vite, so they
-# live in devDependencies and are NOT packed into the asar. Only true runtime deps
-# (electron-updater, yauzl) remain in `dependencies` and get packed automatically.
+# The optional runner stages the bundled renderer and a locked runtime dependency
+# tree separately from the primary Tauri build and its dist/ directory.
 files:
   - dist/**/*
   - dist-electron/**/*

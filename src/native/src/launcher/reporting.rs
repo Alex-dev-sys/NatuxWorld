@@ -11,6 +11,7 @@ pub(super) fn launch_failure(
     stage: String,
     message: String,
     username: Option<String>,
+    logs: Vec<String>,
 ) {
     tokio::spawn(async move {
         let settings = app.state::<SettingsStore>();
@@ -20,7 +21,7 @@ pub(super) fn launch_failure(
         reporting
             .report_crash(
                 settings.inner(),
-                launch_failure_report(stage, message, username),
+                launch_failure_report(stage, message, username, logs),
             )
             .await;
     });
@@ -30,13 +31,14 @@ pub(super) fn launch_failure_report(
     stage: String,
     message: String,
     username: Option<String>,
+    logs: Vec<String>,
 ) -> CrashReport {
     CrashReport {
         kind: CrashKind::LaunchError,
         stage,
         message,
         exit_code: None,
-        logs: Vec::new(),
+        logs,
         username,
     }
 }

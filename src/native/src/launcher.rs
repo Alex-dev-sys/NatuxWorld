@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tauri::path::BaseDirectory;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tokio::sync::Notify;
 
 use crate::account::{AccountResult, AccountService};
@@ -26,6 +26,7 @@ mod cancel;
 mod disk;
 mod forge;
 mod lifecycle;
+mod logs;
 mod metadata;
 mod process;
 mod profile;
@@ -34,6 +35,7 @@ mod reporting;
 pub(crate) mod retry;
 mod types;
 use lifecycle::{LaunchContext, RuntimeState};
+use logs::LaunchLogTail;
 use profile::{check_cancelled, io_message, resolve_profile, sanitize_server};
 pub(crate) use progress::LaunchProgress;
 pub(crate) use types::{PlayOptions, PlayResult};
@@ -98,6 +100,7 @@ impl LauncherService {
             }
         };
         let mut verified_username = None;
+        let logs = LaunchLogTail::default();
         let result = self
             .run_pipeline(
                 app.clone(),
@@ -107,6 +110,7 @@ impl LauncherService {
                     account,
                     playtime,
                     reporting: Arc::clone(&reporting),
+                    logs: logs.clone(),
                 },
                 cancellation.clone(),
                 &mut verified_username,
@@ -126,6 +130,7 @@ impl LauncherService {
                         self.get_status().stage,
                         error.clone(),
                         verified_username,
+                        logs.snapshot(),
                     );
                 }
                 self.finish_pipeline(
@@ -205,6 +210,7 @@ impl LauncherService {
         };
         check_cancelled(&cancellation)?;
         *verified_username = Some(credentials.username.clone());
+        context.logs.set_access_token(&credentials.access_token);
 
         self.report(
             &app,
@@ -331,6 +337,7 @@ impl LauncherService {
                 &downloads,
                 &cancellation,
                 Arc::clone(&progress_sink),
+                context.logs.clone(),
             )
             .await?
         } else {
@@ -371,9 +378,11 @@ impl LauncherService {
         )?;
         self.report(&app, LaunchProgress::new("spawn", 0, "Запуск Minecraft..."));
         let (child, process_tree, argfile, output) =
-            process::spawn_game(&plan, &cancellation, game_lock, &profile_dir).await?;
+            process::spawn_game(&plan, &cancellation, game_lock, &profile_dir, context.logs)
+                .await?;
         let pid = child.id().unwrap_or_default();
         let username = credentials.username.clone();
+        let discord = crate::discord::DiscordPresence::start(&username, server.as_deref());
         let access_token = plan.access_token.clone();
         let service = self.clone();
         let monitor_reporting = Arc::clone(&context.reporting);
@@ -403,6 +412,7 @@ impl LauncherService {
             .await;
             let _ = fs::remove_file(argfile);
             let _ = monitor_playtime.end_session();
+            discord.finish().await;
             let cancelled = monitor_token.is_cancelled();
             let message = if cancelled {
                 "Игра остановлена".to_owned()
@@ -435,62 +445,6 @@ impl LauncherService {
             }
         }
         Ok(())
-    }
-
-    fn progress_sink(&self, app: AppHandle) -> Arc<dyn Fn(LaunchProgress) + Send + Sync> {
-        let service = self.clone();
-        Arc::new(move |progress| service.report(&app, progress))
-    }
-
-    fn download_progress(
-        &self,
-        app: AppHandle,
-        stage: &'static str,
-        message: &'static str,
-    ) -> impl Fn(u64, u64, &Path) + Send + Sync + 'static {
-        let service = self.clone();
-        move |done, total, path| {
-            let percent = done
-                .saturating_mul(100)
-                .checked_div(total)
-                .unwrap_or(0)
-                .min(100) as u8;
-            let detail = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or_default();
-            service.report(
-                &app,
-                LaunchProgress::new(stage, percent, message).with_detail(detail),
-            );
-        }
-    }
-
-    fn report(&self, app: &AppHandle, progress: LaunchProgress) {
-        if let Ok(mut state) = self.state.lock() {
-            state.progress = progress.clone();
-        }
-        let _ = app.emit("launcher:progress", progress);
-    }
-
-    fn finish_pipeline(&self, app: &AppHandle, progress: LaunchProgress) {
-        let (finished, exit_after_pipeline) = self.finish_pipeline_state(progress.clone());
-        let _ = app.emit("launcher:progress", progress);
-        if finished {
-            self.pipeline_finished.notify_waiters();
-        }
-        if exit_after_pipeline {
-            app.exit(0);
-        }
-    }
-
-    fn finish_pipeline_state(&self, progress: LaunchProgress) -> (bool, bool) {
-        if let Ok(mut state) = self.state.lock() {
-            let exit_after_pipeline = state.finish_pipeline(progress);
-            (true, exit_after_pipeline)
-        } else {
-            (false, false)
-        }
     }
 }
 

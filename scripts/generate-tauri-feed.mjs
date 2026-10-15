@@ -165,6 +165,37 @@ async function writeAtomically(filename, contents) {
   }
 }
 
+async function readExecutableHashes(directory, platforms, required) {
+  if (typeof required !== 'boolean') throw new Error('requireExecutableHashes must be boolean');
+  const supported = new Set(Object.keys(platforms));
+  const entries = (await readdir(directory)).filter((name) => name.startsWith('executable-sha512-'));
+  const hashes = {};
+  for (const name of entries) {
+    const platform = name.slice('executable-sha512-'.length, -'.txt'.length);
+    if (!name.endsWith('.txt') || !supported.has(platform)) {
+      throw new Error(`Installed executable hash has no matching updater platform: ${name}`);
+    }
+    const filename = path.join(directory, safeAssetName(name));
+    const stat = await lstat(filename);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 132) {
+      throw new Error(`Installed executable hash must be a bounded regular file: ${name}`);
+    }
+    const digest = (await readFile(filename, 'utf8')).trim();
+    if (!/^[0-9a-f]{128}$/.test(digest)) {
+      throw new Error(`Invalid installed executable SHA-512: ${name}`);
+    }
+    hashes[platform] = digest;
+  }
+  if (required || entries.length > 0) {
+    for (const platform of supported) {
+      if (!Object.hasOwn(hashes, platform)) {
+        throw new Error(`Missing installed executable SHA-512 for ${platform}`);
+      }
+    }
+  }
+  return hashes;
+}
+
 export async function generateTauriFeed({
   directory = path.join(REPOSITORY_ROOT, 'release', 'tauri'),
   version,
@@ -173,6 +204,7 @@ export async function generateTauriFeed({
   releaseTag,
   privateKeyPem,
   migrationEnabled = false,
+  requireExecutableHashes = false,
   now = new Date(),
 } = {}) {
   const { rollout, migrationEnabled: migration, key } = validateInputs({
@@ -187,6 +219,7 @@ export async function generateTauriFeed({
   if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw new Error('Invalid feed timestamp');
 
   const platforms = await findPlatformAssets(releaseDirectory, releaseTag);
+  const executableHashes = await readExecutableHashes(releaseDirectory, platforms, requireExecutableHashes);
   const feedUrl = `https://github.com/${REPOSITORY}/releases/download/${releaseTag}/latest.json`;
   const latest = {
     version,
@@ -202,6 +235,7 @@ export async function generateTauriFeed({
     rolloutPct: rollout,
     feedUrl,
     migrationEnabled: migration,
+    ...(Object.keys(executableHashes).length > 0 ? { executableHashes } : {}),
   };
   const latestJson = `${JSON.stringify(latest, null, 2)}\n`;
   const controlJson = JSON.stringify(control);
@@ -226,6 +260,7 @@ async function runFromEnvironment() {
     releaseTag: process.env.RELEASE_TAG,
     privateKeyPem: process.env.UPDATE_SIGNING_PRIVATE_KEY,
     migrationEnabled: migrationValue?.toLowerCase() === 'true',
+    requireExecutableHashes: true,
   });
   process.stdout.write(`Generated Tauri updater feed for ${result.control.version}: ${Object.keys(result.latest.platforms).join(', ')}\n`);
 }

@@ -90,7 +90,7 @@ pub(crate) fn build_launch_arguments(
             "library_directory".to_owned(),
             root.join("libraries").to_string_lossy().into_owned(),
         ),
-        ("launcher_name".to_owned(), "NATUX_WORLD".to_owned()),
+        ("launcher_name".to_owned(), crate::brand::name().to_owned()),
         (
             "launcher_version".to_owned(),
             env!("CARGO_PKG_VERSION").to_owned(),
@@ -121,8 +121,9 @@ pub(crate) fn build_launch_arguments(
     let mut jvm_args = vec![
         format!("-javaagent:{}", lock_agent_jar.display()),
         format!(
-            "-javaagent:{}=https://vibestudy.ru/api/yggdrasil",
-            root.join("runtime/authlib-injector.jar").display()
+            "-javaagent:{}={}/api/yggdrasil",
+            root.join("runtime/authlib-injector.jar").display(),
+            crate::brand::site_origin()
         ),
         format!("-Xmx{}M", settings.memory.clamp(512, 65_536)),
         format!("-Xms{}M", settings.memory.clamp(512, 1024)),

@@ -69,8 +69,8 @@ test('packaged Tauri app reads and preserves an isolated legacy Electron profile
   }
   const appData = path.join(tempDir, 'appdata');
   const localAppData = path.join(tempDir, 'local-appdata');
-  await fs.mkdir(appData);
-  await fs.mkdir(localAppData);
+  await fs.mkdir(appData, { recursive: true });
+  await fs.mkdir(localAppData, { recursive: true });
   const packageJson = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
   const userData = path.join(appData, packageJson.name);
   const minecraftDir = path.join(userData, 'minecraft');
@@ -134,7 +134,7 @@ test('packaged Tauri app reads and preserves an isolated legacy Electron profile
   }
   env.APPDATA = appData;
   env.LOCALAPPDATA = localAppData;
-  if (!configuredDebugPort) env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = `--remote-debugging-port=${port}`;
+  env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`;
 
   let child;
   let browser;

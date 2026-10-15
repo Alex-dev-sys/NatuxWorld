@@ -53,18 +53,21 @@ fn crash_report_keeps_only_the_most_recent_bounded_log_tail() {
 async fn forge_installer_stderr_is_forwarded_as_forge_diagnostics() {
     let (mut writer, reader) = tokio::io::duplex(128);
     let (sender, mut receiver) = mpsc::channel(4);
-    spawn_installer_log_reader(reader, true, sender);
+    let logs = super::super::logs::LaunchLogTail::default();
+    logs.set_access_token("live-secret");
+    spawn_installer_log_reader(reader, true, sender, logs.clone());
     writer
-        .write_all(b"processor failed\r\n")
+        .write_all(b"processor failed live-secret\r\n")
         .await
         .expect("write fake installer stderr");
     drop(writer);
 
     let (log, is_stderr) = receiver.recv().await.expect("receive Forge log");
     assert_eq!(log.stream, "forge");
-    assert_eq!(log.line, "processor failed");
+    assert_eq!(log.line, "processor failed [redacted]");
     assert!(is_stderr);
     assert!(receiver.recv().await.is_none());
+    assert_eq!(logs.snapshot(), vec!["[forge] processor failed [redacted]"]);
 }
 
 #[tokio::test]

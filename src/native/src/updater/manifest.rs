@@ -1,5 +1,6 @@
 use semver::Version;
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 use super::control_signature::{
     verify_control_signature_with_key, verify_embedded_control_signature,
@@ -20,6 +21,10 @@ pub(crate) struct ControlManifest {
     pub(super) feed_url: String,
     #[serde(default)]
     pub(super) migration_enabled: bool,
+    /// Hashes of installed native binaries, never installer/archive hashes.
+    /// Older signed controls omit this field and retain their update behavior.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(super) executable_hashes: BTreeMap<String, String>,
 }
 
 impl ControlManifest {
@@ -67,6 +72,18 @@ pub(super) fn validate_control(
     );
     if control.feed_url != expected_feed {
         return Err("Tauri update feed URL does not match its signed version".to_owned());
+    }
+    for (platform, digest) in &control.executable_hashes {
+        if !matches!(
+            platform.as_str(),
+            "windows-x86_64" | "darwin-x86_64" | "darwin-aarch64"
+        ) || digest.len() != 128
+            || !digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err("Tauri installed executable hash is invalid".to_owned());
+        }
     }
     Ok(())
 }
@@ -119,6 +136,7 @@ mod tests {
             version: "1.9.16".to_owned(),
             rollout_pct: 25,
             migration_enabled: false,
+            executable_hashes: Default::default(),
             feed_url: format!(
                 "https://github.com/{REPOSITORY}/releases/download/v1.9.16/latest.json"
             ),
@@ -152,12 +170,33 @@ mod tests {
             .remove("migrationEnabled");
         let parsed: ControlManifest = serde_json::from_value(old).expect("legacy control parses");
         assert!(!parsed.migration_enabled);
+        assert!(parsed.executable_hashes.is_empty());
 
         let mut enabled = control("stable");
         enabled.migration_enabled = true;
         let raw = serde_json::to_string(&enabled).expect("serialized control");
         let parsed: ControlManifest = serde_json::from_str(&raw).expect("migration control parses");
         assert!(parsed.migration_enabled);
+    }
+
+    #[test]
+    fn installed_hashes_validate_platform_and_sha512_encoding() {
+        let mut signed = control("stable");
+        signed
+            .executable_hashes
+            .insert("windows-x86_64".to_owned(), "ab".repeat(64));
+        assert!(validate_control(&signed, "stable").is_ok());
+        signed
+            .executable_hashes
+            .insert("linux-x86_64".to_owned(), "ab".repeat(64));
+        assert!(validate_control(&signed, "stable").is_err());
+        signed.executable_hashes.remove("linux-x86_64");
+        for invalid in ["ab".repeat(63), "AB".repeat(64), "gg".repeat(64)] {
+            signed
+                .executable_hashes
+                .insert("windows-x86_64".to_owned(), invalid);
+            assert!(validate_control(&signed, "stable").is_err());
+        }
     }
 
     #[test]

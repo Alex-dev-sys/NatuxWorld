@@ -16,15 +16,15 @@ They buy a rank, permissions are granted automatically. No admin in the loop.
 
 <br/><br/>
 
-![Electron](https://img.shields.io/badge/Electron-43-47848F?style=flat-square&logo=electron&logoColor=white)
+![Tauri](https://img.shields.io/badge/Tauri-2-24C8D8?style=flat-square&logo=tauri&logoColor=white)
+![Rust](https://img.shields.io/badge/Rust-native-DEA584?style=flat-square&logo=rust&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)
 ![Next.js](https://img.shields.io/badge/Next.js-14-000000?style=flat-square&logo=next.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Prisma_7-336791?style=flat-square&logo=postgresql&logoColor=white)
 ![Paper](https://img.shields.io/badge/Paper-1.21.1-EEEEEE?style=flat-square)
 <br/>
-![Tests](https://img.shields.io/badge/tests-273%20passing-00C853?style=flat-square)
-![Version](https://img.shields.io/badge/version-1.9.15-FF2B4F?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.10.0-FF2B4F?style=flat-square)
 ![Audit](https://img.shields.io/badge/audit-0%20critical-00C853?style=flat-square)
 
 </div>
@@ -84,8 +84,7 @@ The three parts were built as **one system**: the site account is the launcher l
 
 </div>
 
-> Verified on the current commit: `npm test` gives **106/106** in the launcher and **167/167** on the site — both suites green in seven seconds.
-> These aren't checkbox tests: `DownloadService` spins up a real HTTP server and asserts that a SHA-1 mismatch is rejected.
+> The table above is a historical snapshot from before the migration. Run the current checks below: React/Vitest, Rust and the website have separate suites. The user has postponed the live Minecraft join check; unit and packaged smoke tests do not prove a server connection.
 
 ---
 
@@ -123,7 +122,7 @@ The full player journey — from download to granted rank — **requires zero ad
 | 🩺 **Diagnostics** | One-click environment check plus automatic crash reporting |
 | ⏱️ **Playtime** | Hour tracking that handles a hard crash correctly instead of counting idle time |
 | 💬 **Discord Rich Presence** | "Playing on the server" status — enabled with a single ID in the config |
-| 🔄 **Signed updates** | Before any download: **Ed25519 manifest signature**, version, filename, and SHA-512 are all verified |
+| 🔄 **Signed updates** | Control-feed, Tauri package signature, version, filenames and hashes are checked. Windows NSIS updates automatically; macOS and Windows Portable update manually |
 
 <details>
 <summary><b>Design: Dark Cyber Fantasy</b></summary>
@@ -156,7 +155,7 @@ Glass surfaces, premium shadows, red ambient glow. Buttons use Framer Motion spr
 | 🏆 **Leaderboard** | Player rankings built from live plugin data |
 | 🟢 **Server status** | Online state, player count, and version on the front page in real time |
 | 🎨 **3D scenes** | Three.js world map and winners' podium |
-| 🐳 **Deployment** | Docker + Compose + nginx + `vps-setup.sh` — bare VPS to production, documented |
+| 🐳 **Deployment** | Docker + Compose + nginx + [`website/vps-setup.sh`](website/vps-setup.sh) — bare VPS to production, documented |
 
 ---
 
@@ -172,19 +171,19 @@ Paper API `1.21`, Java, shaded into a single `.jar` by Maven.
 
 ## 🔐 Security
 
-> Per the internal audit (`SECURITY_AUDIT.md`, re-checked 2026-07-12): **0 critical findings**, grade **B+**, and `npm audit --omit=dev` reports zero advisories.
+> Per the internal audit ([`SECURITY_AUDIT.md`](SECURITY_AUDIT.md), re-checked 2026-07-12): **0 critical findings**, grade **B+**, and `npm audit --omit=dev` reports zero advisories.
 
 | Layer | What's in place |
 |---|---|
-| **Electron** | `contextIsolation` + `sandbox` + CSP + a `will-navigate` guard, with no remote content whatsoever |
+| **Tauri/Rust** | Bundled React, CSP and capabilities; Rust commands validate inputs and native services run without a Node.js sidecar |
 | **Downloads** | Pinned SHA-1 for Forge, artifact hash verification, zip-slip protection, and **no HTTPS → HTTP downgrade** on redirects |
-| **Tokens** | Held in the OS keychain via `safeStorage`; memory-only when unavailable, with legacy plaintext wiped |
+| **Tokens** | Rust keyring stores sessions in the OS credential store; unavailable storage means a temporary session reported to the UI. Migration requires signing in again |
 | **Updates** | Ed25519-signed manifest. The private key lives **only** in a GitHub Secret; the app ships the public key alone |
 | **Passwords** | bcrypt hashing; verification codes stored as SHA-256, TOTP secrets encrypted at rest |
 | **Sessions** | `tokenVersion` for instant global revocation, plus rate limiting and lockout on login |
 | **Admin** | Mandatory TOTP, IP allowlist, and an audit log entry for every action |
 
-The project has been through **three independent audits**, and the reports sit in the repo in the open — unresolved items included: [`docs/AUDIT-2026-06-11.md`](docs/AUDIT-2026-06-11.md), [`docs/ADVERSARIAL_CODE_REVIEW_2026-08-20.md`](docs/ADVERSARIAL_CODE_REVIEW_2026-08-20.md), [`docs/CODE-REVIEW-FULL-2026-09-07.md`](docs/CODE-REVIEW-FULL-2026-09-07.md).
+Audit and code review history is kept in the open, including unresolved items: [`AUDIT-2026-06-11`](docs/AUDIT-2026-06-11.md), [`ADVERSARIAL_CODE_REVIEW-2026-08-20`](docs/ADVERSARIAL_CODE_REVIEW_2026-08-20.md), [`CODE-REVIEW-2026-09-06`](docs/CODE-REVIEW-2026-09-06.md), and [`CODE-REVIEW-FULL-2026-09-07`](docs/CODE-REVIEW-FULL-2026-09-07.md).
 
 ---
 
@@ -193,7 +192,8 @@ The project has been through **three independent audits**, and the reports sit i
 Nothing is **hard-wired** to `vibestudy.ru`. Identity lives in exactly two places:
 
 ```ts
-// brand.config.ts — launcher, build-time
+// config/launcher-brand.json — shared Rust and TypeScript source
+// brand.config.ts — TypeScript facade, build-time
 export const BRAND = {
   name: 'NATUX WORLD',
   siteOrigin: 'https://vibestudy.ru',
@@ -218,7 +218,7 @@ Change the values, run a build, and both the launcher and the site carry your br
 
 ```bash
 npm ci
-npm run dev          # Vite + Electron with hot reload
+npm run dev          # Tauri/Rust + Vite with hot reload
 
 cd website
 npm ci
@@ -228,18 +228,25 @@ npm run dev          # Next.js on localhost:3000
 | Script | What it does |
 |--------|-------------|
 | `npm run dev` | Development with hot reload |
-| `npm run build` | Full build and installers (`electron-builder`) |
-| `npm run build:web` | Renderer only |
-| `npm test` | Vitest — 106 launcher tests |
-| `npm run typecheck` | `tsc -b --noEmit` |
+| `npm run build` | Tauri/Rust and installer for the current OS |
+| `npm run build:web` | Tauri React renderer |
+| `npm test` | Vitest — UI, bridge and validators |
+| `npm run typecheck` | Main Tauri frontend TypeScript |
 | `npm run lint` | ESLint |
+| `npm run test:packaged` | Tauri executable smoke with an isolated profile |
+| `npm run build:portable` | Windows x64 Portable ZIP |
+| `npm run test:portable` | Portable startup and profile relocation between directories |
+| `npm run electron:install` | Install optional Electron rollback dependencies |
+| `npm run electron:build` | Build the separate Electron rollback package |
+
+Desktop builds require a Rust toolchain, C++ build tools and a Java JDK for the lock agent; Windows requires WebView2. See [docs/BUYER_HANDOVER.md](docs/BUYER_HANDOVER.md) for acceptance and release gates. Portable keeps the profile and WebView cache beside the executable; automatic updates and autostart are unsupported. After extraction, launch `Start NATUX WORLD.cmd`: when WebView2 is missing, the helper offers installation and verifies Microsoft Authenticode before running the installer. Installing the runtime on clean Windows remains untested.
 
 <details>
 <summary><b>Repository layout</b></summary>
 
 ```
 NatuxWorld/
-├── electron/                   # Launcher main process
+├── electron/                   # Optional rollback package with separate dependencies
 │   ├── main.ts                 # Window, auto-update, Electron fuses
 │   ├── preload.ts              # Context-isolated bridge → window.natux
 │   ├── ipc/                    # Channels and handlers
@@ -248,14 +255,29 @@ NatuxWorld/
 ├── src/                        # Renderer: React 19 + Zustand + Tailwind
 │   ├── components/auth/        # LoginScreen, RegisterScreen, VerifyEmail, AuthGate
 │   ├── store/ · pages/ · hooks/ · lib/
-│   └── services/electron-bridge.ts   # Web fallback: the UI runs without Electron
+│   ├── services/native-bridge.ts     # Native facade and Tauri bridge
+│   ├── native/                 # Primary Tauri application and Rust services
+│   ├── profile-lock-core/      # Separate Rust library
+│   └── lock-agent/             # Java agent and its tests
+├── tests/
+│   ├── e2e/                    # Packaging and installed acceptance harnesses
+│   └── scripts/                # Tooling and release contracts
+├── scripts/                    # Build, verification, and utility tools
 ├── website/                    # Next.js 14 + Prisma 7 + PostgreSQL
 │   ├── src/app/api/            # 65 routes: auth, yggdrasil, payments, admin…
 │   ├── src/lib/                # 32 modules: rcon, fulfillment, totp, coupons…
 │   ├── prisma/                 # 15 models, 21 migrations
 │   ├── natux-plugin/           # Paper plugin (Java)
-│   └── Dockerfile · nginx.conf · vps-setup.sh
-└── docs/                       # Audits, guides, feature specs and plans
+│   └── Dockerfile · nginx.conf · scripts/vps-setup.sh
+└── docs/
+    ├── BUYER_HANDOVER.md       # Project handover
+    ├── INSTALL.md              # Player installation
+    ├── operations/             # Deployment and launcher downloads
+    ├── plans/                  # Migrations and plans
+    ├── reviews/                # Audits and code reviews
+    ├── architecture/           # Architecture diagram exports
+    ├── references/             # Reference material
+    └── superpowers/            # Historical plans and specifications
 ```
 
 </details>
@@ -264,27 +286,24 @@ NatuxWorld/
 
 ## 📦 Releases and CI
 
-A release is driven by **one line in `package.json`** — you never tag by hand.
+Source version: **1.10.0**. The default `dev`, `build`, `build:web` and `test:packaged` commands use Tauri. Electron remains an optional rollback package and is not required by the primary dependencies.
 
-```bash
-npm version 1.9.16 --no-git-tag-version
-git commit -am "release: v1.9.16" && git push
-```
+The Build workflow validates Windows and Intel/Apple Silicon macOS. Reviewed source policy in `config/launcher-release-policy.json` enables Tauri, migration and 100% rollout by default; missing repository variables do not revert the primary build to Electron. `TAURI_UPDATES_ENABLED`, `TAURI_MIGRATION_ENABLED` and `TAURI_ROLLOUT_PCT` remain explicit operator overrides. Publication requires `TAURI_SIGNING_PRIVATE_KEY` / `UPDATE_SIGNING_PRIVATE_KEY` and successful acceptance. CI validates final NSIS, portable ZIP and macOS DMG artifacts and generates signatures, native executable hashes, checksums and channel feeds. Source policy does not mean publication has already occurred.
 
-GitHub Actions takes it from there:
-
-1. Runs `typecheck` and the test suites — **red tests stop the release**.
-2. Builds `.exe` (NSIS and portable) plus `.dmg`, and publishes them to a GitHub Release.
-3. Signs the update manifest with `UPDATE_SIGNING_PRIVATE_KEY`.
-4. **Only after a successful publish** does it create the `vX.Y.Z` tag.
-
-> Step 4 isn't a detail: it fixes a real v1.8.0 bug where a failed publish still left the tag behind, so every retry decided the version had already shipped.
+The last confirmed GitHub Build on **13 October 2026**, commit `c70ec65` (1.9.15), passed Windows/macOS validation and skipped updater publication. The new 1.10.0 changes still require their own CI run and release. Signed upgrades from a previous version, clean Windows without WebView2 and live Minecraft remain separate acceptance checks. An existing NATUX WORLD 1.9.15 installation in the normal Windows account blocks new local NSIS acceptance; use a clean isolated environment/CI. Release instructions: [docs/BUYER_HANDOVER.md](docs/BUYER_HANDOVER.md).
 
 ---
 
 ## 📥 Installing it as a player
 
 Windows and macOS, getting past SmartScreen and Gatekeeper, verifying checksums — **[docs/INSTALL.md](docs/INSTALL.md)**.
+
+## 📚 Documentation
+
+- **Handover:** [docs/BUYER_HANDOVER.md](docs/BUYER_HANDOVER.md)
+- **Operations:** [HERMES deployment guide](docs/HERMES_DEPLOY.md), [launcher downloads on the site](docs/LAUNCHER_DOWNLOADS_ON_SITE.md)
+- **Plans:** [Tauri launcher migration](docs/plans/TAURI_MIGRATION_PLAN.md), [server migration](docs/SERVER_MIGRATION_TZ.md)
+- **Audits and reviews:** [docs/](docs/)
 
 ---
 
@@ -302,8 +321,8 @@ Windows and macOS, getting past SmartScreen and Gatekeeper, verifying checksums 
 Nothing is buried — the limits are listed in [docs/BUYER_HANDOVER.md](docs/BUYER_HANDOVER.md):
 
 - The Windows installer has **no Authenticode certificate**, so SmartScreen shows a warning. Ed25519 protects the update channel, not the publisher name.
-- The macOS `.dmg` is **not notarized**, so the first launch needs `xattr -cr`.
-- Both are closed by buying certificates; the code is already built for it.
+- The macOS `.dmg` is **not notarized**, so Gatekeeper may require allowing the app in Privacy & Security.
+- OS signing is optional in the chosen release mode; updater and control-feed signatures remain mandatory. The new Tauri release has not been published.
 
 ---
 
@@ -313,6 +332,6 @@ Nothing is buried — the limits are listed in [docs/BUYER_HANDOVER.md](docs/BUY
 
 **[mc.vibestudy.ru](https://mc.vibestudy.ru)** · **[Download the launcher](https://github.com/Alex-dev-sys/NatuxWorld/releases)** · **[Handover terms](docs/BUYER_HANDOVER.md)**
 
-<sub>NATUX WORLD · 27,704 lines, 273 green tests, three audits, and nothing hidden in the closet</sub>
+<sub>NATUX WORLD · Tauri 2 + Rust · React · Next.js · Paper</sub>
 
 </div>

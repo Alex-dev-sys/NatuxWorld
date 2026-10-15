@@ -86,32 +86,22 @@ jobs:
           if ($signed -and $missingSigningSecrets.Count -gt 0) {
             throw "CODE_SIGNING_ENABLED requires these GitHub Actions secrets: $($missingSigningSecrets -join ', ')"
           }
-          $tauriRequested = $eligible -and $env:TAURI_UPDATES_ENABLED -ieq 'true'
-          $migrationSetting = if ([string]::IsNullOrWhiteSpace($env:TAURI_MIGRATION_ENABLED)) { 'false' } else { $env:TAURI_MIGRATION_ENABLED.Trim().ToLowerInvariant() }
-          if ($migrationSetting -notin @('true', 'false')) {
-            throw 'TAURI_MIGRATION_ENABLED must be true or false.'
-          }
-          if ($eligible -and $migrationSetting -eq 'true' -and -not $tauriRequested) {
-            throw 'TAURI_MIGRATION_ENABLED requires TAURI_UPDATES_ENABLED=true.'
-          }
-          $migrationRequested = $tauriRequested -and $migrationSetting -eq 'true'
+          # Reviewed source policy is the default. Repository variables are
+          # explicit operator overrides; missing variables cannot silently
+          # publish an Electron-only release after the Tauri cutover.
+          $policyJson = node scripts/resolve-launcher-release-policy.mjs | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher release policy is invalid.' }
+          $policy = ConvertFrom-Json -InputObject $policyJson
+          $tauriRequested = $eligible -and $policy.tauri
+          $migrationRequested = $tauriRequested -and $policy.migrationEnabled
           $channel = if ($version.Contains('-')) { 'beta' } else { 'stable' }
-          $rolloutPct = ''
+          $rolloutPct = [string]$policy.rolloutPct
 
           if ($tauriRequested -and $env:TAURI_SIGNING_PRIVATE_KEY_AVAILABLE -ine 'true') {
             throw 'Add the TAURI_SIGNING_PRIVATE_KEY GitHub Actions secret before enabling Tauri updates.'
           }
           if ($tauriRequested -and $env:UPDATE_SIGNING_PRIVATE_KEY_AVAILABLE -ine 'true') {
             throw 'Tauri release control metadata also requires the existing UPDATE_SIGNING_PRIVATE_KEY secret.'
-          }
-          if ($tauriRequested) {
-            if ([string]::IsNullOrWhiteSpace($env:TAURI_ROLLOUT_PCT)) {
-              throw 'Set TAURI_ROLLOUT_PCT explicitly before enabling Tauri updates.'
-            }
-            $rolloutPct = $env:TAURI_ROLLOUT_PCT.Trim()
-            if ($rolloutPct -notmatch '^(0|[1-9]\d{0,2})$' -or [int]$rolloutPct -gt 100) {
-              throw 'TAURI_ROLLOUT_PCT must be an integer from 0 to 100.'
-            }
           }
 
           if ($eligible) {
@@ -138,6 +128,7 @@ jobs:
                 'natux-tauri-control.json.sig',
                 "NatuxWorld-$version-x64-setup.exe",
                 "NatuxWorld-$version-x64-setup.exe.sig",
+                "NatuxWorld-$version-x64-portable.zip",
                 "NatuxWorld-$version-x86_64.app.tar.gz",
                 "NatuxWorld-$version-x86_64.app.tar.gz.sig",
                 "NatuxWorld-$version-aarch64.app.tar.gz",
@@ -202,6 +193,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install optional Electron rollback dependencies
+        run: npm ci --prefix electron
+
       - name: Test Java lock-agent on Java 21
         run: npm run test:lock-agent
 
@@ -217,6 +211,9 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Test optional Electron rollback services
+        run: npm run test:electron
+
       - name: Test release workflow contracts
         run: npm run test:release:workflow
 
@@ -227,7 +224,7 @@ jobs:
         run: node --test tests/scripts/generate-tauri-feed.test.mjs tests/scripts/tauri-command-contract.test.mjs tests/scripts/native-api-parity.test.mjs tests/scripts/lock-runtime-contract.test.mjs
 
       - name: Build renderer
-        run: npm run build:web
+        run: npm run electron:build:web
 
       - name: Check Windows signing prerequisites
         if: needs.plan.outputs.signed == 'true'
@@ -323,10 +320,10 @@ jobs:
           $installers = @(Get-ChildItem $bundle -File -Filter '*.exe')
           if ($installers.Count -ne 1) { throw 'Tauri did not produce exactly one NSIS installer.' }
           $installer = $installers[0]
+          $application = Join-Path (Get-Location) 'src/native/target/release/natux-world-launcher-native.exe'
           if ($env:NATUX_CODE_SIGNING_ENABLED -eq 'true') {
             $signingConfig = Get-Content -LiteralPath $env:TAURI_WINDOWS_SIGNING_CONFIG -Raw | ConvertFrom-Json
             $expectedThumbprint = [string]$signingConfig.bundle.windows.certificateThumbprint
-            $application = Join-Path (Get-Location) 'src/native/target/release/natux-world-launcher-native.exe'
             foreach ($signedFile in @($application, $installer.FullName)) {
               $authenticode = Get-AuthenticodeSignature -FilePath $signedFile
               if ($authenticode.Status -ne 'Valid') {
@@ -344,11 +341,12 @@ jobs:
           New-Item -ItemType Directory -Force -Path release/tauri | Out-Null
           Copy-Item $installer.FullName 'release/tauri/NatuxWorld-${{ needs.plan.outputs.version }}-x64-setup.exe'
           Copy-Item $signature.FullName 'release/tauri/NatuxWorld-${{ needs.plan.outputs.version }}-x64-setup.exe.sig'
+          $executableHash = (Get-FileHash -LiteralPath $application -Algorithm SHA512).Hash.ToLowerInvariant()
+          [System.IO.File]::WriteAllText((Join-Path (Get-Location) 'release/tauri/executable-sha512-windows-x86_64.txt'), $executableHash, [System.Text.Encoding]::ASCII)
 
       - name: Build Tauri Windows validation bundle
+        if: needs.plan.outputs.tauri != 'true'
         run: node scripts/run-tauri-validation-build.mjs --bundles nsis
-        env:
-          NATUX_TAURI_E2E_DEBUG_PORT: '9222'
 
       - name: Ensure WebView2 Runtime for Tauri packaged smoke test
         shell: pwsh
@@ -404,19 +402,31 @@ jobs:
         env:
           NATUX_TAURI_E2E_DEBUG_PORT: '9222'
 
+      - name: Package Tauri portable ZIP from tested native binary
+        run: node scripts/package-tauri-portable.mjs
+
+      - name: Test Tauri portable profile and relocation
+        run: npm run test:portable
+
+      - name: Tauri signed upgrade acceptance preflight
+        run: npm run test:tauri:upgrade
+
+      - name: Test compiled production NSIS migration hooks
+        run: node --test tests/scripts/tauri-installer-hooks.test.mjs
+
       - name: Package Windows (signed)
         if: needs.plan.outputs.signed == 'true'
-        run: npx electron-builder --config config/electron-builder.signed.cjs --win --x64 --publish never
+        run: npm run electron:package -- --config config/electron-builder.signed.cjs --win --x64 --publish never
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
       - name: Package Windows (unsigned)
         if: needs.plan.outputs.signed != 'true'
-        run: npx electron-builder --win --x64 --publish never
+        run: npm run electron:package -- --win --x64 --publish never
 
       - name: Packaged Windows smoke test
-        run: npm run test:packaged
+        run: npm run test:electron:packaged
         env:
           NATUX_E2E_EXECUTABLE: release/win-unpacked/NATUX WORLD.exe
 
@@ -424,6 +434,31 @@ jobs:
         run: npm run test:tauri:installed
         env:
           NATUX_TAURI_E2E_DEBUG_PORT: '9222'
+          NATUX_TAURI_E2E_INSTALLER: ${{ needs.plan.outputs.tauri == 'true' && format('release/tauri/NatuxWorld-{0}-x64-setup.exe', needs.plan.outputs.version) || '' }}
+          NATUX_TAURI_E2E_EXECUTABLE_HASH_FILE: ${{ needs.plan.outputs.tauri == 'true' && 'release/tauri/executable-sha512-windows-x86_64.txt' || '' }}
+
+      - name: Accept published Electron to Tauri installation migration
+        # The test mutates installer registration only on a fresh hosted VM.
+        # Forked repositories retain pure migration tests without installing.
+        if: github.repository == 'Alex-dev-sys/NatuxWorld'
+        shell: pwsh
+        env:
+          NATUX_TAURI_ELECTRON_MIGRATION_ACCEPTANCE: '1'
+          NATUX_TAURI_ELECTRON_MIGRATION_DEDICATED_ACCOUNT: 'YES'
+          NATUX_TAURI_ELECTRON_MIGRATION_EPHEMERAL_CI: 'YES'
+          NATUX_TAURI_E2E_INSTALLER: ${{ needs.plan.outputs.tauri == 'true' && format('release/tauri/NatuxWorld-{0}-x64-setup.exe', needs.plan.outputs.version) || format('src/native/target/release/bundle/nsis/NATUX WORLD_{0}_x64-setup.exe', needs.plan.outputs.version) }}
+          NATUX_TAURI_E2E_EXECUTABLE_HASH_FILE: ${{ needs.plan.outputs.tauri == 'true' && 'release/tauri/executable-sha512-windows-x86_64.txt' || '' }}
+        run: |
+          $env:NATUX_TAURI_ELECTRON_MIGRATION_WINDOWS_ACCOUNT = [Environment]::UserName
+          if (-not $env:NATUX_TAURI_E2E_EXECUTABLE_HASH_FILE) {
+            New-Item -ItemType Directory -Force -Path tests/.runtime | Out-Null
+            $application = Join-Path (Get-Location) 'src/native/target/release/natux-world-launcher-native.exe'
+            $hash = (Get-FileHash -LiteralPath $application -Algorithm SHA512).Hash.ToLowerInvariant()
+            $hashFile = Join-Path (Get-Location) 'tests/.runtime/migration-native-sha512.txt'
+            [System.IO.File]::WriteAllText($hashFile, $hash, [System.Text.Encoding]::ASCII)
+            $env:NATUX_TAURI_E2E_EXECUTABLE_HASH_FILE = $hashFile
+          }
+          node --test tests/e2e/tauri-electron-migration.test.cjs
 
       - name: Sign update manifest and write Windows checksums
         if: needs.plan.outputs.release == 'true'
@@ -490,6 +525,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install optional Electron rollback dependencies
+        run: npm ci --prefix electron
+
       - name: Test Java lock-agent on Java 21
         run: npm run test:lock-agent
 
@@ -508,8 +546,11 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Test optional Electron rollback services
+        run: npm run test:electron
+
       - name: Build renderer
-        run: npm run build:web
+        run: npm run electron:build:web
 
       - name: Check macOS signing prerequisites
         if: needs.plan.outputs.signed == 'true'
@@ -550,7 +591,15 @@ jobs:
 
       - name: Build Tauri macOS validation bundle
         if: needs.plan.outputs.tauri != 'true'
-        run: npm run tauri:build -- --bundles app,dmg
+        shell: bash
+        env:
+          APPLE_SIGNING_IDENTITY: '-'
+          NATUX_TAURI_UPDATES_ENABLED: '0'
+        run: |
+          set -euo pipefail
+          for target in x86_64-apple-darwin aarch64-apple-darwin; do
+            npm run tauri:build -- --target "$target" --bundles app,dmg
+          done
 
       - name: Import Tauri macOS signing certificate
         if: needs.plan.outputs.tauri == 'true' && needs.plan.outputs.signed == 'true'
@@ -648,11 +697,13 @@ jobs:
             cp "$updater_bundle" "release/tauri/NatuxWorld-${{ needs.plan.outputs.version }}-$arch.app.tar.gz"
             cp "$updater_bundle.sig" "release/tauri/NatuxWorld-${{ needs.plan.outputs.version }}-$arch.app.tar.gz.sig"
             cp "$dmg" "release/tauri/NatuxWorld-${{ needs.plan.outputs.version }}-$arch.dmg"
+            executable_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_bundle/Contents/Info.plist")"
+            shasum -a 512 "$app_bundle/Contents/MacOS/$executable_name" | awk '{print $1}' > "release/tauri/executable-sha512-darwin-$arch.txt"
           done
 
       - name: Package macOS (signed)
         if: needs.plan.outputs.signed == 'true'
-        run: npx electron-builder --config config/electron-builder.signed.cjs --mac --x64 --arm64 --publish never
+        run: npm run electron:package -- --config config/electron-builder.signed.cjs --mac --x64 --arm64 --publish never
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -664,7 +715,7 @@ jobs:
 
       - name: Package macOS (unsigned)
         if: needs.plan.outputs.signed != 'true'
-        run: npx electron-builder --mac --x64 --arm64 --publish never
+        run: npm run electron:package -- --mac --x64 --arm64 --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
@@ -676,23 +727,40 @@ jobs:
         run: |
           app_executable="$(find release -type f -path '*/NATUX WORLD.app/Contents/MacOS/NATUX WORLD' -print -quit)"
           test -n "$app_executable" || { echo 'Packaged macOS executable not found'; exit 1; }
-          NATUX_E2E_EXECUTABLE="$PWD/$app_executable" npm run test:packaged
+          NATUX_E2E_EXECUTABLE="$PWD/$app_executable" npm run test:electron:packaged
 
-      - name: Packaged Tauri macOS startup smoke test
+      - name: Stage exact Tauri macOS acceptance artifacts
         shell: bash
         run: |
-          if [[ '${{ needs.plan.outputs.tauri }}' == 'true' ]]; then
-            target="$(rustc -vV | sed -n 's/^host: //p')"
-            bundle_dir="src/native/target/$target/release/bundle/macos"
-          else
-            bundle_dir='src/native/target/release/bundle/macos'
-          fi
-          app_bundle="$(find "$bundle_dir" -maxdepth 1 -type d -name '*.app' -print -quit)"
-          test -n "$app_bundle" || { echo "Tauri macOS app bundle not found in $bundle_dir"; exit 1; }
-          executable_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_bundle/Contents/Info.plist")"
-          app_executable="$app_bundle/Contents/MacOS/$executable_name"
-          test -x "$app_executable" || { echo "Tauri macOS executable is missing: $app_executable"; exit 1; }
-          NATUX_TAURI_MACOS_E2E_EXECUTABLE="$PWD/$app_executable" node --test tests/e2e/tauri-macos-packaged.test.cjs
+          set -euo pipefail
+          mkdir -p release/tauri-acceptance
+          for target in x86_64-apple-darwin aarch64-apple-darwin; do
+            if [[ "$target" == x86_64-* ]]; then arch=x86_64; else arch=aarch64; fi
+            name="NatuxWorld-${{ needs.plan.outputs.version }}-$arch.dmg"
+            hash="executable-sha512-darwin-$arch.txt"
+            if [[ '${{ needs.plan.outputs.tauri }}' == 'true' ]]; then
+              # These bytes are also uploaded to the published version release.
+              cp "release/tauri/$name" "release/tauri-acceptance/$name"
+              cp "release/tauri/$hash" "release/tauri-acceptance/$hash"
+            else
+              bundle_dir="src/native/target/$target/release/bundle/macos"
+              dmg="$(find "src/native/target/$target/release/bundle/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+              app_bundle="$(find "$bundle_dir" -maxdepth 1 -type d -name '*.app' -print -quit)"
+              test -n "$dmg" && test -n "$app_bundle" || { echo "Tauri validation bundle missing for $arch"; exit 1; }
+              codesign --verify --deep --strict "$app_bundle"
+              executable_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_bundle/Contents/Info.plist")"
+              cp "$dmg" "release/tauri-acceptance/$name"
+              shasum -a 512 "$app_bundle/Contents/MacOS/$executable_name" | awk '{print $1}' > "release/tauri-acceptance/$hash"
+            fi
+          done
+
+      - name: Upload Tauri macOS acceptance artifacts on every branch
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: natux-world-tauri-macos-acceptance-${{ needs.plan.outputs.version }}
+          path: release/tauri-acceptance/*
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Write macOS checksums
         if: needs.plan.outputs.release == 'true'
@@ -722,10 +790,52 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  macos_acceptance:
+    name: Tauri macOS native ${{ matrix.arch }} DMG acceptance
+    needs: [plan, macos]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x86_64
+          - runner: macos-15
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.12.0
+          cache: npm
+
+      - name: Install acceptance dependencies
+        run: npm ci
+
+      - name: Download exact macOS DMGs and native hashes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "natux-world-tauri-macos-acceptance-$VERSION" --dir release/tauri-acceptance
+
+      - name: Run exact DMG on its native architecture
+        run: node --test tests/e2e/tauri-macos-packaged.test.cjs
+        env:
+          NATUX_TAURI_MACOS_E2E_ARCH: ${{ matrix.arch }}
+          NATUX_TAURI_MACOS_E2E_VERSION: ${{ needs.plan.outputs.version }}
+          NATUX_TAURI_MACOS_E2E_DMG: release/tauri-acceptance/NatuxWorld-${{ needs.plan.outputs.version }}-${{ matrix.arch }}.dmg
+          NATUX_TAURI_MACOS_E2E_EXECUTABLE_HASH_FILE: release/tauri-acceptance/executable-sha512-darwin-${{ matrix.arch }}.txt
+
   publish:
     name: Publish complete release
     runs-on: ubuntu-latest
-    needs: [plan, windows, macos]
+    needs: [plan, windows, macos, macos_acceptance]
     if: needs.plan.outputs.release == 'true'
     permissions:
       actions: read
@@ -804,7 +914,7 @@ jobs:
             grep -Fxq "$required" release-assets.txt || { echo "Missing required release asset: $required"; exit 1; }
           done
           if [[ '${{ needs.plan.outputs.tauri }}' == 'true' ]]; then
-            for required in latest.json natux-tauri-control.json natux-tauri-control.json.sig NatuxWorld-${{ needs.plan.outputs.version }}-x64-setup.exe NatuxWorld-${{ needs.plan.outputs.version }}-x64-setup.exe.sig NatuxWorld-${{ needs.plan.outputs.version }}-x86_64.app.tar.gz NatuxWorld-${{ needs.plan.outputs.version }}-x86_64.app.tar.gz.sig NatuxWorld-${{ needs.plan.outputs.version }}-x86_64.dmg NatuxWorld-${{ needs.plan.outputs.version }}-aarch64.app.tar.gz NatuxWorld-${{ needs.plan.outputs.version }}-aarch64.app.tar.gz.sig NatuxWorld-${{ needs.plan.outputs.version }}-aarch64.dmg SHA256SUMS-tauri.txt; do
+            for required in latest.json natux-tauri-control.json natux-tauri-control.json.sig NatuxWorld-${{ needs.plan.outputs.version }}-x64-setup.exe NatuxWorld-${{ needs.plan.outputs.version }}-x64-setup.exe.sig NatuxWorld-${{ needs.plan.outputs.version }}-x64-portable.zip NatuxWorld-${{ needs.plan.outputs.version }}-x86_64.app.tar.gz NatuxWorld-${{ needs.plan.outputs.version }}-x86_64.app.tar.gz.sig NatuxWorld-${{ needs.plan.outputs.version }}-x86_64.dmg NatuxWorld-${{ needs.plan.outputs.version }}-aarch64.app.tar.gz NatuxWorld-${{ needs.plan.outputs.version }}-aarch64.app.tar.gz.sig NatuxWorld-${{ needs.plan.outputs.version }}-aarch64.dmg SHA256SUMS-tauri.txt; do
               grep -Fxq "$required" release-assets.txt || { echo "Missing Tauri release asset: $required"; exit 1; }
             done
           fi

@@ -326,6 +326,9 @@ struct LegacyEnvironment<'a> {
 }
 
 fn legacy_user_data_dir() -> io::Result<PathBuf> {
+    if let Some(directory) = crate::profile_paths::portable_user_data_dir()? {
+        return Ok(directory);
+    }
     #[cfg(target_os = "windows")]
     let platform = LegacyPlatform::Windows;
     #[cfg(target_os = "macos")]

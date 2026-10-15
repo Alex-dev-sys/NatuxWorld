@@ -50,6 +50,7 @@ export interface SignedTauriControl {
   rolloutPct: number;
   feedUrl: string;
   migrationEnabled: boolean;
+  executableHashes?: Partial<Record<'windows-x86_64' | 'darwin-x86_64' | 'darwin-aarch64', string>>;
 }
 
 export interface TauriMigrationContext {
@@ -157,8 +158,17 @@ function parseTauriControl(value: unknown): SignedTauriControl {
     throw new Error('Tauri update control is not an object');
   }
   const control = value as Record<string, unknown>;
-  const allowed = new Set(['schemaVersion', 'repository', 'channel', 'version', 'rolloutPct', 'feedUrl', 'migrationEnabled']);
+  const allowed = new Set(['schemaVersion', 'repository', 'channel', 'version', 'rolloutPct', 'feedUrl', 'migrationEnabled', 'executableHashes']);
   if (Object.keys(control).some((key) => !allowed.has(key))) throw new Error('Unknown Tauri control field');
+  if (control.executableHashes !== undefined) {
+    const hashes = control.executableHashes;
+    const platforms = new Set(['windows-x86_64', 'darwin-x86_64', 'darwin-aarch64']);
+    if (!hashes || typeof hashes !== 'object' || Array.isArray(hashes)
+      || Object.entries(hashes).some(([platform, hash]) => !platforms.has(platform)
+        || typeof hash !== 'string' || !/^[0-9a-f]{128}$/.test(hash))) {
+      throw new Error('Invalid Tauri executable hashes');
+    }
+  }
   if (control.schemaVersion !== 1 || control.repository !== UPDATE_REPOSITORY) {
     throw new Error('Tauri update control repository or schema mismatch');
   }
@@ -181,6 +191,9 @@ function parseTauriControl(value: unknown): SignedTauriControl {
     rolloutPct: control.rolloutPct,
     feedUrl: control.feedUrl,
     migrationEnabled: control.migrationEnabled === true,
+    ...(control.executableHashes !== undefined
+      ? { executableHashes: control.executableHashes as SignedTauriControl['executableHashes'] }
+      : {}),
   };
 }
 
