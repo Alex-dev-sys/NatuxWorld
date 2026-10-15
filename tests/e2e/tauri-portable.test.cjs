@@ -78,7 +78,8 @@ test('native portable distribution opens, moves its profile and leaves installed
   const version = require('../../package.json').version;
   const archive = path.join(root, 'release/tauri', `NatuxWorld-${version}-x64-portable.zip`);
   await fs.access(archive);
-  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'natux-portable-e2e-'));
+  const tempParent = await fs.realpath(os.tmpdir());
+  const temporary = await fs.mkdtemp(path.join(tempParent, 'natux-portable-e2e-'));
   const original = path.join(temporary, 'original');
   const moved = path.join(temporary, 'moved');
   const parallel = path.join(temporary, 'parallel');
@@ -127,7 +128,10 @@ test('native portable distribution opens, moves its profile and leaves installed
   } finally {
     await parallelInstance?.close();
     await instance?.close();
-    assert.equal(path.dirname(temporary), await fs.realpath(os.tmpdir()));
-    await fs.rm(temporary, { recursive: true, force: true });
+    const resolved = await fs.realpath(temporary);
+    const resolvedParent = await fs.realpath(path.dirname(resolved));
+    assert.equal(resolvedParent.toLowerCase(), tempParent.toLowerCase());
+    assert.ok(path.basename(resolved).startsWith('natux-portable-e2e-'));
+    await fs.rm(resolved, { recursive: true, force: true });
   }
 });

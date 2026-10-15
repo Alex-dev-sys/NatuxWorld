@@ -724,7 +724,16 @@ jobs:
 
       - name: Package macOS (signed)
         if: needs.plan.outputs.signed == 'true'
-        run: npm run electron:package -- --config config/electron-builder.signed.cjs --mac --x64 --arm64 --publish never
+        shell: bash
+        run: |
+          set -euo pipefail
+          for arch in x64 arm64; do
+            if [[ "$arch" == x64 ]]; then target=x86_64-apple-darwin; else target=aarch64-apple-darwin; fi
+            NATUX_LOCK_RUNTIME_TARGET="$target" npm run build:lock-runtime
+            expected_arch=x86_64; if [[ "$arch" == arm64 ]]; then expected_arch=arm64; fi
+            test "$(lipo -archs build/lock-runtime/lock-helper)" = "$expected_arch"
+            npm run electron:package -- --config config/electron-builder.signed.cjs --mac "--$arch" --publish never
+          done
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -736,7 +745,16 @@ jobs:
 
       - name: Package macOS (unsigned)
         if: needs.plan.outputs.signed != 'true'
-        run: npm run electron:package -- --mac --x64 --arm64 --publish never
+        shell: bash
+        run: |
+          set -euo pipefail
+          for arch in x64 arm64; do
+            if [[ "$arch" == x64 ]]; then target=x86_64-apple-darwin; else target=aarch64-apple-darwin; fi
+            NATUX_LOCK_RUNTIME_TARGET="$target" npm run build:lock-runtime
+            expected_arch=x86_64; if [[ "$arch" == arm64 ]]; then expected_arch=arm64; fi
+            test "$(lipo -archs build/lock-runtime/lock-helper)" = "$expected_arch"
+            npm run electron:package -- --mac "--$arch" --publish never
+          done
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
@@ -746,8 +764,9 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
         shell: bash
         run: |
-          app_executable="$(find release -type f -path '*/NATUX WORLD.app/Contents/MacOS/NATUX WORLD' -print -quit)"
-          test -n "$app_executable" || { echo 'Packaged macOS executable not found'; exit 1; }
+          if [[ "$RUNNER_ARCH" == ARM64 ]]; then package_dir=release/mac-arm64; else package_dir=release/mac; fi
+          app_executable="$package_dir/NATUX WORLD.app/Contents/MacOS/NATUX WORLD"
+          test -x "$app_executable" || { echo 'Native Electron rollback executable not found'; exit 1; }
           NATUX_E2E_EXECUTABLE="$PWD/$app_executable" npm run test:electron:packaged
 
       - name: Stage exact Tauri macOS acceptance artifacts

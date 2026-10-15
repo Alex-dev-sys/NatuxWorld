@@ -4,9 +4,12 @@
 // (electron-builder 25 has no built-in electronFuses config, so we use
 // @electron/fuses directly).
 const path = require('path')
+const { execFile } = require('node:child_process')
+const { promisify } = require('node:util')
 const { createRequire } = require('node:module')
 const optionalRequire = createRequire(path.join(__dirname, '..', 'electron', 'package.json'))
 const { flipFuses, FuseVersion, FuseV1Options } = optionalRequire('@electron/fuses')
+const runFile = promisify(execFile)
 
 module.exports = async function afterPack(context) {
   const { appOutDir, electronPlatformName, packager } = context
@@ -29,4 +32,13 @@ module.exports = async function afterPack(context) {
     // The renderer is served by the restricted app:// protocol handler.
     [FuseV1Options.GrantFileProtocolExtraPrivileges]: false,
   })
+
+  if (electronPlatformName === 'darwin' && packager.config?.forceCodeSigning !== true) {
+    // Fuse changes invalidate Electron's signature. Apple Silicon requires a
+    // valid ad-hoc seal even when Developer ID signing is intentionally disabled
+    // (including PR builds, where electron-builder skips its signing phase).
+    const app = path.join(appOutDir, `${product}.app`)
+    await runFile('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', app])
+    await runFile('/usr/bin/codesign', ['--verify', '--deep', '--strict', app])
+  }
 }
