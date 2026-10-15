@@ -18,6 +18,18 @@ function sectionBetween(startMarker, endMarker) {
   return workflow.slice(start, end);
 }
 
+test('native CI installs targets into the same pinned toolchain selected by the Tauri crate', async () => {
+  const pinned = await readFile(resolve(dirname(fileURLToPath(import.meta.url)), '../../src/native/rust-toolchain.toml'), 'utf8');
+  const channel = /^channel\s*=\s*"(\d+\.\d+\.\d+)"\s*$/m.exec(pinned)?.[1];
+  assert.ok(channel, 'Native builds require a pinned numeric Rust toolchain.');
+  for (const job of [sectionBetween('  windows:\n', '  macos:\n'), sectionBetween('  macos:\n', '  macos_acceptance:\n')]) {
+    const setup = job.slice(job.indexOf('uses: dtolnay/rust-toolchain@'));
+    assert.ok(setup.startsWith('uses: dtolnay/rust-toolchain@'));
+    assert.ok(setup.includes(`toolchain: ${channel}\n`), 'Cross targets must be installed for the crate toolchain, not an unrelated stable default.');
+  }
+  assert.match(sectionBetween('  macos:\n', '  macos_acceptance:\n'), /targets: aarch64-apple-darwin,x86_64-apple-darwin/);
+});
+
 test('PR-executed release planning receives credential-presence flags, not signing keys', () => {
   const planJob = sectionBetween('  plan:\n', '  windows:\n');
   const platformSigningSecrets = [

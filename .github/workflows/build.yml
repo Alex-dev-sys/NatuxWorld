@@ -233,9 +233,10 @@ jobs:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
-      - name: Install Rust stable
+      - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
+          toolchain: 1.90.0
           components: clippy, rustfmt
 
       - name: Rust formatting
@@ -563,9 +564,10 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      - name: Install Rust stable and macOS targets
+      - name: Install pinned Rust toolchain and macOS targets
         uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
+          toolchain: 1.90.0
           components: clippy,rustfmt
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
