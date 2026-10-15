@@ -234,7 +234,7 @@ test('Windows CI checks Electron rollback against the installed Tauri profile', 
   assert.notEqual(rollbackSmoke, -1);
   assert.ok(electronPackage < packagedSmoke, 'Electron package must be built before its packaged smoke test');
   assert.ok(packagedSmoke < rollbackSmoke, 'rollback smoke must run after both Tauri and Electron packages exist');
-  assert.match(windowsJob, /- name: Installed Tauri and Electron rollback smoke test\n\x20{8}run: npm run test:tauri:installed/);
+  assert.match(windowsJob, /- name: Installed Tauri and Electron rollback smoke test\n\x20{8}run: \.\/scripts\/run-windows-acceptance\.ps1 -Suite installed/);
 });
 
 test('Windows CI compiles production hooks and accepts real published Electron installation migration before upload', () => {
@@ -255,7 +255,7 @@ test('Windows CI compiles production hooks and accepts real published Electron i
   assert.match(acceptance, /NATUX_TAURI_ELECTRON_MIGRATION_WINDOWS_ACCOUNT = \[Environment\]::UserName/);
   assert.match(acceptance, /NATUX_TAURI_E2E_INSTALLER:.*release\/tauri\/NatuxWorld-/);
   assert.match(acceptance, /Get-FileHash -LiteralPath \$application -Algorithm SHA512/);
-  assert.match(acceptance, /node --test tests\/e2e\/tauri-electron-migration\.test\.cjs/);
+  assert.match(acceptance, /\.\/scripts\/run-windows-acceptance\.ps1 -Suite electron-migration/);
   assert.doesNotMatch(acceptance, /secrets\./);
 });
 
@@ -376,7 +376,7 @@ test('Windows packages and tests portable ZIP from the already tested native bin
   const portableStep = sectionBetween('      - name: Package Tauri portable ZIP from tested native binary\n',
     '      - name: Tauri signed upgrade acceptance preflight\n');
   assert.match(portableStep, /run: node scripts\/package-tauri-portable\.mjs/);
-  assert.match(portableStep, /run: npm run test:portable/);
+  assert.match(portableStep, /run: \.\/scripts\/run-windows-acceptance\.ps1 -Suite portable/);
   assert.doesNotMatch(portableStep, /npm run (?:build|tauri:build)/);
   const plan = sectionBetween('  plan:\n', '  windows:\n');
   assert.ok(plan.includes('NatuxWorld-$version-x64-portable.zip'));

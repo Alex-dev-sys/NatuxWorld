@@ -392,8 +392,27 @@ jobs:
           if (-not $runtimeVersion) { throw 'WebView2 Runtime is still missing after the silent install.' }
           Write-Host "WebView2 Runtime $runtimeVersion is available for the Tauri smoke test."
 
+      - name: Prepare ordinary Windows user context for WebView2 acceptance
+        shell: pwsh
+        run: |
+          if (-not (Get-Command gsudo.exe -ErrorAction SilentlyContinue)) {
+            winget install --exact --id gerardog.gsudo --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity
+            if ($LASTEXITCODE -ne 0) { throw 'Could not install the Windows CI integrity helper.' }
+            $helperDirectory = Join-Path $env:ProgramFiles 'gsudo/Current'
+            if (-not (Test-Path -LiteralPath (Join-Path $helperDirectory 'gsudo.exe') -PathType Leaf)) {
+              throw 'Installed gsudo executable is missing.'
+            }
+            $helperDirectory | Out-File -FilePath $env:GITHUB_PATH -Append
+          }
+          $workspace = (Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
+          $repository = (git rev-parse --show-toplevel).Trim()
+          if ($workspace -ine $repository.Replace('/', '\')) { throw 'CI workspace does not match the repository.' }
+          $runnerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          icacls $workspace /grant ('*{0}:(OI)(CI)F' -f $runnerSid) /T /Q
+          if ($LASTEXITCODE -ne 0) { throw 'Could not grant the runner account access to its workspace.' }
+
       - name: Packaged Tauri smoke test
-        run: npm run test:tauri:packaged
+        run: ./scripts/run-windows-acceptance.ps1 -Suite packaged
         env:
           NATUX_TAURI_E2E_EXECUTABLE: src/native/target/release/natux-world-launcher-native.exe
           NATUX_TAURI_E2E_DEBUG_PORT: '9222'
@@ -407,7 +426,7 @@ jobs:
         run: node scripts/package-tauri-portable.mjs
 
       - name: Test Tauri portable profile and relocation
-        run: npm run test:portable
+        run: ./scripts/run-windows-acceptance.ps1 -Suite portable
 
       - name: Tauri signed upgrade acceptance preflight
         run: npm run test:tauri:upgrade
@@ -432,7 +451,7 @@ jobs:
           NATUX_E2E_EXECUTABLE: release/win-unpacked/NATUX WORLD.exe
 
       - name: Installed Tauri and Electron rollback smoke test
-        run: npm run test:tauri:installed
+        run: ./scripts/run-windows-acceptance.ps1 -Suite installed
         env:
           NATUX_TAURI_E2E_DEBUG_PORT: '9222'
           NATUX_TAURI_E2E_INSTALLER: ${{ needs.plan.outputs.tauri == 'true' && format('release/tauri/NatuxWorld-{0}-x64-setup.exe', needs.plan.outputs.version) || '' }}
@@ -459,7 +478,7 @@ jobs:
             [System.IO.File]::WriteAllText($hashFile, $hash, [System.Text.Encoding]::ASCII)
             $env:NATUX_TAURI_E2E_EXECUTABLE_HASH_FILE = $hashFile
           }
-          node --test tests/e2e/tauri-electron-migration.test.cjs
+          ./scripts/run-windows-acceptance.ps1 -Suite electron-migration
 
       - name: Sign update manifest and write Windows checksums
         if: needs.plan.outputs.release == 'true'
