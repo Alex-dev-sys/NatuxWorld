@@ -23,3 +23,19 @@ test('standard desktop commands use Tauri while rollback is explicit', async () 
   assert.match(metadata.scripts['test:packaged'], /tauri-packaged/);
   assert.match(metadata.scripts['electron:build'], /run-electron\.mjs build/);
 });
+
+test('rollback package names remain identical locally, in updater metadata and on GitHub', async () => {
+  const config = await readFile(new URL('../../electron-builder.yml', import.meta.url), 'utf8');
+  assert.match(config, /^appId: world\.natux\.launcher$/m);
+  assert.match(config, /^productName: NATUX WORLD$/m);
+  const templates = [...config.matchAll(/^ {2}artifactName: (.+)$/gm)].map(match => match[1]);
+  assert.equal(templates.length, 4);
+  const names = templates.map(template => template.replaceAll('${version}', '1.10.0')
+    .replaceAll('${arch}', 'x64').replaceAll('${ext}', 'exe'));
+  for (const name of names) {
+    assert.match(name, /^[A-Za-z0-9._-]+$/, 'Release upload must not rename a package referenced by updater metadata.');
+  }
+  assert.equal(names[0], 'NATUX-WORLD-Setup-1.10.0-x64.exe');
+  assert.equal(names[1], 'NATUX-WORLD-Portable-1.10.0-x64.exe');
+  assert.equal(templates[2], templates[3], 'macOS package metadata and DMG use the same stable name.');
+});

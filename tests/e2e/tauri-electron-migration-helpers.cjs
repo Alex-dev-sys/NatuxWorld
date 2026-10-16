@@ -202,8 +202,17 @@ function legacyUninstallerPath(entry) {
 }
 
 function normalizedInstallationPath(filename) {
-  assert.ok(typeof filename === 'string' && filename !== '', 'Installation location is required.');
-  return (/^[A-Za-z]:[\\/]/.test(filename) ? path.win32.resolve(filename) : path.resolve(filename)).toLowerCase();
+  assert.ok(typeof filename === 'string' && filename.length > 0 && filename.length <= 16_384,
+    'Installation location is required and must be bounded.');
+  // Tauri's NSIS template stores InstallLocation with one pair of quotes.
+  // This is a registry path value, not a command line passed to a shell.
+  const value = filename.startsWith('"') && filename.endsWith('"') ? filename.slice(1, -1) : filename;
+  assert.ok(!value.includes('"') && !Array.from(value).some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127),
+    'Installation location must not contain unmatched quotes, arguments or control characters.');
+  assert.match(value, /^[A-Za-z]:[\\/]/, 'Installation location must be a local absolute Windows path.');
+  assert.ok(!value.split(/[\\/]/).some(segment => segment === '.' || segment === '..'),
+    'Installation location must not traverse directories.');
+  return path.win32.resolve(value).toLowerCase();
 }
 
 function assertOwnedRegistrations(entries, directory, version) {

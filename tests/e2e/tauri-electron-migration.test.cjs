@@ -90,6 +90,19 @@ test('published legacy GUID may omit InstallLocation but only its exact owned qu
   }
 });
 
+test('quoted NSIS InstallLocation remains an absolute owned path and cannot hide another directory or arguments', () => {
+  const directory = 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\owned fixture\\app';
+  const registration = location => [{ version: '1.10.0', location }];
+  for (const location of [directory, `"${directory}"`, `"${directory.toUpperCase()}\\"`]) {
+    assertOwnedRegistrations(registration(location), directory, '1.10.0');
+  }
+  for (const location of [`"${directory}`, `${directory}"`, `"${directory}" /S`,
+    `"${directory}-other"`, `"${directory}\\..\\other"`, `"${directory}"\0`, '""',
+    'C:relative\\app', 'relative/app', '\\\\server\\share\\app']) {
+    assert.throws(() => assertOwnedRegistrations(registration(location), directory, '1.10.0'), undefined, location);
+  }
+});
+
 test('stopping the old process tree tolerates already-removed descendants and surfaces a still-running kill failure', async () => {
   let pids = ['100', '101'];
   const killed = [];

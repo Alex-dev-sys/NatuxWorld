@@ -19,7 +19,7 @@ const DL_MAC_X64 = `${REL}/NATUX-WORLD-${LAUNCHER_VERSION}-x64.dmg`
 
 // Преимущества фирменного лаунчера над ручным подключением.
 const LAUNCHER_PERKS = [
-  { t: 'JAVA НЕ НУЖНА', d: 'Среда зашита в лаунчер — ничего ставить отдельно не надо.' },
+  { t: 'JAVA АВТОМАТИЧЕСКИ', d: 'Лаунчер сам скачает подходящую Java при установке игры.' },
   { t: 'ПОДКЛЮЧЕНИЕ В 1 КЛИК', d: 'Сервер уже прописан. Жми «Играть» — ты в игре.' },
   { t: 'АВТО-ОБНОВЛЕНИЯ', d: 'Клиент, версия и сборка модов обновляются сами.' },
   { t: 'ВЕРНАЯ ВЕРСИЯ', d: 'Совместимость с узлом гарантирована — без «Outdated client».' },
@@ -240,9 +240,17 @@ export default function JoinPage() {
               </a>
             </div>
 
-            <p style={{ fontFamily: MONO, fontSize: 9, color: '#666', letterSpacing: '0.1em', marginTop: 12, lineHeight: 1.6 }}>
-              {'// '}СБОРКА БЕЗ ПОДПИСИ — ПРИ ПРЕДУПРЕЖДЕНИИ SMARTSCREEN / GATEKEEPER ВЫБЕРИ «ВСЁ РАВНО ЗАПУСТИТЬ»
-            </p>
+            <div style={{ fontFamily: MONO, fontSize: 10, color: '#999', marginTop: 12, lineHeight: 1.6 }}>
+              <p>При первом запуске сборки без сертификата ОС проверь, что файл скачан по официальной ссылке выше.</p>
+              <p style={{ marginTop: 6 }}>
+                Windows: если SmartScreen предлагает продолжить, нажми «Подробнее» → «Выполнить в любом случае».{' '}
+                <a className="join-link" href="https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation" target="_blank" rel="noopener noreferrer">Справка Microsoft</a>.
+              </p>
+              <p style={{ marginTop: 6 }}>
+                macOS: после первой попытки открыть приложение перейди в «Системные настройки» → «Конфиденциальность и безопасность» и разреши запуск NATUX WORLD.{' '}
+                <a className="join-link" href="https://support.apple.com/ru-ru/102445" target="_blank" rel="noopener noreferrer">Инструкция Apple</a>.
+              </p>
+            </div>
           </div>
 
           {/* правая колонка: преимущества */}
