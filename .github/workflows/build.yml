@@ -226,6 +226,9 @@ jobs:
       - name: Test hosted WebView2 acceptance boundaries
         run: node --test tests/scripts/windows-acceptance.test.mjs tests/scripts/webview2-ci.test.mjs tests/e2e/tauri-webview-bootstrap.test.cjs
 
+      - name: Test captured NSIS payload contract
+        run: node --test tests/scripts/tauri-nsis-payload.test.mjs
+
       - name: Test legacy Electron userData path and safeStorage compatibility
         run: node --test tests/e2e/electron-safe-storage-interop.test.cjs
 
@@ -326,11 +329,12 @@ jobs:
           } else {
             node scripts/run-tauri.mjs build --config src/native/tauri.updater.conf.json --bundles nsis
           }
+          if ($LASTEXITCODE -ne 0) { throw 'Tauri Windows updater bundle build failed.' }
           $bundle = 'src/native/target/release/bundle/nsis'
           $installers = @(Get-ChildItem $bundle -File -Filter '*.exe')
           if ($installers.Count -ne 1) { throw 'Tauri did not produce exactly one NSIS installer.' }
           $installer = $installers[0]
-          $application = Join-Path (Get-Location) 'src/native/target/release/natux-world-launcher-native.exe'
+          $application = Join-Path (Get-Location) 'src/native/target/release/natux-world-launcher-native.exe.nsis-payload.exe'
           if ($env:NATUX_CODE_SIGNING_ENABLED -eq 'true') {
             $signingConfig = Get-Content -LiteralPath $env:TAURI_WINDOWS_SIGNING_CONFIG -Raw | ConvertFrom-Json
             $expectedThumbprint = [string]$signingConfig.bundle.windows.certificateThumbprint
@@ -423,7 +427,7 @@ jobs:
       - name: Packaged Tauri smoke test
         run: ./scripts/run-windows-acceptance.ps1 -Suite packaged
         env:
-          NATUX_TAURI_E2E_EXECUTABLE: src/native/target/release/natux-world-launcher-native.exe
+          NATUX_TAURI_E2E_EXECUTABLE: src/native/target/release/natux-world-launcher-native.exe.nsis-payload.exe
           NATUX_TAURI_E2E_DEBUG_PORT: '9222'
 
       - name: Tauri live acceptance preflight
@@ -432,7 +436,7 @@ jobs:
           NATUX_TAURI_E2E_DEBUG_PORT: '9222'
 
       - name: Package Tauri portable ZIP from tested native binary
-        run: node scripts/package-tauri-portable.mjs
+        run: node scripts/package-tauri-portable.mjs --nsis-payload
 
       - name: Test Tauri portable profile and relocation
         run: ./scripts/run-windows-acceptance.ps1 -Suite portable
@@ -481,7 +485,7 @@ jobs:
           $env:NATUX_TAURI_ELECTRON_MIGRATION_WINDOWS_ACCOUNT = [Environment]::UserName
           if (-not $env:NATUX_TAURI_E2E_EXECUTABLE_HASH_FILE) {
             New-Item -ItemType Directory -Force -Path tests/.runtime | Out-Null
-            $application = Join-Path (Get-Location) 'src/native/target/release/natux-world-launcher-native.exe'
+            $application = Join-Path (Get-Location) 'src/native/target/release/natux-world-launcher-native.exe.nsis-payload.exe'
             $hash = (Get-FileHash -LiteralPath $application -Algorithm SHA512).Hash.ToLowerInvariant()
             $hashFile = Join-Path (Get-Location) 'tests/.runtime/migration-native-sha512.txt'
             [System.IO.File]::WriteAllText($hashFile, $hash, [System.Text.Encoding]::ASCII)
@@ -502,7 +506,7 @@ jobs:
           $name = "NatuxWorld-$env:VERSION-x64-setup.exe"
           $source = if ($env:UPDATER_BUNDLE -eq 'true') { "release/tauri/$name" } else { "src/native/target/release/bundle/nsis/NATUX WORLD_$($env:VERSION)_x64-setup.exe" }
           Copy-Item -LiteralPath $source -Destination "$directory/$name"
-          $nativeHash = (Get-FileHash -LiteralPath 'src/native/target/release/natux-world-launcher-native.exe' -Algorithm SHA512).Hash.ToLowerInvariant()
+          $nativeHash = (Get-FileHash -LiteralPath 'src/native/target/release/natux-world-launcher-native.exe.nsis-payload.exe' -Algorithm SHA512).Hash.ToLowerInvariant()
           [IO.File]::WriteAllText((Join-Path (Get-Location) "$directory/native.sha512"), $nativeHash, [Text.Encoding]::ASCII)
           $receipt = [ordered]@{
             version = $env:VERSION

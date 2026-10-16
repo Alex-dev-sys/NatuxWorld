@@ -32,6 +32,23 @@ test('portable archive includes only native runtime and explicit local-profile m
     const runtime = JSON.parse(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
       path.join(extract, 'start-portable.ps1'), '-CheckRuntimeOnly'], { windowsHide: true, encoding: 'utf8' }));
     assert.equal(typeof runtime.available, 'boolean');
+    // A stale payload is ignored by normal standalone builds. CI must request
+    // the exact captured NSIS executable explicitly, retaining its signature.
+    const captured = path.join(root, 'src/native/target/release/natux-world-launcher-native.exe.nsis-payload.exe');
+    await writeFile(captured, 'MZ patched and signed fixture');
+    await assert.rejects(() => packageTauriPortable(root, { nsisPayload: 'true' }), /must be boolean/);
+    const payloadArchive = await packageTauriPortable(root, { nsisPayload: true });
+    const payloadExtract = path.join(root, 'payload-extracted');
+    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
+      fileURLToPath(new URL('../../scripts/extract-tauri-portable.ps1', import.meta.url)),
+      '-Archive', payloadArchive, '-DestinationDirectory', payloadExtract], { windowsHide: true, stdio: 'pipe' });
+    assert.equal(await readFile(path.join(payloadExtract, 'natux-world-launcher-native.exe'), 'utf8'), 'MZ patched and signed fixture');
+    const standaloneArchive = await packageTauriPortable(root);
+    const standaloneExtract = path.join(root, 'standalone-extracted');
+    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
+      fileURLToPath(new URL('../../scripts/extract-tauri-portable.ps1', import.meta.url)),
+      '-Archive', standaloneArchive, '-DestinationDirectory', standaloneExtract], { windowsHide: true, stdio: 'pipe' });
+    assert.equal(await readFile(path.join(standaloneExtract, 'natux-world-launcher-native.exe'), 'utf8'), 'MZ fixture');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

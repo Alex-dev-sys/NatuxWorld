@@ -33,6 +33,43 @@ async function until(operation, message) {
   throw new Error(message);
 }
 
+async function assertInstalledDataUntouched(directory) {
+  // Windows may create these empty OS cache containers while opening WebView2.
+  // No file, launcher directory, redirected path or other subtree is exempt.
+  const systemDirectories = new Set(['Microsoft', path.join('Microsoft', 'Windows'),
+    path.join('Microsoft', 'Windows', 'Caches')]);
+  const unexpected = [];
+  for (const relative of await fs.readdir(directory, { recursive: true })) {
+    const entry = await fs.lstat(path.join(directory, relative));
+    assert.ok(!entry.isSymbolicLink(), 'Portable must not create redirected paths in installed APPDATA.');
+    if (systemDirectories.has(relative) && entry.isDirectory() && !entry.isSymbolicLink()) continue;
+    unexpected.push(relative);
+  }
+  assert.deepEqual(unexpected, ['sentinel.bin'], 'Portable must not write files or a launcher profile into installed APPDATA.');
+}
+
+test('portable isolation tolerates only empty Windows cache containers, never their contents or application data', async () => {
+  const parent = await fs.realpath(os.tmpdir());
+  const owner = await fs.mkdtemp(path.join(parent, 'natux-portable-isolation-'));
+  try {
+    await fs.writeFile(path.join(owner, 'sentinel.bin'), 'preserved');
+    const cache = path.join(owner, 'Microsoft', 'Windows', 'Caches');
+    await fs.mkdir(cache, { recursive: true });
+    await assertInstalledDataUntouched(owner);
+    const forbidden = path.join(cache, 'must-not-be-ignored.dat');
+    await fs.writeFile(forbidden, 'unexpected runtime data');
+    await assert.rejects(() => assertInstalledDataUntouched(owner), /must not write/);
+    await fs.unlink(forbidden);
+    await fs.mkdir(path.join(owner, 'natux-world-launcher'));
+    await assert.rejects(() => assertInstalledDataUntouched(owner), /must not write/);
+  } finally {
+    const actual = await fs.realpath(owner);
+    assert.equal(path.dirname(actual).toLowerCase(), parent.toLowerCase());
+    assert.ok(path.basename(actual).startsWith('natux-portable-isolation-'));
+    await fs.rm(actual, { recursive: true, force: true });
+  }
+});
+
 async function openPortable(directory, isolatedAppData) {
   const port = await unusedPort();
   const env = { ...process.env, APPDATA: isolatedAppData, LOCALAPPDATA: isolatedAppData,
@@ -121,7 +158,9 @@ test('native portable distribution opens, moves its profile and leaves installed
     assert.equal(parallelInstance.settings.memory, 6144);
     assert.equal(parallelInstance.settings.installId, parallelInstallId);
     assert.notEqual(parallelInstance.settings.installId, instance.settings.installId);
-    assert.deepEqual(await fs.readdir(appData), ['sentinel.bin']);
+    await assertInstalledDataUntouched(appData);
+    assert.ok((await fs.readdir(path.join(moved, 'profile', 'EBWebView'))).length > 0,
+      'The actual WebView cache must remain beside the portable profile.');
     assert.equal(await fs.readFile(sentinel, 'utf8'), 'installed profile must remain untouched');
     const files = await fs.readdir(moved);
     assert.ok(!files.some(name => /electron|node_modules|\.asar$|preload/i.test(name)));

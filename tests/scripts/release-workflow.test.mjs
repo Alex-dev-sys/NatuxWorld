@@ -325,6 +325,15 @@ test('release acceptance installs the publishable NSIS and checks its native exe
   assert.match(windowsJob, /NATUX_TAURI_E2E_INSTALLER:.*release\/tauri\/NatuxWorld-/);
   assert.match(windowsJob, /NATUX_TAURI_E2E_EXECUTABLE_HASH_FILE:.*release\/tauri\/executable-sha512-windows-x86_64\.txt/);
   assert.match(windowsJob, /Get-FileHash -LiteralPath \$application -Algorithm SHA512/);
+  const captured = 'src/native/target/release/natux-world-launcher-native.exe.nsis-payload.exe';
+  // Tauri patches NSS and signs for bundling, then restores the Cargo binary.
+  // Every Windows receipt must refer to the captured installed payload bytes.
+  const applicationInputs = [...windowsJob.matchAll(/\$application = Join-Path \(Get-Location\) '([^']+)'/g)];
+  assert.equal(applicationInputs.length, 2);
+  for (const input of applicationInputs) assert.equal(input[1], captured);
+  assert.ok(windowsJob.includes(`NATUX_TAURI_E2E_EXECUTABLE: ${captured}`));
+  assert.ok(windowsJob.includes(`Get-FileHash -LiteralPath '${captured}' -Algorithm SHA512`));
+  assert.match(windowsJob, /run: node scripts\/package-tauri-portable\.mjs --nsis-payload/);
   assert.doesNotMatch(windowsJob, /tauri\.validation\.generated\.conf/);
   const macosJob = sectionBetween('  macos:\n', '  publish:\n');
   assert.match(macosJob, /shasum -a 512 "\$app_bundle\/Contents\/MacOS\/\$executable_name"/);

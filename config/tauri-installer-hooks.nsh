@@ -1,5 +1,6 @@
 ; The published Electron NSIS uses this UUID; Tauri uses the product-name key.
 ; Only the verified current-user installation is eligible for takeover.
+!define NATUX_BUILD_HOOK_DIR "${__FILEDIR__}"
 !define NATUX_LEGACY_UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\a4b4c9af-4db5-52ba-94a5-1ac47f40eef5"
 !define NATUX_RUNKEY "Software\Microsoft\Windows\CurrentVersion\Run"
 Var NatuxLegacyUninstaller
@@ -206,6 +207,11 @@ FunctionEnd
 !macroend
 
 !macro NSIS_HOOK_PREINSTALL
+  ; This is a compiler command, not installed runtime code. Tauri restores its
+  ; original executable after bundling; preserve the exact NSS/signed payload.
+  !ifdef MAINBINARYSRCPATH
+    !system 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${NATUX_BUILD_HOOK_DIR}\..\scripts\capture-tauri-nsis-payload.ps1" -Source "${MAINBINARYSRCPATH}"' = 0
+  !endif
   StrCpy $NatuxLegacyStartup "0"
   ReadRegStr $R0 HKCU "${NATUX_LEGACY_UNINSTKEY}" "UninstallString"
   ${If} $R0 != ""

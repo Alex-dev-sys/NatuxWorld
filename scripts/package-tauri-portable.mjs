@@ -6,12 +6,15 @@ import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-export async function packageTauriPortable(root = repositoryRoot) {
+export async function packageTauriPortable(root = repositoryRoot, { nsisPayload = false } = {}) {
   if (process.platform !== 'win32') throw new Error('Portable distribution currently supports Windows x64 only.');
   if (process.arch !== 'x64') throw new Error('Build the portable distribution on Windows x64.');
   const metadata = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(metadata.version)) throw new Error('Invalid portable package version.');
-  const executable = path.join(root, 'src/native/target/release/natux-world-launcher-native.exe');
+  if (typeof nsisPayload !== 'boolean') throw new Error('nsisPayload must be boolean.');
+  // A bundled Windows executable is patched and optionally signed before NSIS
+  // compilation; Tauri restores the unpatched Cargo binary after bundling.
+  const executable = path.join(root, `src/native/target/release/natux-world-launcher-native.exe${nsisPayload ? '.nsis-payload.exe' : ''}`);
   const agent = path.join(root, 'build/lock-runtime/natux-lock-agent.jar');
   for (const input of [executable, agent]) {
     if (!(await stat(input)).isFile() || (await stat(input)).size === 0) throw new Error('Missing portable runtime input.');
@@ -39,5 +42,7 @@ export async function packageTauriPortable(root = repositoryRoot) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  process.stdout.write(`Portable archive: ${await packageTauriPortable()}\n`);
+  const args = process.argv.slice(2);
+  if (args.length > 1 || args.some(argument => argument !== '--nsis-payload')) throw new Error('Usage: node scripts/package-tauri-portable.mjs [--nsis-payload]');
+  process.stdout.write(`Portable archive: ${await packageTauriPortable(repositoryRoot, { nsisPayload: args.includes('--nsis-payload') })}\n`);
 }
