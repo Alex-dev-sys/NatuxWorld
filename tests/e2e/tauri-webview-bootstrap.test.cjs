@@ -100,30 +100,92 @@ async function ordinaryLocalAppData() {
   return actual;
 }
 
-async function waitForRemoval(directory) {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    try { await fs.access(directory); } catch (error) {
-      if (error.code === 'ENOENT') return;
-      throw error;
-    }
-    await new Promise(resolve => setTimeout(resolve, 250));
+async function registeredInstallations() {
+  const { stdout } = await runFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `
+    $ErrorActionPreference = 'Stop'
+    $roots = @(
+      'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+      'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+      'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall'
+    )
+    $found = @($roots | ForEach-Object {
+      if (Test-Path -LiteralPath $_) {
+        Get-ChildItem -LiteralPath $_ | ForEach-Object {
+          $registration = try { Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction Stop } catch {
+            if ($_.CategoryInfo.Category -ne 'ObjectNotFound') { throw }
+            $null
+          }
+          if ($registration.DisplayName -and $registration.DisplayName.StartsWith('NATUX WORLD', [StringComparison]::OrdinalIgnoreCase)) {
+            [pscustomobject]@{ key = $_.Name; displayName = $registration.DisplayName; installLocation = $registration.InstallLocation }
+          }
+        }
+      }
+    })
+    ConvertTo-Json -InputObject $found -Compress
+  `], { windowsHide: true, timeout: 15_000, maxBuffer: 1024 * 1024, env: safeEnvironment() });
+  const registrations = JSON.parse(stdout);
+  assert.ok(Array.isArray(registrations), 'Uninstall inspection must return every remaining NATUX registration.');
+  return registrations;
+}
+
+async function uninstallState(directory) {
+  let directoryExists = true;
+  try { await fs.access(directory); } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    directoryExists = false;
   }
-  throw new Error(`Owned Tauri uninstall did not finish; preserving recovery files in ${path.dirname(directory)}.`);
+  return { directoryExists, registrations: await registeredInstallations() };
+}
+
+async function waitForRemoval(directory, {
+  inspect = uninstallState, now = Date.now,
+  pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)), timeout = 30_000,
+} = {}) {
+  const deadline = now() + timeout;
+  let state;
+  do {
+    state = await inspect(directory);
+    if (!state.directoryExists && state.registrations.length === 0) return;
+    if (now() >= deadline) break;
+    await pause(250);
+  } while (now() <= deadline);
+  throw new Error(`Owned Tauri uninstall did not finish; preserving recovery files in ${path.dirname(directory)}. Remaining state: ${JSON.stringify(state)}`);
 }
 
 async function uninstallOwned(installDirectory, owner, env) {
   assert.ok(within(owner, installDirectory));
   try { await fs.access(installDirectory); } catch (error) {
-    if (error.code === 'ENOENT') { await assertNoExistingInstallation(); return; }
+    if (error.code === 'ENOENT') { await waitForRemoval(installDirectory); return; }
     throw error;
   }
   const uninstaller = await regularArtifact(path.join(installDirectory, 'uninstall.exe'), installDirectory, 100 * 1024 * 1024);
   assert.ok(within(owner, uninstaller));
   await runFile(uninstaller, ['/S'], { env, windowsHide: true, timeout: 90_000, maxBuffer: 1024 * 1024 });
   await waitForRemoval(installDirectory);
-  await assertNoExistingInstallation();
 }
+
+test('uninstall completion waits beyond app removal for registration removal and preserves timeout evidence', async () => {
+  const registration = { key: 'HKCU\\Software\\test-uninstall', displayName: 'NATUX WORLD', installLocation: 'owned-app' };
+  const states = [
+    { directoryExists: true, registrations: [registration] },
+    { directoryExists: false, registrations: [registration] },
+    { directoryExists: false, registrations: [] },
+  ];
+  let calls = 0;
+  let elapsed = 0;
+  const clock = { now: () => elapsed, pause: async milliseconds => { elapsed += milliseconds; }, timeout: 1000 };
+  await waitForRemoval('owned-app', { ...clock, inspect: async () => states[calls++] });
+  assert.equal(calls, 3, 'An absent directory cannot substitute for registration removal.');
+  for (const state of [states[1], { directoryExists: true, registrations: [] }]) {
+    elapsed = 0;
+    await assert.rejects(waitForRemoval('owned-app', { ...clock, inspect: async () => state }), error => {
+      assert.match(error.message, /preserving recovery files/);
+      assert.ok(error.message.includes(JSON.stringify(state)), 'Timeout must identify exact remaining registrations and directory state.');
+      return true;
+    });
+  }
+  await assert.rejects(waitForRemoval('owned-app', { ...clock, inspect: async () => { throw new Error('registry denied'); } }), /registry denied/);
+});
 
 test('WebView2 bootstrap acceptance requires explicit ephemeral official CI and the actual runner account', () => {
   const env = { NATUX_WEBVIEW_BOOTSTRAP_ACCEPTANCE: '1', CI: 'true', GITHUB_ACTIONS: 'true',
@@ -182,7 +244,7 @@ test('unmodified NSIS installs WebView2 on a runtime-free ordinary Windows accou
   await fs.mkdir(appData);
   const env = safeEnvironment(isolatedInstallerEnvironment(appData, localAppData));
   let started = false;
-  let uninstalled = false;
+  let failure;
   let after;
   let nativeInstalled;
   let installerAfter;
@@ -203,16 +265,22 @@ test('unmodified NSIS installs WebView2 on a runtime-free ordinary Windows accou
     t.diagnostic(smoke.stdout.trim());
     installerAfter = await sha512(installer);
     assert.equal(installerAfter, installerBefore, 'Bootstrap acceptance must use the unmodified NSIS throughout.');
-    await uninstallOwned(installDirectory, owner, env);
-    uninstalled = true;
-    assertRuntimeState(await runtimeCheck(), true);
+  } catch (error) {
+    failure = error;
   } finally {
-    if (started && !uninstalled) await uninstallOwned(installDirectory, owner, env);
-    const actualOwner = await fs.realpath(owner);
-    assert.equal(path.dirname(actualOwner), tempParent);
-    assert.ok(path.basename(actualOwner).startsWith('natux-tauri-installed-'));
-    await fs.rm(actualOwner, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+    try {
+      if (started) await uninstallOwned(installDirectory, owner, env);
+      assertRuntimeState(await runtimeCheck(), true);
+      const actualOwner = await fs.realpath(owner);
+      assert.equal(path.dirname(actualOwner), tempParent);
+      assert.ok(path.basename(actualOwner).startsWith('natux-tauri-installed-'));
+      await fs.rm(actualOwner, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+    } catch (cleanupError) {
+      if (failure) t.diagnostic(`Cleanup also failed; preserving recovery files in ${owner}: ${cleanupError.stack ?? cleanupError}`);
+      else failure = cleanupError;
+    }
   }
+  if (failure) throw failure;
   await fs.writeFile(resultFile, `${JSON.stringify({
     success: true, version: packageJson.version, sourceHeadSha: process.env.GITHUB_SHA, buildCommit: receipt.buildCommit,
     sourceRun: process.env.NATUX_WEBVIEW_BOOTSTRAP_SOURCE_RUN ?? null,

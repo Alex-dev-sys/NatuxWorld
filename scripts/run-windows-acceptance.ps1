@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('packaged', 'portable', 'installed', 'electron-migration', 'webview-bootstrap')]
+    [ValidateSet('packaged', 'portable', 'installed', 'electron-migration', 'webview-bootstrap', 'signed-upgrade')]
     [string]$Suite,
     [switch]$InMediumProcess
 )
@@ -34,6 +34,7 @@ $tests = @{
     'installed' = 'tests/e2e/tauri-installed.test.cjs'
     'electron-migration' = 'tests/e2e/tauri-electron-migration.test.cjs'
     'webview-bootstrap' = 'tests/e2e/tauri-webview-bootstrap.test.cjs'
+    'signed-upgrade' = 'tests/e2e/tauri-upgrade.test.cjs'
 }
 $repository = Split-Path -Parent $PSScriptRoot
 Push-Location -LiteralPath $repository
