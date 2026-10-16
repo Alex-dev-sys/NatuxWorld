@@ -190,7 +190,7 @@ test('Tauri control metadata is checked with the Rust client key before release 
     '      - name: Create or complete draft release\n',
     '      - name: Verify assets and publish\n',
   );
-  const publishJob = workflow.slice(workflow.indexOf('  publish:\n'));
+  const publishJob = sectionBetween('  publish:\n', '  webview_bootstrap:\n');
 
   assert.match(
     generationStep,

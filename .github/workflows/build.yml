@@ -14,6 +14,11 @@ on:
       - 'website/**'
       - '.github/workflows/website.yml'
   workflow_dispatch:
+    inputs:
+      webview_acceptance_run:
+        description: 'Completed Build run from this commit whose Windows installer will be tested without WebView2 (empty: normal build)'
+        required: false
+        type: string
 
 concurrency:
   group: build-${{ github.ref }}
@@ -22,6 +27,7 @@ concurrency:
 jobs:
   plan:
     name: Plan release
+    if: github.event_name != 'workflow_dispatch' || inputs.webview_acceptance_run == ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -216,6 +222,9 @@ jobs:
 
       - name: Test release workflow contracts
         run: npm run test:release:workflow
+
+      - name: Test hosted WebView2 acceptance boundaries
+        run: node --test tests/scripts/windows-acceptance.test.mjs tests/scripts/webview2-ci.test.mjs tests/e2e/tauri-webview-bootstrap.test.cjs
 
       - name: Test legacy Electron userData path and safeStorage compatibility
         run: node --test tests/e2e/electron-safe-storage-interop.test.cjs
@@ -479,6 +488,38 @@ jobs:
             $env:NATUX_TAURI_E2E_EXECUTABLE_HASH_FILE = $hashFile
           }
           ./scripts/run-windows-acceptance.ps1 -Suite electron-migration
+
+      - name: Stage exact accepted Windows installer
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          UPDATER_BUNDLE: ${{ needs.plan.outputs.tauri }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $directory = 'release/windows-acceptance'
+          New-Item -ItemType Directory -Force -Path $directory | Out-Null
+          $name = "NatuxWorld-$env:VERSION-x64-setup.exe"
+          $source = if ($env:UPDATER_BUNDLE -eq 'true') { "release/tauri/$name" } else { "src/native/target/release/bundle/nsis/NATUX WORLD_$($env:VERSION)_x64-setup.exe" }
+          Copy-Item -LiteralPath $source -Destination "$directory/$name"
+          $nativeHash = (Get-FileHash -LiteralPath 'src/native/target/release/natux-world-launcher-native.exe' -Algorithm SHA512).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText((Join-Path (Get-Location) "$directory/native.sha512"), $nativeHash, [Text.Encoding]::ASCII)
+          $receipt = [ordered]@{
+            version = $env:VERSION
+            sourceHeadSha = $env:SOURCE_HEAD_SHA
+            buildCommit = $env:GITHUB_SHA
+            installerSha512 = (Get-FileHash -LiteralPath "$directory/$name" -Algorithm SHA512).Hash.ToLowerInvariant()
+            nativeSha512 = $nativeHash
+          } | ConvertTo-Json
+          [IO.File]::WriteAllText((Join-Path (Get-Location) "$directory/receipt.json"), $receipt, [Text.UTF8Encoding]::new($false))
+
+      - name: Upload accepted Windows installer on every branch
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: natux-world-windows-acceptance-${{ needs.plan.outputs.version }}
+          path: release/windows-acceptance/*
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Sign update manifest and write Windows checksums
         if: needs.plan.outputs.release == 'true'
@@ -988,3 +1029,90 @@ jobs:
           for required in latest.json natux-tauri-control.json natux-tauri-control.json.sig; do
             grep -Fxq "$required" tauri-feed-assets.txt || { echo "Missing Tauri control asset: $required"; exit 1; }
           done
+
+  webview_bootstrap:
+    name: Windows installer without WebView2
+    if: github.event_name == 'workflow_dispatch' && inputs.webview_acceptance_run != '' && github.repository == 'Alex-dev-sys/NatuxWorld'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.12.0
+          cache: npm
+
+      - name: Install acceptance dependencies
+        run: npm ci
+
+      - name: Download accepted installer from the same source commit
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACCEPTANCE_RUN: ${{ inputs.webview_acceptance_run }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:ACCEPTANCE_RUN -notmatch '^[1-9][0-9]{0,19}$') { throw 'Invalid Build run ID.' }
+          $source = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:ACCEPTANCE_RUN" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Could not inspect source Build run.' }
+          if ($source.status -ne 'completed' -or $source.conclusion -ne 'success' -or
+              $source.head_sha -cne $env:GITHUB_SHA -or $source.head_repository.full_name -cne $env:GITHUB_REPOSITORY -or
+              $source.path -ne '.github/workflows/build.yml' -or $source.event -notin @('pull_request', 'push', 'workflow_dispatch')) {
+            throw 'Source must be a successful official Build run from this exact commit.'
+          }
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Invalid package version.' }
+          gh run download $env:ACCEPTANCE_RUN --repo $env:GITHUB_REPOSITORY --name "natux-world-windows-acceptance-$version" --dir tests/.runtime/webview-source
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download accepted installer.' }
+
+      - name: Prepare ordinary Windows user context
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-Command gsudo.exe -ErrorAction SilentlyContinue)) {
+            winget install --exact --id gerardog.gsudo --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity
+            if ($LASTEXITCODE -ne 0) { throw 'Could not install the Windows CI integrity helper.' }
+            $helperDirectory = Join-Path $env:ProgramFiles 'gsudo/Current'
+            if (-not (Test-Path -LiteralPath (Join-Path $helperDirectory 'gsudo.exe') -PathType Leaf)) { throw 'Installed gsudo executable is missing.' }
+            $helperDirectory | Out-File -FilePath $env:GITHUB_PATH -Append
+          }
+          $workspace = (Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
+          $repository = (git rev-parse --show-toplevel).Trim()
+          if ($workspace -ine $repository.Replace('/', '\')) { throw 'CI workspace does not match the repository.' }
+          $runnerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          icacls $workspace /grant ('*{0}:(OI)(CI)F' -f $runnerSid) /T /Q
+          if ($LASTEXITCODE -ne 0) { throw 'Could not grant the runner account access to its workspace.' }
+
+      - name: Establish actual WebView2 absence using its Microsoft uninstaller
+        shell: pwsh
+        env:
+          NATUX_EPHEMERAL_WEBVIEW_REMOVAL: 'YES'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/prepare-webview2-ci.ps1 -Action Check | Set-Content tests/.runtime/webview-before-preparation.json
+          ./scripts/prepare-webview2-ci.ps1 -Action Prepare | Set-Content tests/.runtime/webview-prepared.json
+
+      - name: Accept production NSIS prerequisite bootstrap at Medium integrity
+        shell: pwsh
+        env:
+          NATUX_WEBVIEW_BOOTSTRAP_ACCEPTANCE: '1'
+          NATUX_WEBVIEW_BOOTSTRAP_SOURCE_RUN: ${{ inputs.webview_acceptance_run }}
+        run: ./scripts/run-windows-acceptance.ps1 -Suite webview-bootstrap
+
+      - name: Upload prerequisite acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: webview-bootstrap-evidence-${{ github.run_id }}
+          path: |
+            tests/.runtime/webview-before-preparation.json
+            tests/.runtime/webview-prepared.json
+            tests/.runtime/webview-result.json
+          if-no-files-found: warn
+          retention-days: 14
