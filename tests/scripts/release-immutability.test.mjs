@@ -76,6 +76,8 @@ function global:gh {
 }
 if ((Get-Command gh).CommandType -ne 'Function') { throw 'Network CLI was not replaced.' }
 ${plan.run}
+# Match the GitHub Actions pwsh wrapper, including its native exit-code check.
+if (Test-Path -LiteralPath variable:LASTEXITCODE) { exit $LASTEXITCODE }
 `, { flag: 'wx' });
     const env = { ...process.env };
     for (const name of Object.keys(env)) {
