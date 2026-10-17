@@ -264,7 +264,7 @@ test('macOS CI verifies Electron legacy userData resolution', () => {
   assert.match(macosJob, /- name: Test Electron legacy userData path on macOS\n\x20{8}run: node --test tests\/e2e\/electron-safe-storage-interop\.test\.cjs/);
 });
 
-test('macOS native acceptance reuses both exact DMGs on PRs and releases without duplicate compilation', () => {
+test('macOS native acceptance reuses both exact DMGs without rebuilding the packaged application', () => {
   const macosJob = sectionBetween('  macos:\n', '  publish:\n');
   const validationBuild = sectionBetween(
     '      - name: Build Tauri macOS validation bundle\n',
@@ -290,11 +290,29 @@ test('macOS native acceptance reuses both exact DMGs on PRs and releases without
   assert.match(acceptance, /NATUX_TAURI_MACOS_E2E_DMG:.*\$\{\{ matrix.arch \}\}\.dmg/);
   assert.match(acceptance, /NATUX_TAURI_MACOS_E2E_EXECUTABLE_HASH_FILE:.*\$\{\{ matrix.arch \}\}\.txt/);
   assert.match(acceptance, /run: node --test tests\/e2e\/tauri-macos-packaged\.test\.cjs/);
-  assert.doesNotMatch(acceptance, /cargo|tauri:build|--prefix electron|npm run .*build/);
+  assert.doesNotMatch(acceptance, /cargo build|tauri:build|--prefix electron|npm run (?:electron:)?build(?:\s|$)/);
   assert.match(
     macosJob,
     /Packaged macOS smoke test\n\s+# Manual migration-branch validation runs the dedicated Tauri smoke below;\n\s+# keep the legacy Electron CDP smoke on PRs and main-branch release builds\.\n\s+if: github\.event_name != 'workflow_dispatch' \|\| github\.ref == 'refs\/heads\/main'/,
   );
+});
+
+test('real credential persistence is mandatory on Windows and both native macOS runners', () => {
+  const windows = sectionBetween('  windows:\n', '  macos:\n');
+  assert.match(windows, /run: node --test tests\/scripts\/macos-credential-acceptance\.test\.mjs/);
+  assert.match(windows, /cargo test --manifest-path src\/native\/Cargo\.toml --locked --lib account::transport::system_credential_tests::system_credential_store_roundtrips_across_processes -- --ignored --exact --nocapture/);
+  assert.match(windows, /test result: ok\\\. 1 passed; 0 failed; 0 ignored;/);
+  const macos = sectionBetween('  macos_acceptance:\n', '  publish:\n');
+  assert.match(macos, /runner: macos-15-intel\n\s+arch: x86_64/);
+  assert.match(macos, /runner: macos-15\n\s+arch: aarch64/);
+  assert.match(macos, /toolchain: 1\.90\.0/);
+  assert.match(macos, /run: npm run build:lock-runtime/);
+  assert.match(macos, /run: npm run build:web/);
+  assert.match(macos, /run: node scripts\/run-macos-credential-acceptance\.mjs/);
+  assert.match(macos, /NATUX_MACOS_CREDENTIAL_ACCEPTANCE: '1'/);
+  assert.match(macos, /NATUX_MACOS_CREDENTIAL_EXPECTED_ARCH: \$\{\{ matrix\.arch \}\}/);
+  assert.match(macos, /path: tests\/\.runtime\/macos-credential-result\.json/);
+  assert.doesNotMatch(macos, /secrets\.(?:TAURI_SIGNING|UPDATE_SIGNING|APPLE|CSC)/);
 });
 
 test('Windows Tauri packaged smoke has the WebView2 Runtime available', () => {

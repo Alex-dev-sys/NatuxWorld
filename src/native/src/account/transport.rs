@@ -104,10 +104,11 @@ mod profile_credential_tests {
     }
 }
 
-#[cfg(all(test, target_os = "windows"))]
+#[cfg(all(test, any(target_os = "windows", target_os = "macos")))]
 mod system_credential_tests {
     use std::process::Command;
-    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use uuid::Uuid;
 
     use super::{CredentialBackend, SystemCredentialStore};
 
@@ -115,15 +116,102 @@ mod system_credential_tests {
     const SERVICE: &str = "NATUX_SYSTEM_CREDENTIAL_FIXTURE_SERVICE";
     const NAME: &str = "NATUX_SYSTEM_CREDENTIAL_FIXTURE_NAME";
     const VALUE: &str = "temporary-credential-fixture";
+    const CHILD: &str =
+        "account::transport::system_credential_tests::credential_provider_fixture_child";
+
+    fn fixture_store(service: &str, name: &str) -> Option<SystemCredentialStore> {
+        let suffix = service.strip_prefix("world.natux.launcher.test.")?;
+        let namespace = Uuid::parse_str(suffix).ok()?;
+        if namespace.get_version_num() != 4
+            || namespace.to_string() != suffix
+            || name != format!("credential-interoperability:{namespace}")
+        {
+            return None;
+        }
+        Some(SystemCredentialStore::new(service, name))
+    }
+
+    #[cfg(target_os = "macos")]
+    fn assert_disposable_macos_keychain() {
+        use std::path::Path;
+        for (key, expected) in [
+            ("CI", "true"),
+            ("GITHUB_ACTIONS", "true"),
+            ("RUNNER_ENVIRONMENT", "github-hosted"),
+            ("RUNNER_OS", "macOS"),
+            ("GITHUB_REPOSITORY", "Alex-dev-sys/NatuxWorld"),
+            ("GITHUB_JOB", "macos_acceptance"),
+            ("NATUX_MACOS_CREDENTIAL_ACCEPTANCE", "1"),
+        ] {
+            assert_eq!(
+                std::env::var(key).as_deref(),
+                Ok(expected),
+                "disposable macOS CI required"
+            );
+        }
+        assert_eq!(
+            std::env::var("NATUX_MACOS_CREDENTIAL_EXPECTED_ARCH").as_deref(),
+            Ok(std::env::consts::ARCH),
+            "native credential architecture required"
+        );
+        let identity = Command::new("/usr/bin/id")
+            .arg("-un")
+            .output()
+            .expect("runner identity");
+        assert!(
+            identity.status.success() && identity.stdout == b"runner\n",
+            "disposable runner account required"
+        );
+        let runner_temp =
+            std::fs::canonicalize(std::env::var_os("RUNNER_TEMP").expect("runner temp")).unwrap();
+        let keychain = std::fs::canonicalize(
+            std::env::var_os("NATUX_MACOS_CREDENTIAL_KEYCHAIN").expect("owned keychain"),
+        )
+        .unwrap();
+        assert_eq!(
+            keychain.file_name(),
+            Some(std::ffi::OsStr::new("fixture.keychain-db"))
+        );
+        let owner = keychain.parent().expect("keychain owner");
+        assert_eq!(owner.parent(), Some(runner_temp.as_path()));
+        assert!(owner
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("natux-macos-credentials-"));
+        for operation in ["default-keychain", "list-keychains"] {
+            let metadata = Command::new("/usr/bin/security")
+                .args([operation, "-d", "user"])
+                .output()
+                .expect("keychain metadata");
+            assert!(metadata.status.success(), "keychain metadata unavailable");
+            let output = String::from_utf8(metadata.stdout).expect("UTF-8 keychain metadata");
+            let paths: Vec<_> = output
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .collect();
+            assert_eq!(paths.len(), 1, "only the fixture keychain may be selected");
+            let path: String =
+                serde_json::from_str(paths[0].trim()).expect("quoted keychain metadata");
+            assert_eq!(std::fs::canonicalize(Path::new(&path)).unwrap(), keychain);
+        }
+    }
 
     #[test]
     fn credential_provider_fixture_child() {
         let Ok(mode) = std::env::var(MODE) else {
             return;
         };
+        assert!(
+            matches!(mode.as_str(), "write" | "read" | "clear"),
+            "unknown fixture mode"
+        );
         let service = std::env::var(SERVICE).expect("fixture service");
         let name = std::env::var(NAME).expect("fixture name");
-        let store = SystemCredentialStore::new(service, name);
+        let store =
+            fixture_store(&service, &name).expect("refusing a non-fixture credential identity");
+        #[cfg(target_os = "macos")]
+        assert_disposable_macos_keychain();
         match mode.as_str() {
             "write" => store.write(VALUE).expect("write fixture credential"),
             "read" => assert_eq!(
@@ -136,18 +224,18 @@ mod system_credential_tests {
     }
 
     #[test]
-    #[ignore = "uses a unique temporary entry in Windows Credential Manager"]
+    #[ignore = "opt-in native credential round-trip; macOS requires an owned disposable CI keychain"]
     fn system_credential_store_roundtrips_across_processes() {
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock")
-            .as_nanos();
-        let service = format!("world.natux.launcher.test.{}.{suffix}", std::process::id());
-        let name = "credential-interoperability";
-        let store = SystemCredentialStore::new(&service, name);
+        #[cfg(target_os = "macos")]
+        assert_disposable_macos_keychain();
+        let namespace = Uuid::new_v4();
+        let service = format!("world.natux.launcher.test.{namespace}");
+        let name = format!("credential-interoperability:{namespace}");
+        let store = fixture_store(&service, &name).expect("safe parent fixture identity");
+        assert_eq!(store.read().expect("read unused fixture identity"), None);
         let _cleanup = CredentialCleanup(store.clone());
 
-        run_fixture_child("write", &service, name);
+        run_fixture_child("write", &service, &name);
         assert_eq!(
             store
                 .read()
@@ -155,8 +243,8 @@ mod system_credential_tests {
                 .as_deref(),
             Some(VALUE)
         );
-        run_fixture_child("read", &service, name);
-        run_fixture_child("clear", &service, name);
+        run_fixture_child("read", &service, &name);
+        run_fixture_child("clear", &service, &name);
         assert_eq!(
             store.read().expect("check deleted fixture credential"),
             None
@@ -165,17 +253,48 @@ mod system_credential_tests {
 
     fn run_fixture_child(mode: &str, service: &str, name: &str) {
         let output = Command::new(std::env::current_exe().expect("current test executable"))
-            .args(["credential_provider_fixture_child", "--nocapture"])
+            .args(["--exact", CHILD, "--nocapture", "--test-threads=1"])
             .env(MODE, mode)
             .env(SERVICE, service)
             .env(NAME, name)
             .output()
             .expect("start isolated credential test process");
+        if !output.status.success() {
+            // The child only receives the random fixture identity, never the
+            // temporary keychain password. Keep provider failures actionable.
+            for (stream, bytes) in [("stdout", &output.stdout), ("stderr", &output.stderr)] {
+                let tail = &bytes[bytes.len().saturating_sub(16 * 1024)..];
+                eprintln!(
+                    "credential fixture {mode} {stream}: {}",
+                    String::from_utf8_lossy(tail)
+                );
+            }
+        }
         assert!(
             output.status.success(),
             "credential provider child failed during {mode} (exit {:?})",
             output.status.code()
         );
+    }
+
+    #[test]
+    fn credential_fixture_refuses_application_entries_and_unknown_names() {
+        let namespace = Uuid::new_v4();
+        let service = format!("world.natux.launcher.test.{namespace}");
+        let name = format!("credential-interoperability:{namespace}");
+        assert!(fixture_store(&service, &name).is_some());
+        for (service, name) in [
+            ("world.natux.launcher", name.as_str()),
+            (service.as_str(), "account-session"),
+            ("unknown-service", name.as_str()),
+            ("world.natux.launcher.test.not-a-uuid", name.as_str()),
+            (
+                service.as_str(),
+                "credential-interoperability:00000000-0000-0000-0000-000000000000",
+            ),
+        ] {
+            assert!(fixture_store(service, name).is_none());
+        }
     }
 
     struct CredentialCleanup(SystemCredentialStore);

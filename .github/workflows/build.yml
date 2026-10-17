@@ -237,6 +237,9 @@ jobs:
       - name: Test captured NSIS payload contract
         run: node --test tests/scripts/tauri-nsis-payload.test.mjs
 
+      - name: Test native credential acceptance boundaries
+        run: node --test tests/scripts/macos-credential-acceptance.test.mjs
+
       - name: Test legacy Electron userData path and safeStorage compatibility
         run: node --test tests/e2e/electron-safe-storage-interop.test.cjs
 
@@ -267,6 +270,15 @@ jobs:
 
       - name: Rust tests
         run: cargo test --manifest-path src/native/Cargo.toml --locked
+
+      - name: Accept real Windows Credential Manager across processes
+        if: github.repository == 'Alex-dev-sys/NatuxWorld'
+        timeout-minutes: 3
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo test --manifest-path src/native/Cargo.toml --locked --lib account::transport::system_credential_tests::system_credential_store_roundtrips_across_processes -- --ignored --exact --nocapture --color never 2>&1 | Tee-Object -Variable credentialOutput
+          if ($LASTEXITCODE -ne 0) { throw 'System credential round-trip failed.' }
+          if (($credentialOutput -join "`n") -notmatch 'test result: ok\. 1 passed; 0 failed; 0 ignored;') { throw 'The real credential test did not execute exactly once.' }
 
       - name: Shared profile/game lock tests
         run: cargo test --manifest-path src/profile-lock-core/Cargo.toml --locked
@@ -889,6 +901,7 @@ jobs:
   macos_acceptance:
     name: Tauri macOS native ${{ matrix.arch }} DMG acceptance
     needs: [plan, macos]
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -927,6 +940,43 @@ jobs:
           NATUX_TAURI_MACOS_E2E_VERSION: ${{ needs.plan.outputs.version }}
           NATUX_TAURI_MACOS_E2E_DMG: release/tauri-acceptance/NatuxWorld-${{ needs.plan.outputs.version }}-${{ matrix.arch }}.dmg
           NATUX_TAURI_MACOS_E2E_EXECUTABLE_HASH_FILE: release/tauri-acceptance/executable-sha512-darwin-${{ matrix.arch }}.txt
+
+      - name: Setup Java 21 for credential fixtures
+        if: github.repository == 'Alex-dev-sys/NatuxWorld'
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install pinned Rust toolchain for credential acceptance
+        if: github.repository == 'Alex-dev-sys/NatuxWorld'
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: 1.90.0
+
+      - name: Build credential fixture lock resources
+        if: github.repository == 'Alex-dev-sys/NatuxWorld'
+        run: npm run build:lock-runtime
+
+      - name: Build credential fixture frontend resources
+        if: github.repository == 'Alex-dev-sys/NatuxWorld'
+        run: npm run build:web
+
+      - name: Accept real native Keychain across processes
+        if: github.repository == 'Alex-dev-sys/NatuxWorld'
+        run: node scripts/run-macos-credential-acceptance.mjs
+        env:
+          NATUX_MACOS_CREDENTIAL_ACCEPTANCE: '1'
+          NATUX_MACOS_CREDENTIAL_EXPECTED_ARCH: ${{ matrix.arch }}
+
+      - name: Upload native Keychain acceptance evidence
+        if: always() && github.repository == 'Alex-dev-sys/NatuxWorld'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: native-credential-macos-${{ matrix.arch }}-${{ github.run_id }}
+          path: tests/.runtime/macos-credential-result.json
+          if-no-files-found: warn
+          retention-days: 14
 
   publish:
     name: Publish complete release
