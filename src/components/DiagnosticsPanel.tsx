@@ -1,21 +1,21 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Stethoscope, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
-import { bridge } from '../services/electron-bridge';
-import type { DiagnosticCheck } from '../../electron/services/DiagnosticsService';
+import { bridge } from '../services/native-bridge';
+import type { DiagnosticCheck } from '../types/native';
 import { useLang, pick } from '../i18n';
 
 const ru = {
   run: 'Проверить систему',
   running: 'Проверяем…',
-  hint: 'Java, место на диске, связь с сайтом и каналом обновлений',
+  hint: 'Java, место на диске, связь с сайтом, подписанный канал обновлений и память',
   allOk: 'Всё в порядке — можно играть',
   someFail: 'Есть проблемы (см. ниже)',
 };
 const en: typeof ru = {
   run: 'Run system check',
   running: 'Checking…',
-  hint: 'Java, disk space, site and update channel reachability',
+  hint: 'Java, disk space, website reachability, signed update channel and memory',
   allOk: 'All good — ready to play',
   someFail: 'Issues found (see below)',
 };

@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { writeFileSync, unlinkSync } from 'node:fs';
+import { access } from 'node:fs/promises';
 import path from 'node:path';
 import {
   filterByOsRules,
@@ -92,6 +93,7 @@ export function buildGameValues(input: {
 export interface LaunchHandle extends EventEmitter {
   pid: number;
   kill: () => void;
+  ready: Promise<void>;
 }
 
 export interface LaunchInput {
@@ -110,10 +112,22 @@ export interface LaunchInput {
   fullscreen?: boolean;
   /** Full path to authlib-injector.jar — if set, prepended as -javaagent before heap flags. */
   authlibJarPath?: string;
+  /** Bundled premain agent that takes ownership of .game.lock inside the JVM. */
+  lockAgentJarPath: string;
+  /** Electron userData path shared with Tauri's lock helper and the Java agent. */
+  profileDir: string;
 }
 
+const LOCK_READY_LINE = 'NATUX_LOCK_READY_V1';
+const LOCK_READY_TIMEOUT_MS = 30_000;
+
 export class MinecraftService {
-  launch(input: LaunchInput): LaunchHandle {
+  constructor(
+    private readonly spawnProcess: typeof spawn = spawn,
+    private readonly readinessTimeoutMs = LOCK_READY_TIMEOUT_MS,
+  ) {}
+
+  async launch(input: LaunchInput, beforeSpawn: () => Promise<void>): Promise<LaunchHandle> {
     // SECURITY: this builder takes only memory + manifest-derived JVM args. It deliberately
     // does NOT accept settings.jvmArgs / settings.javaPath from the renderer (arbitrary JVM
     // flags / arbitrary binary). If those are ever wired in, tokenize + validate them first.
@@ -136,7 +150,9 @@ export class MinecraftService {
 
     const memory = Math.max(512, Math.min(65536, Math.floor(Number(input.memory) || 4096)));
     const jvmArgs = [
-      // authlib-injector must be the first JVM arg so it patches Mojang auth before anything else runs.
+      // Acquire .game.lock before Minecraft classes or manifest-provided agents can run.
+      `-javaagent:${input.lockAgentJarPath}`,
+      // Keep authlib-injector immediately after our lock agent so it patches auth before game classes.
       ...(input.authlibJarPath ? [`-javaagent:${input.authlibJarPath}=${BRAND_URLS.yggdrasil}`] : []),
       `-Xmx${memory}M`,
       `-Xms${Math.min(memory, 1024)}M`,
@@ -162,31 +178,52 @@ export class MinecraftService {
     // The full classpath (esp. with Forge) blows past the OS command-line length limit
     // and yields "spawn ENAMETOOLONG". Java 9+ reads args from an @argfile instead.
     const argfile = path.join(input.gameDir, 'launch-args.txt');
+    const removeArgfile = () => {
+      try { unlinkSync(argfile); } catch { /* already gone */ }
+    };
+    // A missing or unreadable agent must fail before the launcher hands off .game.lock.
+    await access(input.lockAgentJarPath);
     writeFileSync(argfile, MinecraftService.toArgFile([...jvmArgs, ...gameArgs]), 'utf-8');
+
+    // The token-bearing argfile is written under .game.lock; hand off immediately
+    // before spawn and remove it if handoff fails.
+    try { await beforeSpawn(); }
+    catch (error) { removeArgfile(); throw error; }
 
     // javaw.exe has NO stdout/stderr — a crash would surface only as "exit 1" with no logs.
     // Use java.exe (console hidden via windowsHide) so we can capture and forward output.
     const java = input.javaPath.replace(/javaw\.exe$/i, 'java.exe');
 
-    const proc = spawn(java, [`@${argfile}`], {
-      cwd: input.gameDir,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      detached: false,
-      windowsHide: true,
-    });
+    const env = { ...process.env };
+    // Java processes recognized these variables before -javaagent premain. An inherited
+    // agent must never run before the lock agent has serialized Minecraft access.
+    for (const key of Object.keys(env)) {
+      if (['JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'JDK_JAVA_OPTIONS'].includes(key.toUpperCase())) delete env[key];
+    }
+    env.NATUX_PROFILE_DIR = input.profileDir;
+    let proc: ChildProcess;
+    try {
+      proc = this.spawnProcess(java, [`@${argfile}`], {
+        cwd: input.gameDir,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: false,
+        windowsHide: true,
+      });
+    } catch (error) {
+      removeArgfile();
+      throw error;
+    }
 
     // The argfile contains the LIVE game access token — it must not linger on
     // disk. Delete shortly after spawn (once the JVM has read it) and again on
     // exit/error for crash paths.
-    const removeArgfile = () => {
-      try { unlinkSync(argfile); } catch { /* already gone */ }
-    };
     const graceTimer = setTimeout(removeArgfile, 10_000);
     graceTimer.unref?.();
     proc.once('exit', () => { clearTimeout(graceTimer); removeArgfile(); });
     proc.once('error', () => { clearTimeout(graceTimer); removeArgfile(); });
 
-    return MinecraftService.wrapProcess(proc);
+    return MinecraftService.wrapProcess(proc, this.readinessTimeoutMs);
   }
 
   /**
@@ -205,21 +242,67 @@ export class MinecraftService {
       .join('\n');
   }
 
-  private static wrapProcess(proc: ChildProcess): LaunchHandle {
+  private static wrapProcess(proc: ChildProcess, readinessTimeoutMs: number): LaunchHandle {
     const handle = new EventEmitter() as LaunchHandle;
     handle.pid = proc.pid ?? -1;
     handle.kill = () => proc.kill();
+    handle.on('error', () => undefined);
+
+    let resolveReady!: () => void;
+    let rejectReady!: (error: Error) => void;
+    let ready = false;
+    let settled = false;
+    let pending = '';
+    const readyPromise = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+    });
+    handle.ready = readyPromise;
+    const failBeforeReady = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(readyTimer);
+      rejectReady(error);
+    };
+    const readyTimer = setTimeout(() => {
+      const error = new Error('Java не подтвердил получение блокировки игры (тайм-аут)');
+      failBeforeReady(error);
+      proc.kill();
+    }, readinessTimeoutMs);
+    readyTimer.unref?.();
+
+    const emitStdoutLine = (raw: string) => {
+      const line = raw.replace(/\r$/, '');
+      if (!ready && line === LOCK_READY_LINE) {
+        ready = true;
+        settled = true;
+        clearTimeout(readyTimer);
+        resolveReady();
+        return;
+      }
+      if (line) handle.emit('log', { stream: 'stdout', line });
+    };
 
     proc.stdout?.setEncoding('utf-8');
     proc.stderr?.setEncoding('utf-8');
     proc.stdout?.on('data', (chunk: string) => {
-      for (const line of chunk.split(/\r?\n/)) if (line) handle.emit('log', { stream: 'stdout', line });
+      pending += chunk;
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() ?? '';
+      for (const line of lines) emitStdoutLine(line);
     });
     proc.stderr?.on('data', (chunk: string) => {
       for (const line of chunk.split(/\r?\n/)) if (line) handle.emit('log', { stream: 'stderr', line });
     });
-    proc.on('exit', (code, signal) => handle.emit('exit', { code, signal }));
-    proc.on('error', (err) => handle.emit('error', err));
+    proc.on('exit', (code, signal) => {
+      if (pending) emitStdoutLine(pending);
+      if (!ready) failBeforeReady(new Error(`Java завершилась до получения блокировки (код ${code ?? 'unknown'})`));
+      handle.emit('exit', { code, signal });
+    });
+    proc.on('error', (err) => {
+      failBeforeReady(new Error(`Не удалось запустить Java: ${err.message}`));
+      handle.emit('error', err);
+    });
 
     return handle;
   }

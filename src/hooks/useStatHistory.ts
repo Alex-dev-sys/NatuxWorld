@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ServerStatus } from '../../electron/services/LauncherService';
+import type { ServerStatus } from '../types/native';
 
 export interface StatHistory {
   players: number[];

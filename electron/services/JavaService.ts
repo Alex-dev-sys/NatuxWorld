@@ -8,13 +8,10 @@ import { EventEmitter } from 'node:events';
 import { pipeline } from 'node:stream/promises';
 import yauzl from 'yauzl';
 import { getJrePath, getRuntimeDir } from '../utils/paths';
+import { readHttpResponse, waitForHttpResponse } from '../utils/http-response';
 
-/**
- * Idle (no-bytes) timeouts. A peer that completes the TCP handshake and then
- * stops sending would otherwise keep the request pending indefinitely, with no
- * error and therefore no retry.
- */
-const IDLE_TIMEOUT_MS = 20_000;
+/** Total deadline for small Adoptium metadata requests. */
+const REQUEST_TIMEOUT_MS = 20_000;
 const DOWNLOAD_IDLE_TIMEOUT_MS = 60_000;
 
 export interface JavaInstallation {
@@ -205,36 +202,22 @@ export class JavaService extends EventEmitter {
   }
 
   private httpGetJson(url: string, signal?: AbortSignal): Promise<unknown> {
-    return new Promise((resolve, reject) => {
-      const req = https
-        .get(url, { headers: { 'User-Agent': 'NatuxWorldLauncher' }, signal }, (res) => {
-          if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            this.httpGetJson(new URL(res.headers.location, url).toString(), signal).then(resolve, reject);
-            return;
-          }
-          if (res.statusCode !== 200) {
-            reject(new Error(`HTTP ${res.statusCode} for ${url}`));
-            res.resume();
-            return;
-          }
-          let body = '';
-          res.setEncoding('utf-8');
-          res.on('data', (chunk) => (body += chunk));
-          res.on('end', () => {
-            try {
-              resolve(JSON.parse(body));
-            } catch (err) {
-              reject(err);
-            }
-          });
-        })
-        .on('error', reject);
-      // Without this a server that accepts the connection and then goes silent
-      // leaves the promise pending forever — no error, no retry.
-      req.setTimeout(IDLE_TIMEOUT_MS, () => {
-        req.destroy(new Error(`Тайм-аут запроса метаданных: ${url}`));
-      });
+    const req = https.request(url, { headers: { 'User-Agent': 'NatuxWorldLauncher' }, signal });
+    const response = waitForHttpResponse(req, REQUEST_TIMEOUT_MS, `Тайм-аут запроса метаданных: ${url}`, async (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        const next = new URL(res.headers.location, url).toString();
+        res.resume();
+        return this.httpGetJson(next, signal);
+      }
+      if (res.statusCode !== 200) {
+        res.destroy();
+        throw new Error(`HTTP ${res.statusCode} for ${url}`);
+      }
+      const body = (await readHttpResponse(res)).toString('utf-8');
+      return JSON.parse(body) as unknown;
     });
+    req.end();
+    return response;
   }
 
   private async downloadVerified(

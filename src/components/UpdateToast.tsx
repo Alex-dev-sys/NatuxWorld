@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, Download, RefreshCw, X } from 'lucide-react';
-import { bridge } from '../services/electron-bridge';
-import type { UpdateEvent } from '../../electron/services/UpdateService';
+import { bridge } from '../services/native-bridge';
+import type { UpdateEvent } from '../types/native';
 import { useLang, pick } from '../i18n';
 
 const ru = {
@@ -13,6 +13,11 @@ const ru = {
   error: (message: string) => `Не удалось проверить обновление: ${message}`,
   install: 'Перезапустить и установить',
   download: 'Скачать с сайта',
+  migrationTitle: 'Переход на Tauri 2',
+  migrationAvailable: (v: string) => `Версия v${v} доступна`,
+  migrationDetails: 'Настройки и игровые файлы сохранятся. Закройте лаунчер перед установкой, затем войдите в аккаунт заново.',
+  migrationDownload: 'Скачать Tauri',
+  close: 'Закрыть',
 };
 const en: typeof ru = {
   update: 'Update',
@@ -22,6 +27,11 @@ const en: typeof ru = {
   error: (message: string) => `Could not check for updates: ${message}`,
   install: 'Restart and install',
   download: 'Download from site',
+  migrationTitle: 'Move to Tauri 2',
+  migrationAvailable: (v: string) => `Version v${v} is available`,
+  migrationDetails: 'Your settings and game files will remain. Close the launcher before installing, then sign in again.',
+  migrationDownload: 'Download Tauri',
+  close: 'Close',
 };
 const TR = { ru, en };
 
@@ -31,17 +41,24 @@ type State =
   | { phase: 'downloading'; version: string; percent: number }
   | { phase: 'ready'; version: string }
   | { phase: 'error'; message: string }
-  // macOS remains manual until Developer ID signing/notarization is configured.
+  // macOS updates are manual; Linux is unsupported until a Linux package and acceptance flow exist.
   | { phase: 'manual'; version: string; url: string };
 
 export function UpdateToast() {
   const [state, setState] = useState<State>({ phase: 'idle' });
   const [dismissed, setDismissed] = useState(false);
+  const [migration, setMigration] = useState<{ version: string; url: string } | null>(null);
+  const [migrationDismissed, setMigrationDismissed] = useState(false);
   const t = pick(useLang(), TR);
 
   useEffect(() => {
     return bridge.updater.onUpdate((raw) => {
       const event = raw as UpdateEvent;
+      if (event.type === 'tauri-migration') {
+        setMigration({ version: event.version, url: event.url });
+        setMigrationDismissed(false);
+        return;
+      }
       setState((prev) => {
         switch (event.type) {
           case 'available':
@@ -71,6 +88,46 @@ export function UpdateToast() {
       });
     });
   }, []);
+
+  if (migration && !migrationDismissed) {
+    return (
+      <AnimatePresence>
+        <motion.div
+          initial={{ opacity: 0, y: 16, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 16, scale: 0.96 }}
+          transition={{ duration: 0.3, ease: [0.22, 0.8, 0.36, 1] }}
+          className="fixed bottom-16 right-5 z-50 w-[320px] overflow-hidden rounded-2xl glass-strong shadow-premium"
+          role="status"
+        >
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary to-transparent" />
+          <div className="flex items-start gap-3 p-4">
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/15 text-primary ring-1 ring-primary/30">
+              <Download className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">{t.migrationTitle}</div>
+              <div className="mt-0.5 text-sm font-semibold text-white">{t.migrationAvailable(migration.version)}</div>
+              <div className="mt-1 text-xs text-muted">{t.migrationDetails}</div>
+              <button
+                onClick={() => bridge.shell.openExternal(migration.url)}
+                className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg bg-play-gradient px-3 text-xs font-semibold text-white shadow-glow hover:shadow-glow-strong transition"
+              >
+                {t.migrationDownload}
+              </button>
+            </div>
+            <button
+              aria-label={t.close}
+              onClick={() => setMigrationDismissed(true)}
+              className="grid h-7 w-7 place-items-center rounded-lg text-muted hover:bg-white/5 hover:text-white"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
 
   if (dismissed || state.phase === 'idle') return null;
 

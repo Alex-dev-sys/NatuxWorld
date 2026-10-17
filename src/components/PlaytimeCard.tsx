@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Clock, CalendarClock, Camera } from 'lucide-react';
-import { bridge } from '../services/electron-bridge';
-import type { PlaytimeStats } from '../../electron/services/PlaytimeService';
+import { bridge } from '../services/native-bridge';
+import type { PlaytimeStats } from '../types/native';
 import { useLang, pick } from '../i18n';
 
 const ru = {

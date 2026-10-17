@@ -6,7 +6,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'dist-electron/**', 'release/**', 'node_modules/**', 'build/**', 'website/**', '.claude/**', '**/*.config.js', '**/*.config.ts'],
+    ignores: ['dist/**', 'dist-electron/**', 'release/**', 'node_modules/**', 'build/**', 'src/native/target/**', 'website/**', '.claude/**', '**/*.config.js', '**/*.config.ts'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -41,9 +41,9 @@ export default tseslint.config(
     },
   },
   {
-    // Electron-builder hooks are intentionally CommonJS because electron-builder
-    // loads them independently of the application's ESM module graph.
-    files: ['scripts/**/*.cjs'],
+    // CommonJS modules use require and Node globals outside the application's
+    // ESM graph, so every .cjs file shares this override.
+    files: ['**/*.cjs'],
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
       'no-undef': 'off',

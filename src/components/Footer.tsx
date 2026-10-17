@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { bridge } from '../services/electron-bridge';
+import { bridge } from '../services/native-bridge';
 import { useLauncherStore } from '../store/useLauncherStore';
 import { useLang, pick } from '../i18n';
 

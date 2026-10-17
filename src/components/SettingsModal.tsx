@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { X, Cpu, MemoryStick, MonitorPlay, Coffee, Check, Languages, RefreshCw, Rocket, Trash2, FileText, Bug, Minimize2, Power, Activity, GitBranch, Camera } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { bridge } from '../services/electron-bridge';
+import { bridge } from '../services/native-bridge';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useLauncherStore } from '../store/useLauncherStore';
 import { useLang, pick } from '../i18n';
@@ -34,6 +34,7 @@ const ru = {
   crashReports: 'Отчёты о крашах', crashReportsHint: 'Анонимно слать логи при вылете — помогает чинить баги',
   minimizeToTray: 'Сворачивать в трей', minimizeToTrayHint: 'Закрытие окна не завершает лаунчер',
   launchOnStartup: 'Запускать при входе в систему', launchOnStartupHint: 'Окно стартует скрытым в трее',
+  startupUnavailable: 'Недоступно в переносной версии',
   updateChannel: 'Канал обновлений', channelStable: 'Стабильный', channelBeta: 'Бета (ранние сборки)',
   telemetry: 'Анонимная статистика', telemetryHint: 'Только счётчики: запуски/краши/версии. Без ников и логов',
   screenshots: 'Скриншоты', screenshotsHint: 'Открыть папку скриншотов игры',
@@ -65,6 +66,7 @@ const en: typeof ru = {
   crashReports: 'Crash reports', crashReportsHint: 'Send anonymous logs on crash — helps fix bugs',
   minimizeToTray: 'Minimize to tray', minimizeToTrayHint: 'Closing the window keeps the launcher running',
   launchOnStartup: 'Start with the system', launchOnStartupHint: 'Starts hidden in the tray',
+  startupUnavailable: 'Unavailable in the portable version',
   updateChannel: 'Update channel', channelStable: 'Stable', channelBeta: 'Beta (early builds)',
   telemetry: 'Anonymous stats', telemetryHint: 'Counters only: launches/crashes/versions. No nicks or logs',
   screenshots: 'Screenshots', screenshotsHint: 'Open the game screenshots folder',
@@ -80,6 +82,7 @@ export function SettingsModal() {
   const close = useSettingsStore((s) => s.close);
   const settings = useSettingsStore((s) => s.settings);
   const saving = useSettingsStore((s) => s.saving);
+  const error = useSettingsStore((s) => s.error);
   const load = useSettingsStore((s) => s.load);
   const loadSystem = useSettingsStore((s) => s.loadSystem);
 
@@ -112,7 +115,7 @@ export function SettingsModal() {
               <div className="flex items-center gap-3">
                 <div className="font-display text-2xl tracking-wide">{t.title}</div>
                 <span className="inline-flex items-center gap-1.5 rounded-md bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
-                  {saving ? (
+                  {error ? <span role="alert" className="max-w-[280px] normal-case tracking-normal text-danger">{error}</span> : saving ? (
                     <>
                       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
                       {t.saving}
@@ -296,8 +299,10 @@ function LauncherTab() {
         <Toggle value={!!settings?.minimizeToTray} onChange={(v) => update({ minimizeToTray: v })} />
       </Row>
 
-      <Row icon={<Power className="h-4 w-4" />} label={t.launchOnStartup} hint={t.launchOnStartupHint}>
-        <Toggle value={!!settings?.launchOnStartup} onChange={(v) => update({ launchOnStartup: v })} />
+      <Row icon={<Power className="h-4 w-4" />} label={t.launchOnStartup}
+        hint={settings?.startupSupported === false ? t.startupUnavailable : t.launchOnStartupHint}>
+        <Toggle value={settings?.startupSupported !== false && !!settings?.launchOnStartup}
+          disabled={settings?.startupSupported === false} onChange={(v) => update({ launchOnStartup: v })} />
       </Row>
 
       <Row icon={<GitBranch className="h-4 w-4" />} label={t.updateChannel}>
@@ -373,11 +378,12 @@ function Row({
   );
 }
 
-function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ value, onChange, disabled = false }: { value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <button
+      disabled={disabled}
       onClick={() => onChange(!value)}
-      className={`relative h-6 w-11 rounded-full transition ${
+      className={`relative h-6 w-11 rounded-full transition disabled:cursor-not-allowed disabled:opacity-40 ${
         value ? 'bg-primary shadow-glow' : 'bg-white/[0.08]'
       }`}
     >

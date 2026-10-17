@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-auth-get-user"
+description = "Enables the auth_get_user command without any pre-configured scope."
+commands.allow = ["auth_get_user"]
+
+[[permission]]
+identifier = "deny-auth-get-user"
+description = "Denies the auth_get_user command without any pre-configured scope."
+commands.deny = ["auth_get_user"]

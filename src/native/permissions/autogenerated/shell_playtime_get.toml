@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-shell-playtime-get"
+description = "Enables the shell_playtime_get command without any pre-configured scope."
+commands.allow = ["shell_playtime_get"]
+
+[[permission]]
+identifier = "deny-shell-playtime-get"
+description = "Denies the shell_playtime_get command without any pre-configured scope."
+commands.deny = ["shell_playtime_get"]

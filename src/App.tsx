@@ -12,7 +12,7 @@ import { StorePage } from './pages/StorePage';
 import { RulesPage } from './pages/RulesPage';
 import { SupportPage } from './pages/SupportPage';
 import { LogsPage } from './pages/LogsPage';
-import { bridge } from './services/electron-bridge';
+import { bridge } from './services/native-bridge';
 import { useLauncherStore } from './store/useLauncherStore';
 import { useLogStore } from './store/useLogStore';
 import { useAuthStore } from './store/useAuthStore';

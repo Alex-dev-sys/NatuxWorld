@@ -14,6 +14,24 @@ export interface DownloadJob {
   size?: number;
 }
 
+function uniqueDestinationJobs(jobs: DownloadJob[]): DownloadJob[] {
+  const unique = new Map<string, DownloadJob>();
+  for (const job of jobs) {
+    const dest = path.resolve(job.dest);
+    const key = process.platform === 'win32' ? dest.toLowerCase() : dest;
+    const existing = unique.get(key);
+    if (!existing) {
+      unique.set(key, { ...job, dest });
+      continue;
+    }
+    const sameHash = existing.sha1?.toLowerCase() === job.sha1?.toLowerCase();
+    if (existing.url !== job.url || !sameHash || existing.size !== job.size) {
+      throw new Error(`Conflicting download jobs target the same file: ${dest}`);
+    }
+  }
+  return [...unique.values()];
+}
+
 export type DownloadProgressCb = (bytesDone: number, bytesTotal: number, currentFile: string) => void;
 
 const MAX_REDIRECTS = 5;
@@ -56,18 +74,42 @@ export async function runWithConcurrency<T>(
 }
 
 export class DownloadService {
+  private readonly destinationTasks = new Map<string, { signature: string; promise: Promise<number> }>();
+
   constructor(private readonly maxConcurrent: number = 8) {}
 
   async downloadMany(jobs: DownloadJob[], onProgress: DownloadProgressCb, signal?: AbortSignal): Promise<void> {
-    const totalBytes = jobs.reduce((acc, j) => acc + (j.size ?? 0), 0);
+    const uniqueJobs = uniqueDestinationJobs(jobs);
+    const totalBytes = uniqueJobs.reduce((acc, j) => acc + (j.size ?? 0), 0);
     let doneBytes = 0;
 
-    await runWithConcurrency(jobs, this.maxConcurrent, async (job) => {
+    await runWithConcurrency(uniqueJobs, this.maxConcurrent, async (job) => {
       if (signal?.aborted) throw new Error('Отменено пользователем');
-      const reportedBytes = await this.downloadOne(job, signal);
+      const reportedBytes = await this.downloadAtUniqueDestination(job, signal);
       doneBytes += reportedBytes;
       onProgress(doneBytes, totalBytes, job.dest);
     });
+  }
+
+  private async downloadAtUniqueDestination(job: DownloadJob, signal?: AbortSignal): Promise<number> {
+    const key = process.platform === 'win32' ? path.resolve(job.dest).toLowerCase() : path.resolve(job.dest);
+    const signature = JSON.stringify([job.url, job.sha1?.toLowerCase() ?? null, job.size ?? null]);
+    const active = this.destinationTasks.get(key);
+    if (active && active.signature !== signature) {
+      throw new Error(`Conflicting download jobs target the same file: ${job.dest}`);
+    }
+
+    // Concurrent callers serialize by destination. A later caller checks the
+    // file after the earlier task finishes, and retries if that task failed.
+    const pending = active
+      ? active.promise.catch(() => undefined).then(() => this.downloadOne(job, signal))
+      : this.downloadOne(job, signal);
+    this.destinationTasks.set(key, { signature, promise: pending });
+    try {
+      return await pending;
+    } finally {
+      if (this.destinationTasks.get(key)?.promise === pending) this.destinationTasks.delete(key);
+    }
   }
 
   private async downloadOne(job: DownloadJob, signal?: AbortSignal): Promise<number> {

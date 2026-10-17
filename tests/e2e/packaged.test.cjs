@@ -2,11 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { launchPackaged, waitForLogin } = require('./packaged-helpers.cjs');
+const { launchPackaged, waitForLogin, verifyPackagedLockResources } = require('./packaged-helpers.cjs');
 
 test('packaged renderer loads real preload and navigates login → registration → login', { timeout: 90_000 }, async (t) => {
-  const { page, root } = await launchPackaged(t);
-  assert.equal(new URL(page.url()).protocol, 'file:');
+  const { page, root, userData, lockResources } = await launchPackaged(t);
+  await verifyPackagedLockResources(lockResources, userData);
+  const rendererUrl = new URL(page.url());
+  assert.equal(rendererUrl.protocol, 'app:');
+  assert.equal(rendererUrl.hostname, 'launcher');
   const pkg = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
   assert.equal(await page.evaluate(() => window.natux.getVersion()), pkg.version);
   assert.equal(await page.evaluate(() => typeof window.require), 'undefined', 'Renderer must not expose Node');

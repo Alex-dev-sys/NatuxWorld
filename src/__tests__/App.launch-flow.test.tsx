@@ -2,12 +2,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
-import { bridge } from '../services/electron-bridge';
+import { bridge } from '../services/native-bridge';
 import { useAccountStore } from '../store/useAccountStore';
 import { useLauncherStore } from '../store/useLauncherStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { BRAND } from '../../brand.config';
-import type { LaunchProgress } from '../../electron/services/LauncherService';
+import type { LaunchProgress } from '../types/native';
 
 // Exercise the real App, auth/launch components and Zustand actions. Only the
 // native bridge boundary is simulated; no network, game downloads or process.

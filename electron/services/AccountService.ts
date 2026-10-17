@@ -4,6 +4,7 @@ import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
 import { BRAND_URLS } from '../../brand.config';
+import { readHttpResponse, waitForHttpResponse } from '../utils/http-response';
 
 export interface AccountUser {
   id: string;
@@ -47,8 +48,14 @@ export class AccountService {
       if (!parsed.token || !parsed.user) return null;
       if (parsed.enc) {
         try {
-          const token = safeStorage.decryptString(Buffer.from(parsed.token, 'base64'));
-          return { token, user: parsed.user };
+          // Newer Electron versions can read the synchronous format written by
+          // existing installs through the async API, including key rotation.
+          const ciphertext = Buffer.from(parsed.token, 'base64');
+          let decrypted = await safeStorage.decryptStringAsync(ciphertext);
+          for (let attempt = 0; decrypted.shouldReEncrypt && attempt < 2; attempt += 1) {
+            decrypted = await safeStorage.decryptStringAsync(ciphertext);
+          }
+          return { token: decrypted.result, user: parsed.user };
         } catch {
           // Corrupt/undecryptable token (e.g. OS keychain changed): force re-login.
           return null;
@@ -89,35 +96,34 @@ export class AccountService {
   }
 
   private request<T>(method: 'GET' | 'POST', endpoint: string, body?: unknown, token?: string): Promise<T> {
-    return new Promise((resolve, reject) => {
-      const url = `${this.base}${endpoint}`;
-      const parsedUrl = new URL(url);
-      const transport = parsedUrl.protocol === 'http:' ? http : https;
-      const payload = body ? JSON.stringify(body) : undefined;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json', 'User-Agent': 'NatuxWorldLauncher' };
-      if (token) headers.Authorization = `Bearer ${token}`;
-      if (payload) headers['Content-Length'] = String(Buffer.byteLength(payload));
+    const url = `${this.base}${endpoint}`;
+    const parsedUrl = new URL(url);
+    const transport = parsedUrl.protocol === 'http:' ? http : https;
+    const payload = body ? JSON.stringify(body) : undefined;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', 'User-Agent': 'NatuxWorldLauncher' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    if (payload) headers['Content-Length'] = String(Buffer.byteLength(payload));
 
-      const req = transport.request(parsedUrl, { method, headers, timeout: 6000 }, (res) => {
-        let data = '';
-        res.setEncoding('utf-8');
-        res.on('data', (c: string) => (data += c));
-        res.on('end', () => {
-          const status = res.statusCode ?? 0;
-          let json: unknown = {};
-          try { json = data ? JSON.parse(data) : {}; } catch { /* keep {} */ }
-          if (status >= 200 && status < 300) {
-            resolve(json as T);
-          } else {
-            const err = (json as { error?: ApiError }).error;
-            reject(new AccountApiError(err?.code ?? 'unknown', err?.message ?? 'Ошибка сервера', status));
-          }
-        });
-      });
-      req.on('error', () => reject(new AccountApiError('network', 'Нет связи с сервером', 0)));
-      req.on('timeout', () => { req.destroy(); reject(new AccountApiError('timeout', 'Превышено время ожидания', 0)); });
-      if (payload) req.write(payload);
-      req.end();
+    const timeoutMessage = 'Account request timed out';
+    const req = transport.request(parsedUrl, { method, headers });
+    const response = waitForHttpResponse(req, 6000, timeoutMessage, async (res) => {
+      const data = (await readHttpResponse(res, 2 * 1024 * 1024)).toString('utf-8');
+      const status = res.statusCode ?? 0;
+      let json: unknown = {};
+      try { json = data ? JSON.parse(data) : {}; } catch { /* keep {} */ }
+      if (status >= 200 && status < 300) return json as T;
+      const err = (json as { error?: ApiError }).error;
+      throw new AccountApiError(err?.code ?? 'unknown', err?.message ?? 'Ошибка сервера', status);
+    });
+    if (payload) req.write(payload);
+    req.end();
+
+    return response.catch((error: unknown) => {
+      if (error instanceof AccountApiError) throw error;
+      if (error instanceof Error && error.message === timeoutMessage) {
+        throw new AccountApiError('timeout', 'Превышено время ожидания', 0);
+      }
+      throw new AccountApiError('network', 'Нет связи с сервером', 0);
     });
   }
 
@@ -150,8 +156,10 @@ export class AccountService {
 
   // Begin TOTP enrollment — returns the otpauth URI + a QR data-URL to scan in
   // Google Authenticator. The secret is stored server-side as pending until /enable.
-  async twoFactorSetup(token: string): Promise<{ otpauthUri: string; qr: string }> {
-    return this.request<{ otpauthUri: string; qr: string }>('POST', '/2fa/totp/setup', undefined, token);
+  async twoFactorSetup(token: string, code?: string): Promise<{ otpauthUri: string; qr: string }> {
+    return this.request<{ otpauthUri: string; qr: string }>(
+      'POST', '/2fa/totp/setup', code === undefined ? undefined : { code }, token,
+    );
   }
 
   // Confirm the code from the app → 2FA on, returns one-time backup codes.

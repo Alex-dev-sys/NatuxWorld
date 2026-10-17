@@ -3,9 +3,12 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import pkg from 'electron-updater';
 import {
+  fetchTrustedTauriControl,
+  getTauriMigrationOffer,
   fetchTrustedUpdateManifest,
   isUpdateVisible,
   matchesUpdateCandidate,
+  type TauriMigrationOffer,
   type SignedUpdateManifest,
 } from './UpdateTrust';
 import { SettingsService } from './SettingsService';
@@ -22,6 +25,7 @@ export interface UpdateInfo {
 export type UpdateEvent =
   | { type: 'checking' }
   | { type: 'available'; version: string; notes?: string }
+  | { type: 'tauri-migration'; version: string; url: string }
   // macOS stays manual until Developer ID signing/notarization is configured.
   | { type: 'manual'; version: string; notes?: string; url: string }
   | { type: 'not-available'; version: string }
@@ -42,6 +46,9 @@ export class UpdateService {
   private lastInfo: UpdateInfo = { available: false };
   private trustedManifest: SignedUpdateManifest | null = null;
   private downloadingVersion: string | null = null;
+  private downloadedFile: string | null = null;
+  private downloadedManifestVersion: string | null = null;
+  private lastTauriMigrationNotice: string | null = null;
   private settings = new SettingsService();
 
   /** Resolve the effective channel/installId for this check. */
@@ -90,8 +97,12 @@ export class UpdateService {
       this.emit({ type: 'available', version: info.version, notes });
       if (this.downloadingVersion === info.version) return;
       this.downloadingVersion = info.version;
+      this.downloadedFile = null;
+      this.downloadedManifestVersion = null;
       void autoUpdater.downloadUpdate().catch((err: unknown) => {
         this.downloadingVersion = null;
+        this.downloadedFile = null;
+        this.downloadedManifestVersion = null;
         this.emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });
       });
     });
@@ -111,12 +122,38 @@ export class UpdateService {
       });
     });
 
-    autoUpdater.on('update-downloaded', (info) => {
-      if (!MANUAL_UPDATE && info.version !== this.trustedManifest?.version) {
+    autoUpdater.on('update-downloaded', async (info) => {
+      if (MANUAL_UPDATE) {
+        this.emit({ type: 'downloaded', version: info.version });
+        return;
+      }
+      const manifest = this.trustedManifest;
+      if (!manifest || info.version !== manifest.version || !info.downloadedFile) {
+        this.downloadingVersion = null;
+        this.downloadedFile = null;
+        this.downloadedManifestVersion = null;
         this.emit({ type: 'error', message: 'Downloaded update version is not trusted' });
         return;
       }
-      this.emit({ type: 'downloaded', version: info.version });
+      try {
+        const digest = await this.hashFile(info.downloadedFile);
+        if (digest !== manifest.sha512) {
+          this.downloadingVersion = null;
+          this.downloadedFile = null;
+          this.downloadedManifestVersion = null;
+          this.emit({ type: 'error', message: 'Downloaded installer does not match the signed manifest' });
+          return;
+        }
+        this.downloadedFile = info.downloadedFile;
+        this.downloadedManifestVersion = manifest.version;
+        this.downloadingVersion = null;
+        this.emit({ type: 'downloaded', version: info.version });
+      } catch {
+        this.downloadingVersion = null;
+        this.downloadedFile = null;
+        this.downloadedManifestVersion = null;
+        this.emit({ type: 'error', message: 'Could not verify the downloaded installer' });
+      }
     });
 
     autoUpdater.on('error', (err) => {
@@ -128,6 +165,20 @@ export class UpdateService {
     if (!app.isPackaged) return { available: false, version: app.getVersion() };
     try {
       const ctx = await this.visibilityContext();
+      void fetchTrustedTauriControl(ctx.channel).then((control) => {
+        const offer: TauriMigrationOffer | null = getTauriMigrationOffer(control, {
+          ...ctx,
+          currentVersion: app.getVersion(),
+          platform: process.platform,
+          arch: process.arch,
+        });
+        if (offer && this.lastTauriMigrationNotice !== offer.version) {
+          this.lastTauriMigrationNotice = offer.version;
+          this.emit({ type: 'tauri-migration', ...offer });
+        }
+      }).catch(() => {
+        // An unavailable/malformed Tauri channel must never interrupt Electron updates.
+      });
       if (!MANUAL_UPDATE) {
         // Fail closed: electron-updater is never allowed to download before this
         // detached signature and the release SHA-512 have been verified.
@@ -196,10 +247,37 @@ export class UpdateService {
     }
   }
 
-  installNow(): void {
+  async installNow(): Promise<void> {
     // Windows reaches this point only after signed-manifest verification.
     if (!app.isPackaged || MANUAL_UPDATE) return;
+    const manifest = this.trustedManifest;
+    const downloadedFile = this.downloadedFile;
+    if (!manifest || !downloadedFile || this.downloadedManifestVersion !== manifest.version) {
+      this.emit({ type: 'error', message: 'No verified update installer is ready' });
+      return;
+    }
+    try {
+      // Recheck immediately before handing the installer to electron-updater so
+      // a replaced file cannot inherit the earlier update-downloaded decision.
+      if (await this.hashFile(downloadedFile) !== manifest.sha512) {
+        this.downloadedFile = null;
+        this.downloadedManifestVersion = null;
+        this.emit({ type: 'error', message: 'Downloaded installer no longer matches the signed manifest' });
+        return;
+      }
+    } catch {
+      this.downloadedFile = null;
+      this.downloadedManifestVersion = null;
+      this.emit({ type: 'error', message: 'Could not verify the downloaded installer' });
+      return;
+    }
     autoUpdater.quitAndInstall(false, true);
+  }
+
+  private async hashFile(filePath: string): Promise<string> {
+    const hash = createHash('sha512');
+    for await (const chunk of createReadStream(filePath)) hash.update(chunk);
+    return hash.digest('base64');
   }
 
   private emit(event: UpdateEvent): void {

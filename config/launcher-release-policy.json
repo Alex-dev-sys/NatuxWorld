@@ -1,0 +1,5 @@
+{
+  "tauri": true,
+  "migrationEnabled": true,
+  "rolloutPct": 100
+}

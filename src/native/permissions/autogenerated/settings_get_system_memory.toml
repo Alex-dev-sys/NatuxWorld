@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-settings-get-system-memory"
+description = "Enables the settings_get_system_memory command without any pre-configured scope."
+commands.allow = ["settings_get_system_memory"]
+
+[[permission]]
+identifier = "deny-settings-get-system-memory"
+description = "Denies the settings_get_system_memory command without any pre-configured scope."
+commands.deny = ["settings_get_system_memory"]

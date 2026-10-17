@@ -16,6 +16,7 @@ import { discordRpc } from './DiscordRpcService';
 import { TelemetryService } from './TelemetryService';
 import { LauncherServerService, type ServerStatus, type ServerInfo } from './LauncherServerService';
 import { buildLibraryJobs, buildAssetJobs, extractNatives, selectNativeLibs } from './LauncherResources';
+import { nativeLocks } from './NativeLockService';
 import {
   getAssetsDir,
   getAuthlibPath,
@@ -203,6 +204,10 @@ export class LauncherService extends EventEmitter {
   }
 
   private async runPipeline(mcVersion: string, loader: string, opts: PlayOptions): Promise<void> {
+    const gameLock = await nativeLocks.acquire('game');
+    let gameLockHandedOff = false;
+    const stopOnLockLoss = gameLock.onLost(() => this.abort?.abort());
+    try {
     this.report({ stage: 'resolving', progress: 0, message: 'Получение манифеста Mojang...' });
     const version = await this.mojang.resolveVersion(mcVersion);
     this.throwIfCancelled();
@@ -318,6 +323,7 @@ export class LauncherService extends EventEmitter {
 
     this.report({ stage: 'spawn', progress: 0, message: 'Запуск Minecraft...' });
     await fsp.mkdir(getMinecraftDir(), { recursive: true });
+    await nativeLocks.ensureLockAgentAvailable();
 
     const cfg = await this.settingsSvc.get();
 
@@ -325,7 +331,7 @@ export class LauncherService extends EventEmitter {
     // arg builder. They originate from the (untrusted) renderer; passing jvmArgs would let a
     // compromised UI inject arbitrary JVM flags, and javaPath would run an arbitrary binary.
     // If ever wired in, each must be tokenized + validated (no shell, no path traversal).
-    const handle = this.minecraft.launch({
+    const handle = await this.minecraft.launch({
       version: launchVersion,
       javaPath: java.path,
       gameDir: getMinecraftDir(),
@@ -339,6 +345,12 @@ export class LauncherService extends EventEmitter {
       height: cfg.resolution.height,
       fullscreen: cfg.fullscreen,
       authlibJarPath: authlibPath,
+      lockAgentJarPath: nativeLocks.lockAgentJarPath,
+      profileDir: nativeLocks.userDataPath,
+    }, async () => {
+      this.throwIfCancelled();
+      await gameLock.release();
+      gameLockHandedOff = true;
     });
 
     this.currentProc = handle;
@@ -380,6 +392,11 @@ export class LauncherService extends EventEmitter {
       });
     });
 
+    // The Java premain agent must prove it owns .game.lock before the UI, playtime,
+    // or Discord can report a successful Minecraft start.
+    await handle.ready;
+    this.throwIfCancelled();
+
     // The game is live: start the local play-time session, advertise on Discord
     // and (opt-in) count the successful launch.
     void playtime.beginSession().catch(() => undefined);
@@ -394,6 +411,10 @@ export class LauncherService extends EventEmitter {
     // (and the tray, when close-to-tray is on), so it is always reachable.
     if (cfg.closeOnLaunch && this.window && !this.window.isDestroyed()) {
       this.window.minimize();
+    }
+    } finally {
+      stopOnLockLoss();
+      if (!gameLockHandedOff) await gameLock.release();
     }
   }
 
@@ -436,6 +457,7 @@ export class LauncherService extends EventEmitter {
 
   private throwIfCancelled(): void {
     if (this.cancelled) throw new Error('Отменено пользователем');
+    if (this.abort?.signal.aborted) throw new Error('Потеряна блокировка папки игры; запуск остановлен');
   }
 
   getServerStatus(): Promise<ServerStatus> {

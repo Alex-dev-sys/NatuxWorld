@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { useNews } from '../hooks/useNews';
 import { NewsCard } from './NewsCard';
 import { NewsModal } from './NewsModal';
-import type { NewsItem } from '../../electron/services/NewsService';
+import type { NewsItem } from '../types/native';
 import { useLang, pick } from '../i18n';
 
 const ru = { latest: 'Последние новости', all: 'Все новости' };

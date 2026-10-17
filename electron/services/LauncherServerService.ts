@@ -1,6 +1,7 @@
 import http from 'node:http';
 import https from 'node:https';
 import { BRAND } from '../../brand.config';
+import { readHttpResponse, waitForHttpResponse } from '../utils/http-response';
 
 export interface ServerStatus {
   online: boolean;
@@ -23,20 +24,19 @@ export interface ServerInfo {
 
 export class LauncherServerService {
   private async fetchSiteApi<T>(path: string): Promise<T> {
-    return new Promise((resolve, reject) => {
-      const url = new URL(`${BRAND.siteOrigin}${path}`);
-      const transport = url.protocol === 'http:' ? http : https;
-      const req = transport.get(url, { timeout: 6000 }, (res) => {
-        let data = '';
-        res.on('data', (chunk) => { data += chunk; });
-        res.on('end', () => {
-          try { resolve(JSON.parse(data)); }
-          catch { reject(new Error('Invalid JSON')); }
-        });
-      });
-      req.on('error', reject);
-      req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+    const url = new URL(`${BRAND.siteOrigin}${path}`);
+    const transport = url.protocol === 'http:' ? http : https;
+    const req = transport.request(url, { method: 'GET', headers: { Accept: 'application/json' } });
+    const response = waitForHttpResponse(req, 6000, 'Timeout', async (res) => {
+      if (res.statusCode !== 200) {
+        res.destroy();
+        throw new Error(`HTTP ${res.statusCode}`);
+      }
+      const data = (await readHttpResponse(res, 1024 * 1024)).toString('utf-8');
+      return JSON.parse(data) as T;
     });
+    req.end();
+    return response;
   }
 
   async getServerStatus(): Promise<ServerStatus> {

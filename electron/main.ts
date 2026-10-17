@@ -1,9 +1,9 @@
-import { app, BrowserWindow, ipcMain, session, shell, Menu, Tray, nativeImage } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell, Menu, Tray, nativeImage } from 'electron';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { registerIpcHandlers, updater, launcher, settings as settingsService } from './ipc/handlers';
-import * as discordRpcModule from './services/DiscordRpcService';
-import * as playtimeModule from './services/PlaytimeService';
+import { failClosedOnLockLoss, NativeLockService, type NativeLockLease } from './services/NativeLockService';
+import { rendererContentType, resolveRendererFile } from './utils/renderer-protocol';
 import { BRAND } from '../brand.config';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -11,14 +11,39 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 process.env.APP_ROOT = path.join(__dirname, '..');
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist');
+const APP_SCHEME = 'app';
+const APP_HOST = 'launcher';
+const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}`;
+const APP_INDEX_URL = `${APP_ORIGIN}/index.html`;
+const nativeLocks = new NativeLockService();
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+type IpcModule = typeof import('./ipc/handlers');
+type PlaytimeModule = typeof import('./services/PlaytimeService');
+type DiscordModule = typeof import('./services/DiscordRpcService');
+let startupServices: (Pick<IpcModule, 'registerIpcHandlers' | 'updater' | 'launcher' | 'settings'> & {
+  playtime: PlaytimeModule['playtime'];
+  discordRpc: DiscordModule['discordRpc'];
+}) | null = null;
+let profileLock: NativeLockLease | null = null;
+let stopProfileLockLossWatch: (() => void) | null = null;
+let profileReleaseStarted = false;
+let shutdownServicesClosed = false;
+let startupReady = false;
+let pendingSecondInstance = false;
+
+// Register before app readiness so the packaged renderer gets a secure,
+// standard origin while the file protocol remains without extra privileges.
+protocol.registerSchemesAsPrivileged([{
+  scheme: APP_SCHEME,
+  privileges: { standard: true, secure: true, supportFetchAPI: true },
+}]);
 
 let mainWindow: BrowserWindow | null = null;
 let updateCheckInterval: ReturnType<typeof setInterval> | null = null;
 let tray: Tray | null = null;
 let trayReady = false;
 let quitting = false;
-const discord = discordRpcModule.discordRpc;
-const playtime = playtimeModule.playtime;
 
 /** Window icon as a nativeImage for tray/menu use (falls back to empty image). */
 function appIcon(): Electron.NativeImage {
@@ -26,6 +51,27 @@ function appIcon(): Electron.NativeImage {
     return nativeImage.createFromPath(path.join(process.env.APP_ROOT ?? '', 'build', 'icon.png'));
   } catch {
     return nativeImage.createEmpty();
+  }
+}
+
+async function serveRendererRequest(request: Request): Promise<Response> {
+  if (request.method !== 'GET') return new Response('Method Not Allowed', { status: 405 });
+  const filePath = resolveRendererFile(RENDERER_DIST, request.url);
+  if (!filePath) return new Response('Not Found', { status: 404 });
+  try {
+    const stat = await fs.stat(filePath);
+    if (!stat.isFile()) return new Response('Not Found', { status: 404 });
+    // Read through Electron's patched fs layer so files inside app.asar are
+    // served without granting renderer-side file:// privileges.
+    const body = await fs.readFile(filePath);
+    return new Response(new Uint8Array(body), {
+      headers: {
+        'Content-Type': rendererContentType(filePath),
+        'X-Content-Type-Options': 'nosniff',
+      },
+    });
+  } catch {
+    return new Response('Not Found', { status: 404 });
   }
 }
 
@@ -139,10 +185,11 @@ function createWindow(): void {
     let isSameOrigin = false;
     try {
       const target = new URL(url);
-      // Dev: same origin as the Vite dev server. Prod: the file:// app bundle.
+      // Dev: same origin as the Vite dev server. Prod: the packaged app:// origin.
       isSameOrigin = VITE_DEV_SERVER_URL
         ? target.origin === new URL(VITE_DEV_SERVER_URL).origin
-        : target.protocol === 'file:';
+        : target.protocol === `${APP_SCHEME}:` && target.hostname === APP_HOST &&
+          target.port === '' && target.username === '' && target.password === '';
     } catch {
       isSameOrigin = false;
     }
@@ -153,7 +200,7 @@ function createWindow(): void {
     mainWindow.loadURL(VITE_DEV_SERVER_URL);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    mainWindow.loadFile(path.join(RENDERER_DIST, 'index.html'));
+    mainWindow.loadURL(APP_INDEX_URL);
   }
 
   registerWindowControls(mainWindow);
@@ -194,11 +241,11 @@ const CONNECT_SRC = [
   'https://api.github.com',
 ].join(' ');
 
-// Strict policy for the packaged (file://) build.
+// Strict policy for the packaged app:// build.
 const PROD_CSP = [
   "default-src 'self'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  'font-src https://fonts.gstatic.com',
+  "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: https:",
   `connect-src ${CONNECT_SRC}`,
   "script-src 'self'",
@@ -213,14 +260,75 @@ function buildCsp(): string {
   return [
     `default-src 'self' ${devOrigin}`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    'font-src https://fonts.gstatic.com',
+    "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: https:",
     `connect-src ${CONNECT_SRC} ${devOrigin} ${wsOrigin}`,
     `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${devOrigin}`,
   ].join('; ');
 }
 
-app.whenReady().then(() => {
+app.on('second-instance', () => {
+  if (startupReady) showMainWindow();
+  else pendingSecondInstance = true;
+});
+if (!hasSingleInstanceLock) app.quit();
+
+app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) return;
+
+  // This must be the first application-owned service operation: SettingsService,
+  // auth, game services, and IPC are imported only after the shared profile lock.
+  try {
+    profileLock = await nativeLocks.acquire('profile');
+    stopProfileLockLossWatch = failClosedOnLockLoss(profileLock, (error) => {
+      console.error('Natux profile lock was lost; exiting immediately to prevent concurrent profile access:', error);
+      // Do not run shutdown hooks: services cannot safely write profile state
+      // after another process may have acquired the lock.
+      app.exit(1);
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    if (!quitting) dialog.showErrorBox(BRAND.name, `Не удалось безопасно открыть профиль лаунчера.\n\n${detail}`);
+    app.quit();
+    return;
+  }
+
+  if (quitting) {
+    await profileLock.release().catch(() => undefined);
+    stopProfileLockLossWatch?.();
+    stopProfileLockLossWatch = null;
+    profileLock = null;
+    return;
+  }
+
+  try {
+    const [ipcServices, playtimeModule, discordRpcModule] = await Promise.all([
+      import('./ipc/handlers'),
+      import('./services/PlaytimeService'),
+      import('./services/DiscordRpcService'),
+    ]);
+    startupServices = {
+      registerIpcHandlers: ipcServices.registerIpcHandlers,
+      updater: ipcServices.updater,
+      launcher: ipcServices.launcher,
+      settings: ipcServices.settings,
+      playtime: playtimeModule.playtime,
+      discordRpc: discordRpcModule.discordRpc,
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    dialog.showErrorBox(BRAND.name, `Не удалось загрузить службы лаунчера.\n\n${detail}`);
+    app.quit();
+    return;
+  }
+  const services = startupServices;
+  if (!services) {
+    app.quit();
+    return;
+  }
+
+  if (!VITE_DEV_SERVER_URL) protocol.handle(APP_SCHEME, serveRendererRequest);
+
   // Apply CSP to every response in both dev and prod (no meta tag in index.html).
   const csp = buildCsp();
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -233,20 +341,25 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('app:version', () => app.getVersion());
-  registerIpcHandlers();
+  services.registerIpcHandlers();
 
   // Live re-apply of OS-integration settings (tray + autostart) when they change.
-  settingsService.onDidChange((s) => {
+  services.settings.onDidChange((s) => {
     if (s.minimizeToTray) createTray();
     else destroyTray();
     applyLoginItem(s.launchOnStartup === true, s.minimizeToTray === true && trayReady);
   });
 
   createWindow();
+  startupReady = true;
+  if (pendingSecondInstance) {
+    pendingSecondInstance = false;
+    showMainWindow();
+  }
   if (mainWindow) {
-    updater.attach(mainWindow);
-    launcher.attach(mainWindow);
-    settingsService.get().then((s) => {
+    services.updater.attach(mainWindow);
+    services.launcher.attach(mainWindow);
+    services.settings.get().then((s) => {
       if (s.minimizeToTray) createTray();
       // Tray creation can fail (Linux without a system tray, policy). Pass what
       // actually happened, not what was requested.
@@ -255,34 +368,64 @@ app.whenReady().then(() => {
       // rather than leaving an unreachable background process.
       if (!trayReady && process.argv.includes('--hidden')) showMainWindow();
       if (s.autoUpdate) {
-        setTimeout(() => { updater.check().catch(() => {}); }, 4000);
-        updateCheckInterval = setInterval(() => { updater.check().catch(() => {}); }, 1000 * 60 * 30);
+        setTimeout(() => { services.updater.check().catch(() => {}); }, 4000);
+        updateCheckInterval = setInterval(() => { services.updater.check().catch(() => {}); }, 1000 * 60 * 30);
       }
     }).catch(() => {});
     // One-shot self-integrity check against the signed manifest (non-blocking).
-    setTimeout(() => { updater.checkSelfIntegrity().catch(() => {}); }, 8000);
+    setTimeout(() => { services.updater.checkSelfIntegrity().catch(() => {}); }, 8000);
   }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
       if (mainWindow) {
-        updater.attach(mainWindow);
-        launcher.attach(mainWindow);
+        startupServices?.updater.attach(mainWindow);
+        startupServices?.launcher.attach(mainWindow);
       }
     }
   });
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   quitting = true;
   if (updateCheckInterval) {
     clearInterval(updateCheckInterval);
     updateCheckInterval = null;
   }
-  // Close any open play session and drop Discord presence on exit.
-  void playtime.endSession().catch(() => {});
-  discord.destroy();
+  // Keep the profile locked until Electron has stopped using its settings and
+  // services. Re-enter quit only after the helper confirms the OS lock is free.
+  if (profileLock) {
+    event.preventDefault();
+    if (!profileReleaseStarted) {
+      profileReleaseStarted = true;
+      const lease = profileLock;
+      const services = startupServices;
+      void (async () => {
+        if (!shutdownServicesClosed) {
+          shutdownServicesClosed = true;
+          await services?.playtime.endSession().catch(() => {});
+          services?.discordRpc.destroy();
+        }
+        await lease.release().catch((error) => {
+          console.error('Failed to release Natux profile lock:', error);
+        });
+        stopProfileLockLossWatch?.();
+        stopProfileLockLossWatch = null;
+        profileLock = null;
+        app.quit();
+      })();
+    }
+    return;
+  }
+
+  // Startup can fail before the lock helper is acquired; still close any
+  // services that were already initialized before quitting.
+  if (!shutdownServicesClosed) {
+    shutdownServicesClosed = true;
+    void startupServices?.playtime.endSession().catch(() => {});
+    startupServices?.discordRpc.destroy();
+  }
 });
 
 app.on('window-all-closed', () => {

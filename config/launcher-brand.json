@@ -1,0 +1,12 @@
+{
+  "name": "NATUX WORLD",
+  "siteOrigin": "https://vibestudy.ru",
+  "serverHost": "mc.vibestudy.ru",
+  "shopPath": "/shop",
+  "minecraftVersionLabel": "1.21.1 Forge",
+  "discordClientId": "",
+  "local": {
+    "siteOrigin": "http://127.0.0.1:3000",
+    "serverHost": "127.0.0.1"
+  }
+}

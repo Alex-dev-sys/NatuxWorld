@@ -20,5 +20,6 @@ module.exports = () => ({
     type: 'distribution',
     hardenedRuntime: true,
     notarize: true,
+    binaries: ['Contents/Resources/natux-lock/lock-helper'],
   },
 })

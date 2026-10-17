@@ -1,0 +1,117 @@
+name: Signed Tauri upgrade acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_release:
+        description: Published target tag matching this checkout (for example v1.10.0)
+        required: true
+        type: string
+      previous_release:
+        description: Published previous Tauri tag; leave empty when using a fresh candidate
+        required: false
+        type: string
+      previous_candidate_version:
+        description: Fresh signed candidate version for first-release protocol acceptance (for example 1.10.0-rc.0)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  upgrade:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'Alex-dev-sys/NatuxWorld'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.12.0
+          cache: npm
+
+      - name: Install acceptance dependencies
+        run: npm ci
+
+      - name: Validate versions and download published signed installers
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NATUX_UPGRADE_TARGET_RELEASE: ${{ inputs.target_release }}
+          NATUX_UPGRADE_PREVIOUS_RELEASE: ${{ inputs.previous_release }}
+          NATUX_UPGRADE_PREVIOUS_CANDIDATE: ${{ inputs.previous_candidate_version }}
+        run: node scripts/prepare-tauri-upgrade-ci.mjs
+
+      - name: Setup Java 21 for native resources
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: 1.90.0
+
+      - name: Build native lock runtime resources
+        run: npm run build:lock-runtime
+
+      - name: Build fresh signed previous candidate
+        if: env.NATUX_TAURI_UPGRADE_PREVIOUS_KIND == 'fresh_candidate'
+        env:
+          NATUX_TAURI_UPDATES_ENABLED: '1'
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Fresh candidate requires the existing Tauri updater signing secret.' }
+          node scripts/run-tauri.mjs build --config src/native/tauri.updater.conf.json --config "$env:NATUX_UPGRADE_CANDIDATE_CONFIG" --bundles nsis
+          if ($LASTEXITCODE -ne 0) { throw 'Could not build the signed previous candidate.' }
+          $candidate = Join-Path (Get-Location) "src/native/target/release/bundle/nsis/NATUX WORLD_$($env:NATUX_TAURI_UPGRADE_PREVIOUS_VERSION)_x64-setup.exe"
+          Copy-Item -LiteralPath $candidate -Destination $env:NATUX_TAURI_UPGRADE_PREVIOUS_INSTALLER
+          Copy-Item -LiteralPath "$candidate.sig" -Destination "$env:NATUX_TAURI_UPGRADE_PREVIOUS_INSTALLER.sig"
+
+      - name: Compile embedded-key signature verifier
+        run: cargo build --manifest-path src/native/Cargo.toml --locked --bin verify-updater-signature
+
+      - name: Prepare ordinary Windows user context
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-Command gsudo.exe -ErrorAction SilentlyContinue)) {
+            winget install --exact --id gerardog.gsudo --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity
+            if ($LASTEXITCODE -ne 0) { throw 'Could not install the Windows CI integrity helper.' }
+            $helperDirectory = Join-Path $env:ProgramFiles 'gsudo/Current'
+            if (-not (Test-Path -LiteralPath (Join-Path $helperDirectory 'gsudo.exe') -PathType Leaf)) { throw 'Installed gsudo executable is missing.' }
+            $helperDirectory | Out-File -FilePath $env:GITHUB_PATH -Append
+          }
+          $workspace = (Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
+          $repository = (git rev-parse --show-toplevel).Trim()
+          if ($LASTEXITCODE -ne 0 -or $workspace -ine $repository.Replace('/', '\')) { throw 'CI workspace does not match the repository.' }
+          $runnerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          icacls $workspace /grant ('*{0}:(OI)(CI)F' -f $runnerSid) /T /Q
+          if ($LASTEXITCODE -ne 0) { throw 'Could not grant the runner account access to its workspace.' }
+
+      - name: Accept actual published signed update at Medium integrity
+        env:
+          NATUX_TAURI_UPGRADE_ACCEPTANCE: '1'
+          NATUX_TAURI_UPGRADE_DEDICATED_ACCOUNT: 'YES'
+          NATUX_TAURI_UPGRADE_EPHEMERAL_CI: 'YES'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:NATUX_TAURI_UPGRADE_WINDOWS_ACCOUNT = [Environment]::UserName
+          ./scripts/run-windows-acceptance.ps1 -Suite signed-upgrade
+
+      - name: Upload signed upgrade acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: tauri-upgrade-evidence-${{ github.run_id }}
+          path: tests/.runtime/tauri-upgrade-result.json
+          if-no-files-found: warn
+          retention-days: 14

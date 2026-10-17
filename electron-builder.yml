@@ -1,18 +1,25 @@
 appId: world.natux.launcher
 productName: NATUX WORLD
+extraMetadata:
+  main: dist-electron/main.js
 copyright: Copyright © 2025 NATUX WORLD
 directories:
+  app: build/electron-app
   output: release
   buildResources: build
-# Renderer-only libs (react, react-dom, framer-motion, recharts, react-router-dom,
-# zustand, lucide-react, clsx, tailwind-merge) are bundled into dist/ by Vite, so they
-# live in devDependencies and are NOT packed into the asar. Only true runtime deps
-# (electron-updater, yauzl) remain in `dependencies` and get packed automatically.
+# The optional runner stages the bundled renderer and a locked runtime dependency
+# tree separately from the primary Tauri build and its dist/ directory.
 files:
   - dist/**/*
   - dist-electron/**/*
   - package.json
 asar: true
+extraResources:
+  - from: build/lock-runtime
+    to: natux-lock
+    filter:
+      - lock-helper*
+      - natux-lock-agent.jar
 # Hardens the packaged Electron binary (runAsNode / NODE_OPTIONS / inspect off).
 afterPack: scripts/apply-fuses.cjs
 win:
@@ -25,7 +32,7 @@ win:
       arch: [x64]
     - target: portable
       arch: [x64]
-  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
+  artifactName: NATUX-WORLD-Setup-${version}-${arch}.${ext}
   icon: build/icon.ico
 nsis:
   oneClick: false
@@ -38,7 +45,7 @@ nsis:
   uninstallerIcon: build/icon.ico
   installerHeaderIcon: build/icon.ico
 portable:
-  artifactName: ${productName}-Portable-${version}-${arch}.${ext}
+  artifactName: NATUX-WORLD-Portable-${version}-${arch}.${ext}
 mac:
   target:
     - target: dmg
@@ -47,9 +54,9 @@ mac:
   category: public.app-category.games
   # Unsigned local build; the signed release profile overrides this identity.
   identity: null
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: NATUX-WORLD-${version}-${arch}.${ext}
 dmg:
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: NATUX-WORLD-${version}-${arch}.${ext}
 linux:
   target: AppImage
   icon: build/icon.png
