@@ -10,6 +10,90 @@ import test from 'node:test';
 import { fileURLToPath, URL } from 'node:url';
 import { packageTauriPortable } from '../../scripts/package-tauri-portable.mjs';
 
+test('production signature verifier uses native Windows PowerShell despite an incompatible inherited security module', {
+  skip: process.platform !== 'win32', timeout: 60_000,
+}, async () => {
+  const parent = await realpath(os.tmpdir());
+  const owner = await mkdtemp(path.join(parent, 'natux-portable-signature-'));
+  try {
+    const modules = path.join(owner, 'modules');
+    const security = path.join(modules, 'Microsoft.PowerShell.Security/99.0');
+    await mkdir(security, { recursive: true });
+    await writeFile(path.join(security, 'Microsoft.PowerShell.Security.psd1'), `@{
+      RootModule = 'incompatible.psm1'
+      ModuleVersion = '99.0'
+      PowerShellVersion = '3.0'
+      CompatiblePSEditions = @('Core')
+      FunctionsToExport = @('Get-AuthenticodeSignature')
+    }\n`, { flag: 'wx' });
+    // No successful signature is simulated, and this incompatible module must
+    // never execute. Its manifest alone reproduces command autoload selection.
+    await writeFile(path.join(security, 'incompatible.psm1'), `
+      #requires -Version 99.0
+      function Get-AuthenticodeSignature { throw 'Fixture command must never execute.' }
+      throw 'Incompatible fixture module must never execute.'
+    `, { flag: 'wx' });
+    const unsigned = path.join(owner, 'unsigned-fixture.exe');
+    await writeFile(unsigned, 'MZ unsigned inert fixture', { flag: 'wx' });
+    const source = fileURLToPath(new URL('../../scripts/start-tauri-portable.ps1', import.meta.url));
+    const psQuote = value => `'${value.replaceAll("'", "''")}'`;
+    const setup = `
+      $ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'
+      if ($PSVersionTable.PSVersion.Major -ne 5) { throw 'Regression requires actual Windows PowerShell 5.' }
+      Import-Module "$PSHOME\\Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psd1" -ErrorAction Stop
+      $pollutedModulePath = ${psQuote(modules)} + ';' + (Join-Path $PSHOME 'Modules')
+      $env:PSModulePath = $pollutedModulePath
+      $signedWindowsFile = Join-Path $PSHOME 'powershell.exe'
+    `;
+    const runWindowsPowerShell = script => JSON.parse(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand',
+      Buffer.from(`${setup}\n${script}`, 'utf16le').toString('base64')], { windowsHide: true, encoding: 'utf8', timeout: 45_000 }));
+    // Baseline and fixed paths use fresh sessions so a deliberately failed
+    // autoload cannot contaminate the fixed path's module-discovery cache.
+    const baseline = runWindowsPowerShell(`
+      $autoloadError = $null
+      try { Get-AuthenticodeSignature -LiteralPath $signedWindowsFile | Out-Null }
+      catch { $autoloadError = $_.FullyQualifiedErrorId }
+      if ($autoloadError -notlike 'CouldNotAutoloadMatchingModule*') { throw "Incompatible module did not reproduce autoload failure: $autoloadError" }
+      @{ autoloadError = $autoloadError } | ConvertTo-Json -Compress
+    `);
+    const script = `
+      $tokens = $null; $parseErrors = $null
+      $ast = [Management.Automation.Language.Parser]::ParseFile(${psQuote(source)}, [ref]$tokens, [ref]$parseErrors)
+      if ($parseErrors.Count -ne 0) { throw 'Production helper has parse errors.' }
+      $definitions = @($ast.FindAll({ param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Assert-MicrosoftBootstrapperSignature'
+      }, $false))
+      if ($definitions.Count -ne 1) { throw 'Expected one production signature verifier function.' }
+      # Execute only the actual function definition. No top-level helper code,
+      # MessageBox, download, bootstrapper or native executable is executed.
+      . ([scriptblock]::Create($definitions[0].Extent.Text))
+      Assert-MicrosoftBootstrapperSignature -Path $signedWindowsFile
+      $modulePathAfterValid = $env:PSModulePath -ceq $pollutedModulePath
+      $unsignedError = $null
+      try { Assert-MicrosoftBootstrapperSignature -Path ${psQuote(unsigned)} }
+      catch { $unsignedError = $_.Exception.Message }
+      if ($null -eq $unsignedError) { throw 'Unsigned fixture was accepted.' }
+      @{ powershellMajor = $PSVersionTable.PSVersion.Major
+        signedWindowsFileAccepted = $true; unsignedError = $unsignedError
+        modulePathAfterValid = $modulePathAfterValid
+        modulePathAfterUnsigned = $env:PSModulePath -ceq $pollutedModulePath } | ConvertTo-Json -Compress
+    `;
+    const result = runWindowsPowerShell(script);
+    assert.equal(result.powershellMajor, 5);
+    assert.match(baseline.autoloadError, /^CouldNotAutoloadMatchingModule/);
+    assert.equal(result.signedWindowsFileAccepted, true);
+    assert.equal(result.modulePathAfterValid, true);
+    assert.equal(result.modulePathAfterUnsigned, true);
+    assert.match(result.unsignedError, /Microsoft WebView2 installer signature could not be verified/);
+  } finally {
+    assert.equal((await realpath(owner)).toLowerCase(), owner.toLowerCase());
+    assert.equal(path.dirname(owner), parent);
+    assert.ok(path.basename(owner).startsWith('natux-portable-signature-'));
+    assert.equal((await lstat(owner)).isSymbolicLink(), false);
+    await rm(owner, { recursive: true, force: true });
+  }
+});
+
 test('portable archive includes only native runtime and explicit local-profile marker', {
   skip: process.platform !== 'win32' || process.arch !== 'x64',
 }, async () => {

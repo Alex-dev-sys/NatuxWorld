@@ -17,6 +17,22 @@ function Get-WebViewRuntimeVersion {
     return $null
 }
 
+function Assert-MicrosoftBootstrapperSignature {
+    param([string]$Path)
+    # PowerShell 7 callers can leave incompatible modules in inherited PSModulePath.
+    $inheritedModulePath = $env:PSModulePath
+    try {
+        $env:PSModulePath = Join-Path $PSHOME 'Modules'
+        $securityModule = Import-Module -Name (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -PassThru -ErrorAction Stop
+    } finally {
+        $env:PSModulePath = $inheritedModulePath
+    }
+    $signature = & $securityModule.ExportedCommands['Get-AuthenticodeSignature'] -LiteralPath $Path
+    if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(?:^|, )O=Microsoft Corporation(?:,|$)') {
+        throw 'Microsoft WebView2 installer signature could not be verified.'
+    }
+}
+
 if ($CheckRuntimeOnly) {
     @{ available = [bool](Get-WebViewRuntimeVersion) } | ConvertTo-Json -Compress
     exit 0
@@ -36,10 +52,7 @@ try {
         try {
             $bootstrapper = Join-Path $temporaryPath 'MicrosoftEdgeWebView2Setup.exe'
             Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $bootstrapper -TimeoutSec 60 -UseBasicParsing
-            $signature = Get-AuthenticodeSignature -LiteralPath $bootstrapper
-            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(?:^|, )O=Microsoft Corporation(?:,|$)') {
-                throw 'Microsoft WebView2 installer signature could not be verified.'
-            }
+            Assert-MicrosoftBootstrapperSignature -Path $bootstrapper
             $installer = Start-Process -FilePath $bootstrapper -ArgumentList '/silent', '/install' -Wait -PassThru -WindowStyle Hidden
             if ($installer.ExitCode -notin @(0, 3010) -or -not (Get-WebViewRuntimeVersion)) {
                 throw 'Microsoft WebView2 installation did not complete. Try starting the launcher again after restarting Windows.'
