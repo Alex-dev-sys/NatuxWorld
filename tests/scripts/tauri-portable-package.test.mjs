@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -11,7 +13,8 @@ import { packageTauriPortable } from '../../scripts/package-tauri-portable.mjs';
 test('portable archive includes only native runtime and explicit local-profile marker', {
   skip: process.platform !== 'win32' || process.arch !== 'x64',
 }, async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'natux-portable-package-'));
+  const parent = await realpath(os.tmpdir());
+  const root = await mkdtemp(path.join(parent, 'natux-portable-webview-package-'));
   try {
     await mkdir(path.join(root, 'src/native/target/release'), { recursive: true });
     await mkdir(path.join(root, 'build/lock-runtime'), { recursive: true });
@@ -20,6 +23,40 @@ test('portable archive includes only native runtime and explicit local-profile m
     await writeFile(path.join(root, 'build/lock-runtime/natux-lock-agent.jar'), 'PK fixture');
     const archive = await packageTauriPortable(root);
     assert.equal((await readFile(archive)).subarray(0, 2).toString(), 'PK');
+    const inspection = JSON.parse(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand',
+      Buffer.from(`
+        $ErrorActionPreference = 'Stop'
+        $ProgressPreference = 'SilentlyContinue'
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [IO.Compression.ZipFile]::OpenRead('${archive.replaceAll("'", "''")}')
+        try {
+          $entries = @($zip.Entries | ForEach-Object {
+            $stream = $_.Open(); $hash = [Security.Cryptography.SHA512]::Create()
+            try { @{ name = $_.FullName; sha512 = [BitConverter]::ToString($hash.ComputeHash($stream)).Replace('-','').ToLowerInvariant() } }
+            finally { $hash.Dispose(); $stream.Dispose() }
+          })
+          @{ powershellMajor = $PSVersionTable.PSVersion.Major; entries = $entries } | ConvertTo-Json -Depth 4 -Compress
+        } finally { $zip.Dispose() }
+      `, 'utf16le').toString('base64')], { windowsHide: true, encoding: 'utf8', timeout: 30_000 }));
+    assert.equal(inspection.powershellMajor, 5, 'Regression must cover actual Windows PowerShell 5 .NET compatibility behavior.');
+    const expected = new Map([
+      ['natux-world-launcher-native.exe', Buffer.from('MZ fixture')],
+      ['natux-lock/natux-lock-agent.jar', Buffer.from('PK fixture')],
+      ['start-portable.ps1', await readFile(fileURLToPath(new URL('../../scripts/start-tauri-portable.ps1', import.meta.url)))],
+      ['Start NATUX WORLD.cmd', await readFile(fileURLToPath(new URL('../../scripts/start-tauri-portable.cmd', import.meta.url)))],
+      ['natux-portable.json', Buffer.from(`${JSON.stringify({ schemaVersion: 1, profileDirectory: 'profile' })}\n`)],
+    ]);
+    assert.deepEqual(inspection.entries.map(entry => entry.name).sort(), [...expected.keys()].sort(), 'ZIP FullName must use canonical forward slashes.');
+    for (const entry of inspection.entries) {
+      assert.equal(entry.sha512, createHash('sha512').update(expected.get(entry.name)).digest('hex'), `Unmodified bytes: ${entry.name}`);
+    }
+    const strict = JSON.parse(execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
+      fileURLToPath(new URL('../e2e/tauri-portable-webview-ui.ps1', import.meta.url)),
+      '-Action', 'Extract', '-OwnerRoot', root, '-Archive', archive],
+    { env: { ...process.env, TEMP: parent, TMP: parent }, windowsHide: true, encoding: 'utf8', timeout: 30_000 }));
+    assert.equal(strict.extracted, true);
+    assert.equal(strict.fileCount, 5);
+    assert.equal(await readFile(path.join(root, 'app/natux-lock/natux-lock-agent.jar'), 'utf8'), 'PK fixture');
     const extract = path.join(root, 'extracted');
     execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
       fileURLToPath(new URL('../../scripts/extract-tauri-portable.ps1', import.meta.url)),
@@ -50,6 +87,10 @@ test('portable archive includes only native runtime and explicit local-profile m
       '-Archive', standaloneArchive, '-DestinationDirectory', standaloneExtract], { windowsHide: true, stdio: 'pipe' });
     assert.equal(await readFile(path.join(standaloneExtract, 'natux-world-launcher-native.exe'), 'utf8'), 'MZ fixture');
   } finally {
+    assert.equal((await realpath(root)).toLowerCase(), root.toLowerCase());
+    assert.equal(path.dirname(root), parent);
+    assert.ok(path.basename(root).startsWith('natux-portable-webview-package-'));
+    assert.equal((await lstat(root)).isSymbolicLink(), false);
     await rm(root, { recursive: true, force: true });
   }
 });

@@ -232,7 +232,7 @@ jobs:
         run: npm run test:release:workflow
 
       - name: Test hosted WebView2 acceptance boundaries
-        run: node --test tests/scripts/windows-acceptance.test.mjs tests/scripts/webview2-ci.test.mjs tests/scripts/tauri-upgrade-ci.test.mjs tests/e2e/tauri-webview-bootstrap.test.cjs tests/e2e/tauri-portable-webview.test.cjs
+        run: node --test tests/scripts/windows-acceptance.test.mjs tests/scripts/webview2-ci.test.mjs tests/scripts/tauri-upgrade-ci.test.mjs tests/scripts/tauri-portable-package.test.mjs tests/e2e/tauri-webview-bootstrap.test.cjs tests/e2e/tauri-portable-webview.test.cjs
 
       - name: Test captured NSIS payload contract
         run: node --test tests/scripts/tauri-nsis-payload.test.mjs
