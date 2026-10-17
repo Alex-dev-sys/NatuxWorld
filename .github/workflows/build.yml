@@ -19,6 +19,12 @@ on:
         description: 'Completed Build run from this commit whose Windows installer will be tested without WebView2 (empty: normal build)'
         required: false
         type: string
+      webview_acceptance_kind:
+        description: 'Distribution whose real prerequisite bootstrap will be accepted'
+        required: false
+        type: choice
+        default: nsis
+        options: [nsis, portable]
 
 concurrency:
   group: build-${{ github.ref }}
@@ -224,7 +230,7 @@ jobs:
         run: npm run test:release:workflow
 
       - name: Test hosted WebView2 acceptance boundaries
-        run: node --test tests/scripts/windows-acceptance.test.mjs tests/scripts/webview2-ci.test.mjs tests/scripts/tauri-upgrade-ci.test.mjs tests/e2e/tauri-webview-bootstrap.test.cjs
+        run: node --test tests/scripts/windows-acceptance.test.mjs tests/scripts/webview2-ci.test.mjs tests/scripts/tauri-upgrade-ci.test.mjs tests/e2e/tauri-webview-bootstrap.test.cjs tests/e2e/tauri-portable-webview.test.cjs
 
       - name: Test captured NSIS payload contract
         run: node --test tests/scripts/tauri-nsis-payload.test.mjs
@@ -506,6 +512,8 @@ jobs:
           $name = "NatuxWorld-$env:VERSION-x64-setup.exe"
           $source = if ($env:UPDATER_BUNDLE -eq 'true') { "release/tauri/$name" } else { "src/native/target/release/bundle/nsis/NATUX WORLD_$($env:VERSION)_x64-setup.exe" }
           Copy-Item -LiteralPath $source -Destination "$directory/$name"
+          $portableName = "NatuxWorld-$env:VERSION-x64-portable.zip"
+          Copy-Item -LiteralPath "release/tauri/$portableName" -Destination "$directory/$portableName"
           $nativeHash = (Get-FileHash -LiteralPath 'src/native/target/release/natux-world-launcher-native.exe.nsis-payload.exe' -Algorithm SHA512).Hash.ToLowerInvariant()
           [IO.File]::WriteAllText((Join-Path (Get-Location) "$directory/native.sha512"), $nativeHash, [Text.Encoding]::ASCII)
           $receipt = [ordered]@{
@@ -513,6 +521,7 @@ jobs:
             sourceHeadSha = $env:SOURCE_HEAD_SHA
             buildCommit = $env:GITHUB_SHA
             installerSha512 = (Get-FileHash -LiteralPath "$directory/$name" -Algorithm SHA512).Hash.ToLowerInvariant()
+            portableSha512 = (Get-FileHash -LiteralPath "$directory/$portableName" -Algorithm SHA512).Hash.ToLowerInvariant()
             nativeSha512 = $nativeHash
           } | ConvertTo-Json
           [IO.File]::WriteAllText((Join-Path (Get-Location) "$directory/receipt.json"), $receipt, [Text.UTF8Encoding]::new($false))
@@ -1035,7 +1044,7 @@ jobs:
           done
 
   webview_bootstrap:
-    name: Windows installer without WebView2
+    name: Windows ${{ inputs.webview_acceptance_kind }} without WebView2
     if: github.event_name == 'workflow_dispatch' && inputs.webview_acceptance_run != '' && github.repository == 'Alex-dev-sys/NatuxWorld'
     runs-on: windows-latest
     timeout-minutes: 20
@@ -1103,11 +1112,20 @@ jobs:
           ./scripts/prepare-webview2-ci.ps1 -Action Prepare | Set-Content tests/.runtime/webview-prepared.json
 
       - name: Accept production NSIS prerequisite bootstrap at Medium integrity
+        if: inputs.webview_acceptance_kind == 'nsis'
         shell: pwsh
         env:
           NATUX_WEBVIEW_BOOTSTRAP_ACCEPTANCE: '1'
           NATUX_WEBVIEW_BOOTSTRAP_SOURCE_RUN: ${{ inputs.webview_acceptance_run }}
         run: ./scripts/run-windows-acceptance.ps1 -Suite webview-bootstrap
+
+      - name: Accept production Portable consent and prerequisite bootstrap at Medium integrity
+        if: inputs.webview_acceptance_kind == 'portable'
+        shell: pwsh
+        env:
+          NATUX_PORTABLE_WEBVIEW_ACCEPTANCE: '1'
+          NATUX_PORTABLE_WEBVIEW_SOURCE_RUN: ${{ inputs.webview_acceptance_run }}
+        run: ./scripts/run-windows-acceptance.ps1 -Suite portable-webview
 
       - name: Upload prerequisite acceptance evidence
         if: always()
@@ -1118,5 +1136,6 @@ jobs:
             tests/.runtime/webview-before-preparation.json
             tests/.runtime/webview-prepared.json
             tests/.runtime/webview-result.json
+            tests/.runtime/portable-webview-result.json
           if-no-files-found: warn
           retention-days: 14

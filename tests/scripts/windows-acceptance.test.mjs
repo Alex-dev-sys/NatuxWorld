@@ -13,6 +13,8 @@ const script = path.join(repository, 'scripts/run-windows-acceptance.ps1');
 test('prerequisite dispatch is isolated from publishing and consumes a successful matching Build artifact', async () => {
   const workflow = yaml.load(await readFile(path.join(repository, '.github/workflows/build.yml'), 'utf8'));
   assert.equal(workflow.on.workflow_dispatch.inputs.webview_acceptance_run.required, false);
+  assert.deepEqual(workflow.on.workflow_dispatch.inputs.webview_acceptance_kind.options, ['nsis', 'portable']);
+  assert.equal(workflow.on.workflow_dispatch.inputs.webview_acceptance_kind.default, 'nsis');
   assert.match(workflow.jobs.plan.if, /inputs\.webview_acceptance_run == ''/);
   const job = workflow.jobs.webview_bootstrap;
   assert.deepEqual(job.permissions, { contents: 'read', actions: 'read' });
@@ -32,6 +34,16 @@ test('prerequisite dispatch is isolated from publishing and consumes a successfu
   assert.ok(job.steps.indexOf(download) < job.steps.indexOf(removal[0]));
   assert.doesNotMatch(JSON.stringify(job), /contents":"write|TAURI_SIGNING_PRIVATE_KEY|UPDATE_SIGNING_PRIVATE_KEY|gh release/);
   assert.equal(workflow.jobs.publish.if, "needs.plan.outputs.release == 'true'");
+  const nsis = job.steps.find(step => step.name.startsWith('Accept production NSIS'));
+  const portable = job.steps.find(step => step.name.startsWith('Accept production Portable'));
+  assert.equal(nsis.if, "inputs.webview_acceptance_kind == 'nsis'");
+  assert.equal(portable.if, "inputs.webview_acceptance_kind == 'portable'");
+  assert.equal(portable.env.NATUX_PORTABLE_WEBVIEW_ACCEPTANCE, '1');
+  assert.equal(portable.env.NATUX_PORTABLE_WEBVIEW_SOURCE_RUN, '${{ inputs.webview_acceptance_run }}');
+  assert.match(portable.run, /run-windows-acceptance\.ps1 -Suite portable-webview/);
+  const stage = workflow.jobs.windows.steps.find(step => step.name === 'Stage exact accepted Windows installer');
+  assert.match(stage.run, /Copy-Item -LiteralPath "release\/tauri\/\$portableName"/);
+  assert.match(stage.run, /portableSha512 = \(Get-FileHash -LiteralPath "\$directory\/\$portableName" -Algorithm SHA512\)/);
 });
 
 test('Windows UI acceptance uses production artifacts through a verified Medium-integrity child', async () => {
@@ -45,6 +57,7 @@ test('Windows UI acceptance uses production artifacts through a verified Medium-
     packaged: 'tauri-packaged.test.cjs', portable: 'tauri-portable.test.cjs',
     installed: 'tauri-installed.test.cjs', 'electron-migration': 'tauri-electron-migration.test.cjs',
     'webview-bootstrap': 'tauri-webview-bootstrap.test.cjs',
+    'portable-webview': 'tauri-portable-webview.test.cjs',
   })) {
     assert.ok(source.includes(`'${suite}' = 'tests/e2e/${filename}'`));
     assert.ok(workflow.includes(`./scripts/run-windows-acceptance.ps1 -Suite ${suite}`));
