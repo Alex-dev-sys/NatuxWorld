@@ -31,7 +31,7 @@
     "preview": "vite preview",
     "sign:update-manifest": "node scripts/sign-update-manifest.mjs",
     "test": "vitest run",
-    "test:release:workflow": "node --test tests/scripts/release-workflow.test.mjs",
+    "test:release:workflow": "node --test tests/scripts/release-workflow.test.mjs tests/scripts/release-immutability.test.mjs",
     "test:icons": "node --test tests/scripts/prepare-launcher-icons.test.mjs",
     "test:watch": "vitest",
     "test:packaged": "node --test tests/e2e/tauri-packaged.test.cjs",

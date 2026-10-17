@@ -147,6 +147,9 @@ jobs:
                 "NatuxWorld-$version-aarch64.app.tar.gz.sig",
                 "NatuxWorld-$version-x86_64.dmg",
                 "NatuxWorld-$version-aarch64.dmg",
+                'executable-sha512-windows-x86_64.txt',
+                'executable-sha512-darwin-x86_64.txt',
+                'executable-sha512-darwin-aarch64.txt',
                 'SHA256SUMS-tauri.txt'
               )
             }
@@ -154,18 +157,17 @@ jobs:
               $exeCount = @($assetNames | Where-Object { $_ -match '(?i)\.exe$' }).Count
               $blockmapCount = @($assetNames | Where-Object { $_ -match '(?i)\.blockmap$' }).Count
               $dmgCount = @($assetNames | Where-Object { $_ -match '(?i)\.dmg$' }).Count
-              $shouldRelease = $releaseInfo.isDraft -or $missing.Count -gt 0 -or $exeCount -lt 2 -or $blockmapCount -lt 1 -or $dmgCount -lt 2
+              $incomplete = $missing.Count -gt 0 -or $exeCount -lt 2 -or $blockmapCount -lt 1 -or $dmgCount -lt 2
+              if (-not $releaseInfo.isDraft -and $incomplete) {
+                throw "Published release $tag is incomplete; publish a new version instead of replacing its artifacts."
+              }
+              $shouldRelease = $releaseInfo.isDraft
               if ($shouldRelease) {
-                Write-Host "Release $tag is a draft or lacks required assets; it will be completed after platform checks pass."
+                Write-Host "Release $tag is a draft; it will be completed after platform checks pass."
               } else {
-                Write-Host "Release $tag already contains the complete verified asset set."
+                Write-Host "Release $tag is already published; its verified versioned artifacts are immutable."
               }
             }
-          }
-
-          if ($tauriRequested -and $env:EVENT_NAME -eq 'workflow_dispatch') {
-            $shouldRelease = $true
-            Write-Host 'Manual dispatch with Tauri updates enabled will rebuild this version and refresh its rollout feed.'
           }
 
           $tauri = $tauriRequested -and $shouldRelease
@@ -996,6 +998,10 @@ jobs:
             assets+=(release/tauri/*)
           fi
           ((${#assets[@]} > 0)) || { echo 'No release assets were downloaded'; exit 1; }
+          # Recheck after the platform builds: a release published meanwhile
+          # must not receive different native bytes under the same version.
+          release_is_draft=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')
+          [[ "$release_is_draft" == 'true' ]] || { echo 'Refusing to replace artifacts of a published release; publish a new version.'; exit 1; }
           gh release upload "$TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
 
       - name: Verify assets and publish
@@ -1008,7 +1014,7 @@ jobs:
             grep -Fxq "$required" release-assets.txt || { echo "Missing required release asset: $required"; exit 1; }
           done
           if [[ '${{ needs.plan.outputs.tauri }}' == 'true' ]]; then
-            for required in latest.json natux-tauri-control.json natux-tauri-control.json.sig NatuxWorld-${{ needs.plan.outputs.version }}-x64-setup.exe NatuxWorld-${{ needs.plan.outputs.version }}-x64-setup.exe.sig NatuxWorld-${{ needs.plan.outputs.version }}-x64-portable.zip NatuxWorld-${{ needs.plan.outputs.version }}-x86_64.app.tar.gz NatuxWorld-${{ needs.plan.outputs.version }}-x86_64.app.tar.gz.sig NatuxWorld-${{ needs.plan.outputs.version }}-x86_64.dmg NatuxWorld-${{ needs.plan.outputs.version }}-aarch64.app.tar.gz NatuxWorld-${{ needs.plan.outputs.version }}-aarch64.app.tar.gz.sig NatuxWorld-${{ needs.plan.outputs.version }}-aarch64.dmg SHA256SUMS-tauri.txt; do
+            for required in latest.json natux-tauri-control.json natux-tauri-control.json.sig NatuxWorld-${{ needs.plan.outputs.version }}-x64-setup.exe NatuxWorld-${{ needs.plan.outputs.version }}-x64-setup.exe.sig NatuxWorld-${{ needs.plan.outputs.version }}-x64-portable.zip NatuxWorld-${{ needs.plan.outputs.version }}-x86_64.app.tar.gz NatuxWorld-${{ needs.plan.outputs.version }}-x86_64.app.tar.gz.sig NatuxWorld-${{ needs.plan.outputs.version }}-x86_64.dmg NatuxWorld-${{ needs.plan.outputs.version }}-aarch64.app.tar.gz NatuxWorld-${{ needs.plan.outputs.version }}-aarch64.app.tar.gz.sig NatuxWorld-${{ needs.plan.outputs.version }}-aarch64.dmg executable-sha512-windows-x86_64.txt executable-sha512-darwin-x86_64.txt executable-sha512-darwin-aarch64.txt SHA256SUMS-tauri.txt; do
               grep -Fxq "$required" release-assets.txt || { echo "Missing Tauri release asset: $required"; exit 1; }
             done
           fi
