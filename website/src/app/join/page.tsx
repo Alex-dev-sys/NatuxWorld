@@ -5,7 +5,6 @@ import ServerStatus from '@/components/ServerStatus'
 import { BRAND } from '@/lib/brand'
 
 const IP = BRAND.serverHost
-
 const MONO = '"JetBrains Mono", monospace'
 const DISPLAY = '"Bebas Neue", sans-serif'
 
@@ -16,7 +15,6 @@ const REL = `https://github.com/Alex-dev-sys/NatuxWorld/releases/download/v${LAU
 const DL_WIN = `${REL}/NATUX-WORLD-Setup-${LAUNCHER_VERSION}-x64.exe`
 const DL_MAC_ARM = `${REL}/NATUX-WORLD-${LAUNCHER_VERSION}-arm64.dmg`
 const DL_MAC_X64 = `${REL}/NATUX-WORLD-${LAUNCHER_VERSION}-x64.dmg`
-
 // Преимущества фирменного лаунчера над ручным подключением.
 const LAUNCHER_PERKS = [
   { t: 'JAVA АВТОМАТИЧЕСКИ', d: 'Лаунчер сам скачает подходящую Java при установке игры.' },
