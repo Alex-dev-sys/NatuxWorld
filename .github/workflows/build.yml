@@ -1143,5 +1143,6 @@ jobs:
             tests/.runtime/webview-prepared.json
             tests/.runtime/webview-result.json
             tests/.runtime/portable-webview-result.json
+            tests/.runtime/portable-webview-failure.json
           if-no-files-found: warn
           retention-days: 14

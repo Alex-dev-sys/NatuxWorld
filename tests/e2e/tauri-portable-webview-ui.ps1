@@ -1,5 +1,5 @@
 param(
-  [Parameter(Mandatory = $true)][ValidateSet('Extract', 'Dialog', 'Inspect', 'Stop')][string]$Action,
+  [Parameter(Mandatory = $true)][ValidateSet('Extract', 'Dialog', 'Inspect', 'Stop', 'Snapshot')][string]$Action,
   [Parameter(Mandatory = $true)][string]$OwnerRoot,
   [string]$Archive,
   [int]$ProcessId,
@@ -94,9 +94,26 @@ function Expand-OwnedPortable {
   } finally { if ($null -ne $zip) { $zip.Dispose() }; $stream.Dispose() }
 }
 
+function Get-ScopedProcessEvidence([object]$RootProcess, [object[]]$AllProcesses) {
+  $seen = @{}; $seen[[int]$RootProcess.ProcessId] = $RootProcess
+  for ($depth = 0; $depth -lt 16; $depth++) {
+    $next = @($AllProcesses | Where-Object {
+      -not $seen.ContainsKey([int]$_.ProcessId) -and $seen.ContainsKey([int]$_.ParentProcessId) -and
+      $_.CreationDate -ge $seen[[int]$_.ParentProcessId].CreationDate
+    })
+    if ($next.Count -eq 0) { break }
+    foreach ($child in $next) { $seen[[int]$child.ProcessId] = $child }
+    if ($seen.Count -gt 128) { throw 'Owned process evidence exceeded its bound.' }
+  }
+  @($seen.Values | Sort-Object ProcessId | ForEach-Object {
+    @{ processId = $_.ProcessId; parentProcessId = $_.ParentProcessId; executable = $_.ExecutablePath }
+  })
+}
+
 $dialogType = @'
 using System;
 using System.Text;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 public static class NatuxPortableDialog {
   public const string Prompt = "NATUX WORLD requires Microsoft WebView2. Download and install it now?";
@@ -111,6 +128,8 @@ public static class NatuxPortableDialog {
   [DllImport("user32.dll")] private static extern int GetDlgCtrlID(IntPtr hwnd);
   [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
   [DllImport("user32.dll")] private static extern bool IsWindowEnabled(IntPtr hwnd);
+  [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr hwnd);
+  [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll", SetLastError=true)] private static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wparam, IntPtr lparam);
   private static string Text(IntPtr hwnd, bool kind) {
     var buffer = new StringBuilder(1024);
@@ -119,6 +138,35 @@ public static class NatuxPortableDialog {
   }
   public static bool Matches(int expected, int actual, string title, string kind, string prompt, int id) {
     return expected > 0 && actual == expected && title == "NATUX WORLD" && kind == "#32770" && prompt == Prompt && (id == 6 || id == 7);
+  }
+  public static bool SnapshotMatches(int expected, int actual, string title, string kind) {
+    return expected > 0 && actual == expected && title == "NATUX WORLD" && kind == "#32770";
+  }
+  public sealed class WindowEvidence {
+    public string title; public string windowClass; public long windowHandle;
+    public bool active; public string[] staticTexts; public int[] buttonIds;
+  }
+  public static WindowEvidence[] Snapshot(int pid) {
+    var windows = new List<WindowEvidence>();
+    EnumWindows(delegate(IntPtr window, IntPtr state) {
+      uint owner; GetWindowThreadProcessId(window, out owner);
+      if (!SnapshotMatches(pid, (int)owner, Text(window, false), Text(window, true))) return true;
+      if (windows.Count >= 8) throw new InvalidOperationException("Owned dialog evidence exceeded its bound.");
+      var texts = new List<string>(); var buttons = new List<int>();
+      EnumChildWindows(window, delegate(IntPtr child, IntPtr ignored) {
+        uint childOwner; GetWindowThreadProcessId(child, out childOwner);
+        if (childOwner != pid || GetParent(child) != window) return true;
+        if (texts.Count + buttons.Count >= 32) return false;
+        if (Text(child, true) == "Static") texts.Add(Text(child, false));
+        if (Text(child, true) == "Button") buttons.Add(GetDlgCtrlID(child));
+        return true;
+      }, IntPtr.Zero);
+      windows.Add(new WindowEvidence { title = Text(window, false), windowClass = Text(window, true),
+        windowHandle = window.ToInt64(), active = GetForegroundWindow() == window,
+        staticTexts = texts.ToArray(), buttonIds = buttons.ToArray() });
+      return true;
+    }, IntPtr.Zero);
+    return windows.ToArray();
   }
   public static bool Click(int pid, int id) {
     IntPtr dialog = IntPtr.Zero;
@@ -141,6 +189,9 @@ public static class NatuxPortableDialog {
         button == IntPtr.Zero || GetParent(button) != dialog || GetDlgCtrlID(button) != id || Text(button, true) != "Button" ||
         !IsWindowVisible(button) || !IsWindowEnabled(button)) throw new InvalidOperationException("Owned dialog button could not be verified.");
     if (!PostMessage(button, 0x00F5, IntPtr.Zero, IntPtr.Zero)) throw new InvalidOperationException("Could not click owned prerequisite button.");
+    var deadline = DateTime.UtcNow.AddSeconds(5);
+    while (IsWindow(dialog) && DateTime.UtcNow < deadline) System.Threading.Thread.Sleep(50);
+    if (IsWindow(dialog)) throw new InvalidOperationException("Owned prerequisite dialog did not close within 5 seconds after BM_CLICK.");
     return true;
   }
 }
@@ -152,19 +203,29 @@ if ($Action -eq 'Extract') { Expand-OwnedPortable | ConvertTo-Json -Compress; ex
 Assert-CiUi
 $executable = Join-Path $OwnerRoot 'app\natux-world-launcher-native.exe'
 Assert-CanonicalPath $executable
-if ($Action -eq 'Dialog') {
+if ($Action -in @('Dialog', 'Snapshot')) {
   if ($ProcessId -le 0) { throw 'Owned helper PID is required.' }
   $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId"
+  if ($Action -eq 'Snapshot' -and $null -eq $process) {
+    @{ helperPresent = $false; processId = $ProcessId; dialogs = @(); processes = @() } | ConvertTo-Json -Compress
+    exit 0
+  }
   $expectedPowerShell = Join-Path ([Environment]::SystemDirectory) 'WindowsPowerShell\v1.0\powershell.exe'
   $expectedScript = Join-Path $OwnerRoot 'app\start-portable.ps1'
   if ($null -eq $process -or $process.ExecutablePath -ine $expectedPowerShell -or
       $process.CommandLine.IndexOf($expectedScript, [StringComparison]::OrdinalIgnoreCase) -lt 0 -or
       $process.CommandLine -notmatch '(?i)(?:^|\s)-STA(?:\s|$)') { throw 'PID is not this owned portable PowerShell helper.' }
   Add-Type -TypeDefinition $dialogType
+  if ($Action -eq 'Snapshot') {
+    $all = @(Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,ExecutablePath,CreationDate)
+    @{ helperPresent = $true; processId = $ProcessId; dialogs = @([NatuxPortableDialog]::Snapshot($ProcessId))
+      processes = @(Get-ScopedProcessEvidence $process $all) } | ConvertTo-Json -Depth 6 -Compress
+    exit 0
+  }
   $deadline = [DateTime]::UtcNow.AddSeconds(30)
   do {
     if ([NatuxPortableDialog]::Click($ProcessId, $ButtonId)) {
-      @{ clicked = $true; processId = $ProcessId; buttonId = $ButtonId; title = 'NATUX WORLD'; windowClass = '#32770'; prompt = [NatuxPortableDialog]::Prompt } | ConvertTo-Json -Compress
+      @{ clicked = $true; dialogClosed = $true; processId = $ProcessId; buttonId = $ButtonId; title = 'NATUX WORLD'; windowClass = '#32770'; prompt = [NatuxPortableDialog]::Prompt } | ConvertTo-Json -Compress
       exit 0
     }
     Start-Sleep -Milliseconds 100

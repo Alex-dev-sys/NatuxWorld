@@ -108,6 +108,25 @@ async function helperExited(child) {
   assert.equal(child.exitCode, 0);
 }
 
+function diagnosticError(error) {
+  const unclosed = /Owned prerequisite dialog did not close within 5 seconds after BM_CLICK\./.exec(String(error?.stderr ?? ''));
+  return { name: String(error?.name ?? 'Error').slice(0, 80), code: error?.code ?? null,
+    message: unclosed?.[0] ?? (error?.cmd ? 'Diagnostic subprocess failed; command output omitted.' : String(error?.message ?? error).slice(0, 2048)) };
+}
+
+async function failureEvidence({ phase, helperPid, error }, probes) {
+  assert.match(phase, /^[a-z][a-z-]{0,63}$/);
+  assert.ok(helperPid === null || (Number.isSafeInteger(helperPid) && helperPid > 0));
+  const result = { success: false, phase, helperPid, error: diagnosticError(error), capturedAt: new Date().toISOString() };
+  const entries = Object.entries(probes);
+  const results = await Promise.allSettled(entries.map(([, probe]) => Promise.resolve().then(probe)));
+  for (let index = 0; index < entries.length; index++) {
+    const item = results[index];
+    result[entries[index][0]] = item.status === 'fulfilled' ? item.value : { evidenceError: diagnosticError(item.reason) };
+  }
+  return result;
+}
+
 async function freePort() {
   const server = net.createServer();
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
@@ -164,6 +183,57 @@ test('Win32 matching compiles but never clicks unrelated dialogs or runs any UI 
   assert.deepEqual(JSON.parse(stdout), [true, true, false, false, false, false, false]);
 });
 
+test('failure diagnostics preserve the primary error and reject invalid phase/PID before probing', async () => {
+  const primary = new Error('Production portable helper did not exit.');
+  const failedProbe = Object.assign(new Error('contains a full diagnostic command'), { cmd: 'must not be serialized', code: 'ETIMEDOUT' });
+  const record = await failureEvidence({ phase: 'yes-helper-exit', helperPid: 123, error: primary }, {
+    ownedHelper: () => { throw failedProbe; }, runtime: () => ({ installed: true, executablePaths: ['owned-runtime.exe'] }),
+  });
+  assert.equal(record.error.message, primary.message);
+  assert.equal(primary.message, 'Production portable helper did not exit.');
+  assert.equal(record.ownedHelper.evidenceError.code, 'ETIMEDOUT');
+  assert.equal(record.runtime.installed, true);
+  assert.ok(!JSON.stringify(record).includes(failedProbe.cmd));
+  assert.equal(diagnosticError({ cmd: 'private command', stderr: 'Owned prerequisite dialog did not close within 5 seconds after BM_CLICK.' }).message,
+    'Owned prerequisite dialog did not close within 5 seconds after BM_CLICK.');
+  let probed = false;
+  for (const boundary of [{ phase: '../other', helperPid: 123 }, { phase: 'yes-helper-exit', helperPid: -1 }]) {
+    await assert.rejects(() => failureEvidence({ ...boundary, error: primary }, { runtime: () => { probed = true; } }));
+  }
+  assert.equal(probed, false);
+});
+
+test('diagnostic dialog matching and descendant selection exclude unrelated windows/processes without using UI locally', { skip: process.platform !== 'win32' }, async () => {
+  const { stdout } = await powershell(`
+    . ${quote(uiScript)} -Action Snapshot -OwnerRoot 'unused-read-only-test'
+    Add-Type -TypeDefinition $dialogType
+    $window = New-Object 'NatuxPortableDialog+WindowEvidence'
+    $window.title = 'NATUX WORLD'; $window.windowClass = '#32770'; $window.windowHandle = 123
+    $window.staticTexts = @('Example bootstrap failure'); $window.buttonIds = @(1); $window.active = $true
+    $root = [pscustomobject]@{ ProcessId=10; ParentProcessId=1; ExecutablePath='owned-helper.exe'; CreationDate=[datetime]'2026-01-02' }
+    $processes = @(
+      [pscustomobject]@{ ProcessId=11; ParentProcessId=10; ExecutablePath='bootstrap.exe'; CreationDate=[datetime]'2026-01-03'; CommandLine='never-output' }
+      [pscustomobject]@{ ProcessId=12; ParentProcessId=11; ExecutablePath='updater.exe'; CreationDate=[datetime]'2026-01-04' }
+      [pscustomobject]@{ ProcessId=13; ParentProcessId=10; ExecutablePath='stale-parent-pid.exe'; CreationDate=[datetime]'2026-01-01' }
+      [pscustomobject]@{ ProcessId=99; ParentProcessId=1; ExecutablePath='unrelated.exe'; CreationDate=[datetime]'2026-01-03' }
+    )
+    @{ matches = @(
+      [NatuxPortableDialog]::SnapshotMatches(10,10,'NATUX WORLD','#32770')
+      [NatuxPortableDialog]::SnapshotMatches(10,99,'NATUX WORLD','#32770')
+      [NatuxPortableDialog]::SnapshotMatches(10,10,'unrelated','#32770')
+      [NatuxPortableDialog]::SnapshotMatches(10,10,'NATUX WORLD','other')
+      [NatuxPortableDialog]::SnapshotMatches(0,0,'NATUX WORLD','#32770')
+    ); processes = @(Get-ScopedProcessEvidence $root $processes); dialog = $window } | ConvertTo-Json -Depth 5 -Compress
+  `);
+  const record = JSON.parse(stdout);
+  assert.deepEqual(record.matches, [true, false, false, false, false]);
+  assert.deepEqual(record.processes.map(item => item.processId), [10, 11, 12]);
+  assert.deepEqual(record.dialog, { title: 'NATUX WORLD', windowClass: '#32770', windowHandle: 123,
+    active: true, staticTexts: ['Example bootstrap failure'], buttonIds: [1] });
+  for (const item of record.processes) assert.deepEqual(Object.keys(item).sort(), ['executable', 'parentProcessId', 'processId']);
+  assert.ok(!stdout.includes('never-output'));
+});
+
 test('real ZIP preflight extracts only bounded production files and refuses traversal, symlinks and collisions', { skip: process.platform !== 'win32', timeout: 60_000 }, async () => {
   const parent = await fs.realpath(os.tmpdir());
   for (const scenario of ['valid', 'traversal', 'symlink', 'duplicate', 'oversized']) {
@@ -190,6 +260,7 @@ test('real ZIP preflight extracts only bounded production files and refuses trav
         assert.equal((await ui('Extract', owner, ['-Archive', archive])).fileCount, 5);
         assert.equal((await fs.stat(path.join(owner, 'app/start-portable.ps1'))).size, 32);
         await assert.rejects(() => ui('Inspect', owner, [], { ...process.env, NATUX_PORTABLE_WEBVIEW_ACCEPTANCE: '' }), /UI requires/);
+        await assert.rejects(() => ui('Snapshot', owner, ['-ProcessId', String(process.pid)], { ...process.env, NATUX_PORTABLE_WEBVIEW_ACCEPTANCE: '' }), /UI requires/);
       } else {
         await assert.rejects(() => ui('Extract', owner, ['-Archive', archive]));
         await assert.rejects(() => fs.access(path.join(owner, 'app')), /ENOENT/);
@@ -227,13 +298,17 @@ test('accepted portable ZIP handles real No and Yes prerequisite dialogs before 
   assert.equal(nativeHash, receipt.nativeSha512);
   assert.equal(await sha512(zip), receipt.portableSha512);
   const resultFile = path.join(runtime, 'portable-webview-result.json');
+  const failureFile = path.join(runtime, 'portable-webview-failure.json');
   await fs.rm(resultFile, { force: true });
+  await fs.rm(failureFile, { force: true });
   const before = await checkRuntime(); runtimeState(before, false);
   await assertNoExistingInstallation();
   const startupBefore = await runKeys();
   const parent = await fs.realpath(os.tmpdir());
   const owner = await fs.mkdtemp(path.join(parent, 'natux-portable-webview-'));
-  let helper; let browser; let extracted = false; let failure; let after; let noDialog; let yesDialog; let policy;
+  let helper; let helperPid = null; let browser; let extracted = false; let failure; let after; let noDialog; let yesDialog; let policy;
+  let phase = 'extract';
+  const markPhase = value => { phase = value; t.diagnostic(`Portable phase=${phase}; helperPid=${helperPid ?? 'none'}`); };
   try {
     await ui('Extract', owner, ['-Archive', zip]); extracted = true;
     const app = path.join(owner, 'app');
@@ -254,16 +329,21 @@ test('accepted portable ZIP handles real No and Yes prerequisite dialogs before 
       child.on('error', error => { t.diagnostic(`Owned production helper failed: ${error.code}`); });
       return child;
     };
-    helper = start();
+    helper = start(); helperPid = helper.pid ?? null; markPhase('no-dialog');
     noDialog = await ui('Dialog', owner, ['-ProcessId', String(helper.pid), '-ButtonId', '7']);
+    t.diagnostic(`Portable No notification posted; helperPid=${helperPid}; buttonId=7`); markPhase('no-helper-exit');
     await helperExited(helper); helper = undefined;
     runtimeState(await checkRuntime(), false);
     assert.deepEqual(await ui('Inspect', owner), []);
     assert.deepEqual(JSON.parse(await fs.readFile(path.join(profile, 'settings.json'), 'utf8')), settings);
-    helper = start();
+    markPhase('no-verified');
+    helper = start(); helperPid = helper.pid ?? null; markPhase('yes-dialog');
     yesDialog = await ui('Dialog', owner, ['-ProcessId', String(helper.pid), '-ButtonId', '6']);
+    t.diagnostic(`Portable Yes notification posted; helperPid=${helperPid}; buttonId=6`); markPhase('yes-helper-exit');
     await helperExited(helper); helper = undefined;
+    markPhase('yes-runtime');
     after = await checkRuntime(); runtimeState(after, true);
+    markPhase('native-ui');
     const processes = await until(async () => { const found = await ui('Inspect', owner); return found.length ? found : false; }, 'Owned portable native app did not start.');
     assert.equal(processes.length, 1);
     const endpoint = `http://127.0.0.1:${port}`;
@@ -273,6 +353,7 @@ test('accepted portable ZIP handles real No and Yes prerequisite dialogs before 
     await page.waitForFunction(() => typeof window.__TAURI_INTERNALS__?.invoke === 'function');
     await page.getByPlaceholder('Username or email').waitFor({ state: 'visible' });
     assert.equal(await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('get_version')), version);
+    markPhase('native-policy');
     const actual = await page.evaluate(() => window.__TAURI_INTERNALS__.invoke('settings_get'));
     for (const [key, value] of Object.entries(settings)) assert.deepEqual(actual[key], value);
     assert.equal(actual.startupSupported, false);
@@ -293,7 +374,19 @@ test('accepted portable ZIP handles real No and Yes prerequisite dialogs before 
     await assertNoExistingInstallation();
     assert.equal(await sha512(executable), nativeHash);
     assert.equal(await sha512(zip), receipt.portableSha512);
-  } catch (error) { failure = error; } finally {
+  } catch (error) {
+    failure = error;
+    try {
+      const evidence = await failureEvidence({ phase, helperPid, error }, {
+        ownedHelper: () => helperPid ? ui('Snapshot', owner, ['-ProcessId', String(helperPid)]) : { helperPresent: false },
+        runtime: checkRuntime,
+      });
+      await fs.writeFile(failureFile, `${JSON.stringify({ ...evidence, version, sourceHeadSha: process.env.GITHUB_SHA,
+        buildCommit: receipt.buildCommit, sourceRun: process.env.NATUX_PORTABLE_WEBVIEW_SOURCE_RUN ?? null,
+        portableSha512: receipt.portableSha512, nativeSha512: nativeHash, owner, noDialog, yesDialog }, null, 2)}\n`, { flag: 'wx' });
+      t.diagnostic(`Portable failure captured before cleanup: phase=${phase}; helperPid=${helperPid}; ${failureFile}`);
+    } catch (evidenceError) { t.diagnostic(`Portable evidence capture failed: ${JSON.stringify(diagnosticError(evidenceError))}`); }
+  } finally {
     try {
       await browser?.close();
       if (helper?.pid && helper.exitCode === null && helper.signalCode === null) { helper.kill(); await until(() => helper.exitCode !== null || helper.signalCode !== null, 'Owned PowerShell helper did not stop.'); }
