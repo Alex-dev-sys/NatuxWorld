@@ -738,6 +738,9 @@ jobs:
           if [[ "$NATUX_CODE_SIGNING_ENABLED" != 'true' ]]; then
             # Ad-hoc signing avoids Apple Silicon treating downloaded builds as damaged.
             # Gatekeeper may still require the user to approve the app manually.
+            # Tauri treats present empty certificate/notary variables as credentials.
+            unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+            unset APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
             export APPLE_SIGNING_IDENTITY='-'
           fi
           mkdir -p release/tauri
