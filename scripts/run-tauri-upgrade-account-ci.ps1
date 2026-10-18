@@ -8,6 +8,7 @@ foreach ($name in $required.Keys) {
 }
 if ($env:GITHUB_RUN_ID -notmatch '^\d{6,20}$') { throw 'A valid GitHub run ID is required.' }
 $repository = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+Import-Module (Join-Path $PSScriptRoot 'windows-acl-equivalence.psm1') -Force
 if (-not [string]::Equals($repository, [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE), [StringComparison]::OrdinalIgnoreCase)) {
     throw 'The script repository must equal the GitHub workspace.'
 }
@@ -285,7 +286,12 @@ try {
         $receipt.restoredSddl = $restoredAcl.Sddl
         $receipt.restoredDescriptorFlags = [int][Security.AccessControl.RawSecurityDescriptor]::new($restoredAcl.Sddl).ControlFlags
         $receipt.freshSidAceRemains = [bool]($createdSid -and @($restoredAcl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | Where-Object { $_.IdentityReference.Value -ceq $createdSid.Value }).Count)
-        if ($restoredAcl.Sddl -cne $originalSddl) { throw 'Workspace ACL did not return to its exact original descriptor.' }
+        $autoInherited = [int][Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInherited
+        $receipt.autoInheritanceMetadataNormalized = (($receipt.originalDescriptorFlags -band $autoInherited) -eq 0 -and
+            $receipt.restoredDescriptorFlags -eq ($receipt.originalDescriptorFlags -bor $autoInherited))
+        if ($receipt.freshSidAceRemains -or -not (Test-NatuxAclRestoration -OriginalSddl $originalSddl -RestoredSddl $restoredAcl.Sddl)) {
+            throw 'Workspace ACL permissions or descriptor data did not return to the original state.'
+        }
         $receipt.workspaceAclRestored = $true
     } catch { $receipt.aclError = $_.Exception.Message; if (-not $failure) { $failure = $_ } }
     if ($password) { $password.Dispose() }

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
 import { spawnSync } from 'node:child_process';
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -93,6 +94,49 @@ test('disposable upgrade account provisioning refuses ordinary local and forged 
     assert.ifError(result.error); assert.equal(result.status, 1);
     assert.match(`${result.stdout}${result.stderr}`, /Official ephemeral upgrade CI requires/);
   }
+});
+
+test('ACL restoration accepts only Windows adding auto-inheritance metadata with identical permission bytes', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const original = 'O:BAG:S-1-5-21-4239583824-265399229-1323058055-513D:(A;;FA;;;BA)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;SY)(A;OICIIOID;GA;;;CO)(A;OICIID;0x1200a9;;;BU)(A;CIID;LC;;;BU)(A;CIID;DC;;;BU)';
+  const inherited = original.replace('D:', 'D:AI');
+  const cases = [
+    { original, restored: original, expected: true },
+    { original, restored: inherited, expected: true },
+    { original: inherited, restored: inherited, expected: true },
+    { original: inherited, restored: original, expected: false },
+    ...[
+      inherited.replace('D:AI', 'D:PAI'),
+      inherited.replace('O:BA', 'O:SY'),
+      inherited.replace('-513D:', '-514D:'),
+      inherited.replace('(A;;FA;;;BA)', '(A;;FR;;;BA)'),
+      inherited.replace('(A;;FA;;;BA)', '(D;;FA;;;BA)'),
+      inherited.replace('(A;OICIID;FA;;;SY)', '(A;OICI;FA;;;SY)'),
+      inherited.replace('D:AI', 'D:AI(A;;FA;;;S-1-5-21-1-2-3-9999)'),
+      `${inherited}S:(AU;SA;FA;;;WD)`,
+    ].map(restored => ({ original, restored, expected: false })),
+  ];
+  const modulePath = path.join(repository, 'scripts/windows-acl-equivalence.psm1').replaceAll("'", "''");
+  const encodedCases = Buffer.from(JSON.stringify(cases)).toString('base64');
+  const source = `$ErrorActionPreference = 'Stop'
+    Import-Module '${modulePath}' -Force
+    $cases = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedCases}')) | ConvertFrom-Json
+    foreach ($item in $cases) {
+      $actual = Test-NatuxAclRestoration -OriginalSddl $item.original -RestoredSddl $item.restored
+      if ($actual -ne $item.expected) { throw 'ACL regression case changed the required restoration boundary.' }
+    }
+    $rejected = $false
+    try { Test-NatuxAclRestoration -OriginalSddl 'invalid descriptor' -RestoredSddl $cases[0].restored | Out-Null }
+    catch { $rejected = $true }
+    if (-not $rejected) { throw 'Malformed descriptors must fail closed.' }
+    Write-Output 'ACL restoration regression cases passed.'`;
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand',
+    Buffer.from(source, 'utf16le').toString('base64')], {
+    windowsHide: true, encoding: 'utf8', timeout: 10_000,
+  });
+  assert.ifError(result.error); assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /ACL restoration regression cases passed/);
 });
 
 test('signed upgrade dispatch uses published artifacts and confines the signing secret to fresh candidate compilation', async () => {
