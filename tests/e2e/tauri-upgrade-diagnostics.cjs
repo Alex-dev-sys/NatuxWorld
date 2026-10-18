@@ -55,25 +55,15 @@ async function captureUpgradeFailure(input, runFile) {
   assert.match(expectedHash, /^[0-9a-f]{128}$/);
   assert.ok(Number.isInteger(port) && port > 0 && port <= 65535);
   assert.equal((await fs.realpath(runtimeDirectory)).toLowerCase(), path.resolve(runtimeDirectory).toLowerCase());
-  const owned = installDirectory.replaceAll("'", "''");
   const processInfo = await probe(async () => {
-    const { stdout, stderr } = await runFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `
-      $ErrorActionPreference = 'Stop'
-      $owner = '${owned}' + [IO.Path]::DirectorySeparatorChar
-      $items = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
-        $_.ExecutablePath -and $_.ExecutablePath.StartsWith($owner, [StringComparison]::OrdinalIgnoreCase)
-      } | Select-Object -First 16 ProcessId, ParentProcessId, ExecutablePath, CreationDate)
-      ConvertTo-Json -InputObject $items -Compress
-    `], { windowsHide: true, timeout: 30_000, maxBuffer: 16 * 1024 });
+    const { stdout, stderr } = await runFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-File',
+      path.join(__dirname, 'tauri-upgrade-process-probe.ps1'), '-TestProcessId', String(process.pid),
+      '-InstallDirectory', installDirectory], { windowsHide: true, timeout: 30_000, maxBuffer: 32 * 1024 });
     assert.equal(stderr.trim(), '');
-    const items = JSON.parse(stdout);
-    assert.ok(Array.isArray(items) && items.length <= 16);
-    for (const item of items) assert.ok(within(installDirectory, item.ExecutablePath), 'Diagnostic process escaped the installation.');
-    return items;
-  });
-  const integrity = await probe(async () => {
-    const { stdout } = await runFile('whoami.exe', ['/groups', '/fo', 'csv', '/nh'], { windowsHide: true, timeout: 5000, maxBuffer: 32 * 1024 });
-    return { testProcessSid: /S-1-16-\d+/.exec(stdout)?.[0] ?? null };
+    const result = JSON.parse(stdout);
+    assert.ok(Array.isArray(result.ownedProcesses) && result.ownedProcesses.length <= 16);
+    for (const item of result.ownedProcesses) assert.ok(within(installDirectory, item.executable), 'Diagnostic process escaped the installation.');
+    return result;
   });
   const receipt = { success: false, capturedBeforeCleanup: true, capturedAt: new Date().toISOString(),
     stage: input.stage, previousVersion: input.previousVersion, expectedVersion: input.targetVersion,
@@ -83,7 +73,7 @@ async function captureUpgradeFailure(input, runFile) {
     observedVersion: input.observedVersion ?? null, lastConnectError: input.lastConnectError ? safeError(input.lastConnectError) : null,
     error: safeError(input.error), originalChild: input.child ? { pid: input.child.pid, exitCode: input.child.exitCode, signalCode: input.child.signalCode } : null,
     installedExecutable: await probe(() => nativeHash(executable, testRoot, expectedHash)),
-    ownedProcesses: processInfo, integrity, debuggerPort: { port, ...await portStatus(port) } };
+    processContext: processInfo, debuggerPort: { port, ...await portStatus(port) } };
   const json = `${JSON.stringify(receipt, null, 2)}\n`;
   assert.ok(Buffer.byteLength(json) <= 64 * 1024, 'Failure receipt exceeds its size bound.');
   const filename = path.join(runtimeDirectory, 'tauri-upgrade-failure.json');

@@ -257,15 +257,19 @@ test('upgrade failure evidence observes only owned fixtures before cleanup and r
   const executable = path.join(installDirectory, 'native.exe'); await fs.writeFile(executable, 'old fixture');
   const expectedHash = sha512(Buffer.from('new fixture'));
   const error = new Error('token=fixture-secret https://example.invalid/release?credential=fixture-url-secret');
-  const execute = async command => command === 'whoami.exe' ? { stdout: 'S-1-16-8192' }
-    : { stdout: JSON.stringify([{ ProcessId: 123, ParentProcessId: 45, ExecutablePath: executable }]), stderr: '' };
+  const execute = async (command, args) => {
+    assert.equal(command, 'powershell.exe'); assert.ok(args.includes('-File'));
+    assert.ok(args.includes(installDirectory)); assert.ok(args.includes(String(process.pid)));
+    return { stdout: JSON.stringify({ testToken: { integritySid: 'S-1-16-8192', elevated: false },
+      shell: { present: false }, ownedProcesses: [{ pid: 123, executable }], unqueryableCandidateCount: 0 }), stderr: '' };
+  };
   const filename = await captureUpgradeFailure({ runtimeDirectory, testRoot: owner, installDirectory, executable,
     expectedHash, port: await unusedPort(), stage: 'await-target-restart', previousVersion: '1.10.0-rc.0',
     targetVersion: '1.10.0', observedVersion: '1.10.0-rc.0', error }, execute);
   const raw = await fs.readFile(filename, 'utf8'); const result = JSON.parse(raw);
   assert.equal(result.capturedBeforeCleanup, true); assert.equal(result.observedVersion, '1.10.0-rc.0');
   assert.equal(result.installedExecutable.sha512, sha512(Buffer.from('old fixture')));
-  assert.equal(result.installedExecutable.matchesPublished, false); assert.equal(result.ownedProcesses[0].ExecutablePath, executable);
+  assert.equal(result.installedExecutable.matchesPublished, false); assert.equal(result.processContext.ownedProcesses[0].executable, executable);
   assert.doesNotMatch(raw, /fixture-secret|fixture-url-secret/); assert.ok(Buffer.byteLength(raw) < 64 * 1024);
   await assert.rejects(() => captureUpgradeFailure({ runtimeDirectory, testRoot: owner,
     installDirectory: path.dirname(owner), executable, expectedHash, port: 12345 }, execute), /owned/);

@@ -99,6 +99,10 @@ test('signed upgrade dispatch uses published artifacts and confines the signing 
   assert.equal(build.env.NATUX_TAURI_UPDATES_ENABLED, '1');
   assert.match(build.run, /run-tauri\.mjs build --config src\/native\/tauri\.updater\.conf\.json --config/);
   assert.match(build.run, /Copy-Item -LiteralPath "\$candidate\.sig"/);
+  const context = job.steps.find(step => step.name === 'Inspect ordinary user automatic restart context');
+  assert.ok(job.steps.indexOf(context) < job.steps.indexOf(build));
+  assert.match(context.run, /gsudo\.exe --integrity Medium --direct powershell\.exe/);
+  assert.match(context.run, /tauri-upgrade-process-probe\.ps1/);
   assert.equal(job.steps.filter(step => JSON.stringify(step.env ?? {}).includes('secrets.TAURI_SIGNING_PRIVATE_KEY')).length, 1);
   const accept = job.steps.find(step => step.name === 'Accept actual published signed update at Medium integrity');
   assert.deepEqual(accept.env, { NATUX_TAURI_UPGRADE_ACCEPTANCE: '1', NATUX_TAURI_UPGRADE_DEDICATED_ACCOUNT: 'YES',
