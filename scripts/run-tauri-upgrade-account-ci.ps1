@@ -137,6 +137,8 @@ foreach ($directory in @($repository, (Join-Path $repository 'tests'), $runtime,
 }
 [void][IO.Directory]::CreateDirectory($runtime)
 $mode = if ($ProbeOnly) { 'probe' } else { 'actual' }
+$receiptPath = Join-Path $runtime ('tauri-upgrade-account-{0}-result.json' -f $mode)
+Write-Host "Account cleanup receipt will be written to: $receiptPath"
 $owner = Join-Path $runtime ("natux-upgrade-account-$mode-" + [Guid]::NewGuid().ToString('N'))
 if (Test-Path -LiteralPath $owner) { throw 'Unique fixture owner already exists; refusing replacement.' }
 [void][IO.Directory]::CreateDirectory($owner)
@@ -160,7 +162,7 @@ try {
     $receipt.accountCreated = $true
     $receipt.sid = $createdSid.Value
     $usersGroup = Get-LocalGroup -SID 'S-1-5-32-545'
-    Add-LocalGroupMember -Group $usersGroup -Member $createdSid
+    Add-LocalGroupMember -Group $usersGroup -Member $createdUser
     if (@(Get-LocalGroupMember -SID 'S-1-5-32-544' | Where-Object { $_.SID -eq $createdSid }).Count) { throw 'Disposable account unexpectedly belongs to Administrators.' }
     $credential = [PSCredential]::new("$([Environment]::MachineName)\$username", $password)
     $updatedAcl = Get-Acl -LiteralPath $repository
@@ -263,6 +265,15 @@ try {
     if ($password) { $password.Dispose() }
     $credential = $null
     $receipt.success = -not [bool]$failure
-    $receipt | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $runtime "tauri-upgrade-account-$mode-result.json") -Encoding utf8
+    try {
+        [IO.File]::WriteAllText($receiptPath, ($receipt | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+        $written = Get-Item -LiteralPath $receiptPath -Force
+        if ($written.PSIsContainer -or $written.Length -le 0 -or $written.Length -gt 65536 -or
+            ($written.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Account cleanup receipt must be a bounded regular file.' }
+        Write-Host "Account cleanup receipt saved and verified: $($written.FullName) ($($written.Length) bytes)"
+    } catch {
+        Write-Host "Account cleanup receipt write failed at ${receiptPath}: $($_.Exception.Message)"
+        if (-not $failure) { $failure = $_ }
+    }
 }
 if ($failure) { throw $failure }

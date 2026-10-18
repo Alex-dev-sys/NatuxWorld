@@ -131,6 +131,7 @@ test('signed upgrade dispatch uses published artifacts and confines the signing 
   assert.doesNotMatch(JSON.stringify(workflow), /contents":"write|UPDATE_SIGNING_PRIVATE_KEY|gh release (?:create|edit|upload)|NATUX_EPHEMERAL_WEBVIEW_REMOVAL/);
   const receipt = job.steps.find(step => step.name === 'Upload signed upgrade acceptance evidence');
   assert.equal(receipt.if, 'always()');
+  assert.equal(receipt.with['include-hidden-files'], true);
   assert.deepEqual(receipt.with.path.trim().split(/\r?\n/), [
     'tests/.runtime/tauri-upgrade-result.json', 'tests/.runtime/tauri-upgrade-failure.json',
     'tests/.runtime/tauri-upgrade-account-probe-result.json', 'tests/.runtime/tauri-upgrade-account-actual-result.json',

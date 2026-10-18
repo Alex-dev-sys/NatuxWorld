@@ -104,4 +104,5 @@ jobs:
             tests/.runtime/natux-upgrade-account-*/stderr.log
             tests/.runtime/natux-upgrade-account-*/child-context.json
           if-no-files-found: warn
+          include-hidden-files: true
           retention-days: 14
