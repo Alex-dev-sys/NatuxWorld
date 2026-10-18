@@ -746,7 +746,7 @@ jobs:
           mkdir -p release/tauri
           for target in x86_64-apple-darwin aarch64-apple-darwin; do
             if [[ "$target" == x86_64-* ]]; then arch=x86_64; else arch=aarch64; fi
-            npm run tauri:build:updater -- --target "$target" --bundles dmg
+            npm run tauri:build:updater -- --target "$target" --bundles app,dmg
             macos_bundle_dir="src/native/target/$target/release/bundle/macos"
             dmg_bundle_dir="src/native/target/$target/release/bundle/dmg"
             updater_bundle=$(find "$macos_bundle_dir" -maxdepth 1 -type f -name '*.app.tar.gz' -print -quit)

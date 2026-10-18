@@ -361,12 +361,16 @@ test('release acceptance installs the publishable NSIS and checks its native exe
   assert.match(macosJob, /NATUX_TAURI_MACOS_E2E_EXECUTABLE_HASH_FILE: release\/tauri-acceptance\/executable-sha512-darwin-/);
 });
 
-test('macOS updater job searches DMG in the Tauri dmg output directory', () => {
+test('macOS updater builds app and DMG targets and searches their respective output directories', () => {
   const macosUpdater = sectionBetween(
     '      - name: Build Tauri macOS updater bundles\n',
     '      - name: Package macOS (signed)\n',
   );
 
+  const bundleTargets = /npm run tauri:build:updater -- --target "\$target" --bundles ([a-z,]+)/.exec(macosUpdater);
+  assert.ok(bundleTargets, 'Native updater compilation must declare its bundle targets.');
+  assert.deepEqual(new Set(bundleTargets[1].split(',')), new Set(['app', 'dmg']),
+    'macOS updater archives require the app target; the DMG is also shipped and accepted.');
   assert.match(macosUpdater, /macos_bundle_dir="src\/native\/target\/\$target\/release\/bundle\/macos"/);
   assert.match(macosUpdater, /dmg_bundle_dir="src\/native\/target\/\$target\/release\/bundle\/dmg"/);
   assert.match(macosUpdater, /find "\$macos_bundle_dir" .*'\*\.app\.tar\.gz'/);
