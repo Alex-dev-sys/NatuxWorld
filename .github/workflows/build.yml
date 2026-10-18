@@ -122,6 +122,8 @@ jobs:
             $releaseExitCode = $LASTEXITCODE
             if ($releaseExitCode -ne 0) {
               $shouldRelease = $true
+              # The missing release is handled; Actions propagates LASTEXITCODE.
+              $global:LASTEXITCODE = 0
               Write-Host "No GitHub release exists for $tag; a complete release will be created after platform checks pass."
             } else {
               $releaseInfo = ConvertFrom-Json -InputObject $releaseJson
