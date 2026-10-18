@@ -23,10 +23,20 @@ if ($Child) {
     $config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
     if ($config.username -notmatch '^NatuxUpTest[0-9a-f]{8}$' -or $config.sid -notmatch '^S-1-5-21-(\d+-){3}\d+$' -or
         $identity.User.Value -cne $config.sid -or [Environment]::UserName -ine $config.username) { throw 'Child identity differs from the newly created account.' }
-    $profile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    $profile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile, [Environment+SpecialFolderOption]::DoNotVerify)
+    $contextFile = Join-Path (Split-Path $ConfigPath) 'child-context.json'
+    $bootstrap = [ordered]@{ expectedProfile = $config.expectedProfile; profile = $profile;
+        userProfileEnvironment = $env:USERPROFILE; roamingEnvironment = $env:APPDATA; localEnvironment = $env:LOCALAPPDATA;
+        temporaryEnvironment = $env:TEMP; homeDrive = $env:HOMEDRIVE; homePath = $env:HOMEPATH }
+    $bootstrap | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $contextFile -Encoding utf8
     if (-not [string]::Equals($profile, $config.expectedProfile, [StringComparison]::OrdinalIgnoreCase)) { throw 'Loaded profile does not belong to the new account.' }
-    $roaming = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData)
-    $local = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+    $env:USERPROFILE = $profile
+    $roaming = [Environment]::GetFolderPath([Environment+SpecialFolder]::ApplicationData, [Environment+SpecialFolderOption]::DoNotVerify)
+    $local = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData, [Environment+SpecialFolderOption]::DoNotVerify)
+    $bootstrap.knownRoaming = $roaming
+    $bootstrap.knownLocal = $local
+    $bootstrap | ConvertTo-Json -Depth 5 -Compress
+    $bootstrap | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $contextFile -Encoding utf8
     foreach ($folder in @($roaming, $local)) {
         if (-not $folder.StartsWith($profile + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Known application-data folder escaped the new profile.' }
     }
@@ -86,7 +96,7 @@ public static class NatuxUpgradeDesktopAccess {
         $desktop.hiddenWindowCreated = $desktop.windowError -eq 0
     }
     $childReceipt = [ordered]@{ sid = $identity.User.Value; username = [Environment]::UserName;
-        token = $token; desktop = $desktop; profile = $profile; probeOnly = [bool]$config.probeOnly }
+        token = $token; desktop = $desktop; profile = $profile; bootstrap = $bootstrap; probeOnly = [bool]$config.probeOnly }
     $childReceipt | ConvertTo-Json -Depth 8 -Compress
     $childReceipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path (Split-Path $ConfigPath) 'child-context.json') -Encoding utf8
     if ($desktop.station -ine 'WinSta0' -or $desktop.desktop -ine 'Default' -or -not $desktop.defaultAccessible -or -not $desktop.hiddenWindowCreated) {
@@ -100,6 +110,8 @@ public static class NatuxUpgradeDesktopAccess {
     $env:USERPROFILE = $profile
     $env:USERNAME = $config.username
     $env:USERDOMAIN = [Environment]::MachineName
+    $env:HOMEDRIVE = [IO.Path]::GetPathRoot($profile).TrimEnd('\')
+    $env:HOMEPATH = $profile.Substring($env:HOMEDRIVE.Length)
     $env:APPDATA = $roaming
     $env:LOCALAPPDATA = $local
     $env:TEMP = Join-Path $env:LOCALAPPDATA 'Temp'
@@ -151,7 +163,8 @@ $failure = $null
 $credential = $null
 $password = $null
 $receipt = [ordered]@{ runId = $env:GITHUB_RUN_ID; username = $username; probeOnly = [bool]$ProbeOnly;
-    accountCreated = $false; childCompleted = $false; userRemoved = $false; profileRemoved = $false; workspaceAclRestored = $false }
+    accountCreated = $false; childCompleted = $false; userRemoved = $false; profileRemoved = $false; workspaceAclRestored = $false;
+    originalSddl = $originalSddl; originalDescriptorFlags = [int][Security.AccessControl.RawSecurityDescriptor]::new($originalSddl).ControlFlags }
 try {
     $random = [byte[]]::new(48)
     [Security.Cryptography.RandomNumberGenerator]::Fill($random)
@@ -191,6 +204,15 @@ try {
         if ($null -eq $value) { $value = $parentEnvironment[$name] }
         if ($null -ne $value) { $machineEnvironment[$name] = [Environment]::ExpandEnvironmentVariables($value) }
     }
+    $machineEnvironment.USERPROFILE = $expectedProfile
+    $machineEnvironment.USERNAME = $username
+    $machineEnvironment.USERDOMAIN = [Environment]::MachineName
+    $machineEnvironment.HOMEDRIVE = [IO.Path]::GetPathRoot($expectedProfile).TrimEnd('\')
+    $machineEnvironment.HOMEPATH = $expectedProfile.Substring($machineEnvironment.HOMEDRIVE.Length)
+    $machineEnvironment.APPDATA = Join-Path $expectedProfile 'AppData/Roaming'
+    $machineEnvironment.LOCALAPPDATA = Join-Path $expectedProfile 'AppData/Local'
+    $machineEnvironment.TEMP = Join-Path $machineEnvironment.LOCALAPPDATA 'Temp'
+    $machineEnvironment.TMP = $machineEnvironment.TEMP
     try {
         foreach ($entry in @(Get-ChildItem Env:)) { [Environment]::SetEnvironmentVariable($entry.Name, $null, 'Process') }
         foreach ($name in $machineEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $machineEnvironment[$name], 'Process') }
@@ -259,7 +281,11 @@ try {
     } catch { $receipt.cleanupError = $_.Exception.Message; if (-not $failure) { $failure = $_ } }
     try {
         if ($aclChanged) { Set-Acl -LiteralPath $repository -AclObject $originalAcl }
-        if ((Get-Acl -LiteralPath $repository).Sddl -cne $originalSddl) { throw 'Workspace ACL did not return to its exact original descriptor.' }
+        $restoredAcl = Get-Acl -LiteralPath $repository
+        $receipt.restoredSddl = $restoredAcl.Sddl
+        $receipt.restoredDescriptorFlags = [int][Security.AccessControl.RawSecurityDescriptor]::new($restoredAcl.Sddl).ControlFlags
+        $receipt.freshSidAceRemains = [bool]($createdSid -and @($restoredAcl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | Where-Object { $_.IdentityReference.Value -ceq $createdSid.Value }).Count)
+        if ($restoredAcl.Sddl -cne $originalSddl) { throw 'Workspace ACL did not return to its exact original descriptor.' }
         $receipt.workspaceAclRestored = $true
     } catch { $receipt.aclError = $_.Exception.Message; if (-not $failure) { $failure = $_ } }
     if ($password) { $password.Dispose() }
