@@ -10,37 +10,11 @@ const { promisify } = require('node:util');
 const { chromium } = require('playwright-core');
 const { assertNoExistingInstallation, selectCurrentInstaller } = require('./tauri-installed-helpers.cjs');
 const { captureUpgradeFailure, safeError } = require('./tauri-upgrade-diagnostics.cjs');
+const { readUpgradeConfig, assertStandardUpgradeContext } = require('./tauri-upgrade-config.cjs');
 
 const runFile = promisify(execFile);
 const root = path.resolve(__dirname, '../..');
 const enabled = process.env.NATUX_TAURI_UPGRADE_ACCEPTANCE === '1';
-
-function readUpgradeConfig(env, username = os.userInfo().username) {
-  assert.equal(env.NATUX_TAURI_UPGRADE_ACCEPTANCE, '1', 'Set NATUX_TAURI_UPGRADE_ACCEPTANCE=1 for a real signed updater acceptance.');
-  assert.equal(env.NATUX_TAURI_UPGRADE_DEDICATED_ACCOUNT, 'YES', 'Use a dedicated Windows test account for installer registry and shortcuts.');
-  assert.equal(env.NATUX_TAURI_UPGRADE_WINDOWS_ACCOUNT?.toLowerCase(), username.toLowerCase(), 'Configured Windows account must match the current account.');
-  const ephemeral = env.NATUX_TAURI_UPGRADE_EPHEMERAL_CI;
-  if (ephemeral) assert.equal(ephemeral, 'YES', 'Ephemeral CI must be explicitly acknowledged with YES.');
-  if (ephemeral === 'YES') {
-    const required = { CI: 'true', GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', RUNNER_OS: 'Windows',
-      GITHUB_REPOSITORY: 'Alex-dev-sys/NatuxWorld', GITHUB_EVENT_NAME: 'workflow_dispatch' };
-    for (const [key, value] of Object.entries(required)) assert.equal(env[key], value, `Hosted upgrade requires ${key}=${value}.`);
-    assert.equal(username.toLowerCase(), 'runneradmin', 'Hosted upgrade requires the actual ephemeral runneradmin account.');
-  } else {
-    assert.ok(/test/i.test(username), 'Dedicated Windows account must contain test.');
-  }
-  const keys = ['PREVIOUS_INSTALLER', 'PREVIOUS_VERSION', 'TARGET_INSTALLER', 'TARGET_HASH_FILE'];
-  for (const key of keys) assert.ok(env[`NATUX_TAURI_UPGRADE_${key}`]?.trim(), `Set NATUX_TAURI_UPGRADE_${key}.`);
-  assert.match(env.NATUX_TAURI_UPGRADE_PREVIOUS_VERSION, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
-  const channel = env.NATUX_TAURI_UPGRADE_CHANNEL || 'beta';
-  assert.ok(channel === 'stable' || channel === 'beta', 'Upgrade channel must be stable or beta.');
-  const previousKind = env.NATUX_TAURI_UPGRADE_PREVIOUS_KIND || 'provided_artifact';
-  assert.ok(['provided_artifact', 'published_previous', 'fresh_candidate'].includes(previousKind), 'Previous kind must distinguish a published release from a fresh candidate.');
-  return { previousInstaller: env.NATUX_TAURI_UPGRADE_PREVIOUS_INSTALLER,
-    previousVersion: env.NATUX_TAURI_UPGRADE_PREVIOUS_VERSION,
-    targetInstaller: env.NATUX_TAURI_UPGRADE_TARGET_INSTALLER,
-    targetHashFile: env.NATUX_TAURI_UPGRADE_TARGET_HASH_FILE, channel, previousKind, ephemeral: ephemeral === 'YES' };
-}
 
 function isWithin(directory, filename) {
   const relative = path.relative(directory, filename);
@@ -180,24 +154,40 @@ test('upgrade acceptance requires an explicit dedicated Windows account and vers
 
 test('hosted upgrade requires every official ephemeral CI guard and never admits an ordinary local account', () => {
   const env = { NATUX_TAURI_UPGRADE_ACCEPTANCE: '1', NATUX_TAURI_UPGRADE_DEDICATED_ACCOUNT: 'YES',
-    NATUX_TAURI_UPGRADE_EPHEMERAL_CI: 'YES', NATUX_TAURI_UPGRADE_WINDOWS_ACCOUNT: 'runneradmin',
+    NATUX_TAURI_UPGRADE_EPHEMERAL_CI: 'YES', NATUX_TAURI_UPGRADE_WINDOWS_ACCOUNT: 'NatuxUpTest1234abcd',
+    NATUX_TAURI_UPGRADE_ACCOUNT_SID: 'S-1-5-21-111-222-333-1001',
     NATUX_TAURI_UPGRADE_PREVIOUS_INSTALLER: 'old-setup.exe', NATUX_TAURI_UPGRADE_PREVIOUS_VERSION: '1.10.0-rc.0',
     NATUX_TAURI_UPGRADE_TARGET_INSTALLER: 'new-setup.exe', NATUX_TAURI_UPGRADE_TARGET_HASH_FILE: 'hash.txt',
     CI: 'true', GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', RUNNER_OS: 'Windows',
     GITHUB_REPOSITORY: 'Alex-dev-sys/NatuxWorld', GITHUB_EVENT_NAME: 'workflow_dispatch' };
-  assert.equal(readUpgradeConfig(env, 'runneradmin').ephemeral, true);
+  assert.equal(readUpgradeConfig(env, 'NatuxUpTest1234abcd').ephemeral, true);
   const paths = ['NATUX_TAURI_UPGRADE_PREVIOUS_INSTALLER', 'NATUX_TAURI_UPGRADE_TARGET_INSTALLER', 'NATUX_TAURI_UPGRADE_TARGET_HASH_FILE'];
   for (const key of Object.keys(env)) {
-    if (!paths.includes(key)) assert.throws(() => readUpgradeConfig({ ...env, [key]: 'wrong' }, 'runneradmin'), key);
+    if (!paths.includes(key)) assert.throws(() => readUpgradeConfig({ ...env, [key]: 'wrong' }, 'NatuxUpTest1234abcd'), key);
     const missing = { ...env }; delete missing[key];
-    assert.throws(() => readUpgradeConfig(missing, 'runneradmin'), `Missing ${key}`);
+    assert.throws(() => readUpgradeConfig(missing, 'NatuxUpTest1234abcd'), `Missing ${key}`);
   }
   assert.throws(() => readUpgradeConfig(env, 'ordinary-account'), /match the current/);
-  assert.throws(() => readUpgradeConfig({ ...env, NATUX_TAURI_UPGRADE_WINDOWS_ACCOUNT: 'ci-test' }, 'ci-test'), /actual ephemeral/);
+  assert.throws(() => readUpgradeConfig({ ...env, NATUX_TAURI_UPGRADE_WINDOWS_ACCOUNT: 'ci-test' }, 'ci-test'), /newly owned standard/);
   for (const kind of ['published_previous', 'fresh_candidate']) {
-    assert.equal(readUpgradeConfig({ ...env, NATUX_TAURI_UPGRADE_PREVIOUS_KIND: kind }, 'runneradmin').previousKind, kind);
+    assert.equal(readUpgradeConfig({ ...env, NATUX_TAURI_UPGRADE_PREVIOUS_KIND: kind }, 'NatuxUpTest1234abcd').previousKind, kind);
   }
-  assert.throws(() => readUpgradeConfig({ ...env, NATUX_TAURI_UPGRADE_PREVIOUS_KIND: 'historical_without_proof' }, 'runneradmin'), /Previous kind/);
+  assert.throws(() => readUpgradeConfig({ ...env, NATUX_TAURI_UPGRADE_PREVIOUS_KIND: 'historical_without_proof' }, 'NatuxUpTest1234abcd'), /Previous kind/);
+});
+
+test('upgrade refuses a Medium administrative token and a mismatched test account before installation', async () => {
+  const accountSid = 'S-1-5-21-111-222-333-1001';
+  const context = { testToken: { queryable: true, elevated: false, integritySid: 'S-1-16-8192' }, shell: { present: false } };
+  const execute = async command => ({ stdout: command === 'whoami.exe' ? `"test","${accountSid}"`
+    : JSON.stringify(context), stderr: '' });
+  assert.equal((await assertStandardUpgradeContext({ ephemeral: true, accountSid }, execute)).accountSid, accountSid);
+  context.testToken.elevated = true;
+  await assert.rejects(() => assertStandardUpgradeContext({ ephemeral: true, accountSid }, execute), /non-elevated token/);
+  context.testToken.elevated = false; context.testToken.queryable = false;
+  await assert.rejects(() => assertStandardUpgradeContext({ ephemeral: true, accountSid }, execute), /queryable/);
+  context.testToken.queryable = true; context.testToken.integritySid = 'S-1-16-12288';
+  await assert.rejects(() => assertStandardUpgradeContext({ ephemeral: true, accountSid }, execute), /Medium integrity/);
+  await assert.rejects(() => assertStandardUpgradeContext({ ephemeral: true, accountSid: `${accountSid}0` }, execute), /exact created account SID/);
 });
 
 test('versioned installer names and isolated first-launch settings cannot substitute a shared profile', () => {
@@ -282,6 +272,7 @@ test('real signed Tauri updater installs, restarts, and preserves an isolated pr
 }, async (t) => {
   assert.equal(process.platform, 'win32', 'Automated updater installation acceptance requires Windows.');
   const config = readUpgradeConfig(process.env);
+  const ordinaryUserContext = await assertStandardUpgradeContext(config, runFile);
   await assertNoExistingInstallation();
   const repository = await fs.realpath(root);
   const packageJson = JSON.parse(await fs.readFile(path.join(repository, 'package.json'), 'utf8'));
@@ -296,10 +287,10 @@ test('real signed Tauri updater installs, restarts, and preserves an isolated pr
     assert.match(path.basename(target), /-setup\.exe$/i);
   }
   assert.notEqual(previous, target);
+  const verifier = await artifact(path.join(repository, 'src/native/target/debug/verify-updater-signature.exe'), repository, 300 * 1024 * 1024);
   for (const installer of [previous, target]) {
     const signature = await artifact(`${installer}.sig`, repository, 4096);
-    await runFile('cargo', ['run', '--manifest-path', 'src/native/Cargo.toml', '--locked', '--bin',
-      'verify-updater-signature', '--', installer, signature], { cwd: repository, windowsHide: true, timeout: 120_000 });
+    await runFile(verifier, [installer, signature], { cwd: repository, windowsHide: true, timeout: 120_000 });
   }
   const hashFile = await artifact(config.targetHashFile, repository, 132);
   const expectedHash = (await fs.readFile(hashFile, 'utf8')).trim();
@@ -413,7 +404,7 @@ test('real signed Tauri updater installs, restarts, and preserves an isolated pr
     assert.equal(installedHash, expectedHash, 'Restarted installed executable must match the published target release.');
     for (const [filename, bytes] of preserved) assert.deepEqual(await fs.readFile(filename), bytes);
     receipt = { success: true, previousVersion: config.previousVersion, targetVersion: packageJson.version,
-      previousKind: config.previousKind,
+      previousKind: config.previousKind, ordinaryUserContext,
       channel: config.channel, updaterUrl: update.url, installerSha512: installerHashes,
       expectedNativeSha512: expectedHash, installedNativeSha512: installedHash,
       settingsPreserved: true, installId: seeded.installId,
