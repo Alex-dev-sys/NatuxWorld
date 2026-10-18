@@ -12,27 +12,47 @@ function selectCurrentInstaller(names, productName, version, architecture = 'x64
   return matches[0];
 }
 
-async function assertNoExistingInstallation(productName = 'NATUX WORLD') {
+async function assertNoExistingInstallation(productName = 'NATUX WORLD', execute = runFile) {
+  assert.ok(typeof productName === 'string' && productName.length > 0 && productName.length <= 128
+    && [...productName].every(char => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127),
+  'expected a bounded installation product name');
   const literal = productName.replaceAll("'", "''");
   const script = `
+    $ErrorActionPreference = 'Stop'
     $product = '${literal}'
     $roots = @(
-      'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
-      'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
-      'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall'
+      @([Microsoft.Win32.Registry]::CurrentUser, 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall'),
+      @([Microsoft.Win32.Registry]::LocalMachine, 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall'),
+      @([Microsoft.Win32.Registry]::LocalMachine, 'Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall')
     )
-    $found = @($roots | ForEach-Object {
-      Get-ChildItem -LiteralPath $_ -ErrorAction SilentlyContinue | ForEach-Object {
-        $registration = Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue
-        if ($registration.DisplayName -and $registration.DisplayName.StartsWith($product, [StringComparison]::OrdinalIgnoreCase)) { 1 }
-      }
-    })
-    $found.Count
+    $found = 0
+    foreach ($root in $roots) {
+      $key = $root[0].OpenSubKey($root[1], $false)
+      if ($null -eq $key) { continue }
+      try {
+        foreach ($name in $key.GetSubKeyNames()) {
+          $registration = $key.OpenSubKey($name, $false)
+          if ($null -eq $registration) { throw 'An uninstall registration disappeared during the installation probe.' }
+          try {
+            $displayName = $registration.GetValue('DisplayName', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+            if ($null -eq $displayName) { continue }
+            if ($displayName -isnot [string]) { throw 'An uninstall registration has an invalid DisplayName.' }
+            if ($displayName.StartsWith($product, [StringComparison]::OrdinalIgnoreCase)) { $found++ }
+          } finally { $registration.Dispose() }
+        }
+      } finally { $key.Dispose() }
+    }
+    [Console]::Out.WriteLine($found)
   `;
-  const { stdout } = await runFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
-    { windowsHide: true, timeout: 15_000 });
-  assert.match(stdout.trim(), /^\d+$/);
-  assert.equal(Number(stdout.trim()), 0,
+  // The hosted read-only probe exceeded the former 15 s cap.
+  // Keep a finite limit and never interpret process/read failures as absence.
+  const { stdout, stderr } = await execute('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+    { windowsHide: true, timeout: 60_000 });
+  assert.equal(stderr.trim(), '', 'Installation probe reported a registry read error.');
+  assert.match(stdout.trim(), /^(?:0|[1-9]\d*)$/, 'Installation probe returned an invalid registration count.');
+  const count = Number(stdout.trim());
+  assert.ok(Number.isSafeInteger(count), 'Installation probe returned an invalid registration count.');
+  assert.equal(count, 0,
     'An existing NATUX installation is registered. Run installer acceptance in a clean dedicated Windows test account to preserve registry and shortcuts.');
 }
 
