@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { inspect } = require('node:util');
 const { assertNoExistingInstallation, isolatedInstallerEnvironment } = require('./tauri-installed-helpers.cjs');
 const { VERSION, PREFIX, LEGACY_GUID, legacyUninstallerPath, readMigrationConfig, isWithin, assertCurrentInstallerName, ownedFile, embeddedPublicKey,
   verifyLegacyManifest, allowedDownload, downloadVerifiedLegacy, runFile, files, installedFile,
@@ -293,6 +294,7 @@ test('published installed Electron 1.9.15 migrates in place to installed Tauri w
     success = true;
   } catch (error) {
     primaryFailure = error;
+    t.diagnostic(`Migration primary failure: ${inspect(error, { depth: 4, colors: false })}`);
   } finally {
     if (!success) t.diagnostic(`Migration acceptance failed; recovery files retained at ${owner}.`);
     try {
@@ -328,6 +330,7 @@ test('published installed Electron 1.9.15 migrates in place to installed Tauri w
       }
     } catch (cleanupError) {
       t.diagnostic(`Cleanup failed; recovery files retained at ${owner}.`);
+      t.diagnostic(`Migration cleanup failure: ${inspect(cleanupError, { depth: 4, colors: false })}`);
       cleanupFailure = cleanupError;
     }
   }
