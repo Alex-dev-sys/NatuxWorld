@@ -129,6 +129,41 @@ test('NSIS acceptance selects the current version while preserving historical ar
     'NATUX WORLD_1.10.0-beta.1_x64-setup.exe');
 });
 
+test('installation preflight remains bounded, read-only and rejects existing or malformed results', async () => {
+  let calls = 0;
+  const probe = async (command, args, options) => {
+    calls++;
+    assert.equal(command, 'powershell.exe');
+    assert.equal(options.windowsHide, true);
+    assert.equal(options.timeout, 60_000);
+    const script = args.at(-1);
+    assert.match(script, /\$ErrorActionPreference = 'Stop'/);
+    assert.match(script, /CurrentUser/);
+    assert.match(script, /LocalMachine/);
+    assert.match(script, /Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall/);
+    assert.match(script, /GetValue\('DisplayName'/);
+    assert.match(script, /OpenSubKey\([^\n]*\$false\)/);
+    assert.doesNotMatch(script, /Get-ItemProperty|SilentlyContinue|SetValue|DeleteSubKey|CreateSubKey/);
+    return { stdout: '0\r\n', stderr: '' };
+  };
+  await assertNoExistingInstallation('NATUX WORLD', probe);
+  assert.equal(calls, 1);
+  await assert.rejects(() => assertNoExistingInstallation('NATUX WORLD', async () => ({ stdout: '1\r\n', stderr: '' })),
+    error => error.code === 'ERR_ASSERTION' && error.actual === 1 && error.expected === 0);
+  for (const stdout of ['', '0 warning', '-1', '1\n0', '1e2', '9007199254740992']) {
+    await assert.rejects(() => assertNoExistingInstallation('NATUX WORLD', async () => ({ stdout, stderr: '' })), /invalid registration count/);
+  }
+  await assert.rejects(() => assertNoExistingInstallation('NATUX WORLD', async () => ({ stdout: '0', stderr: 'Access denied' })), /registry read error/);
+  for (const failure of [Object.assign(new Error('registry access denied'), { code: 'EACCES' }),
+    Object.assign(new Error('probe timed out'), { killed: true, signal: 'SIGTERM' })]) {
+    await assert.rejects(() => assertNoExistingInstallation('NATUX WORLD', async () => { throw failure; }), error => error === failure);
+  }
+  for (const product of ['', 'NATUX\nWORLD', null]) {
+    await assert.rejects(() => assertNoExistingInstallation(product, probe), /product name/);
+  }
+  assert.equal(calls, 1, 'Malformed input must fail before starting the registry probe.');
+});
+
 test('upgrade acceptance requires an explicit dedicated Windows account and versioned artifacts', () => {
   assert.throws(() => readUpgradeConfig({}), /ACCEPTANCE=1/);
   const env = { NATUX_TAURI_UPGRADE_ACCEPTANCE: '1', NATUX_TAURI_UPGRADE_DEDICATED_ACCOUNT: 'YES',
