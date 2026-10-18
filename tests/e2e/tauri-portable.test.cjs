@@ -33,6 +33,12 @@ async function until(operation, message) {
   throw new Error(message);
 }
 
+async function removeTemporaryDirectory(directory, { maxRetries = 10, retryDelay = 300 } = {}) {
+  // A stopped WebView process can briefly leave its cache handles pending closure.
+  // Retry transient Windows filesystem locks, but still fail if they do not clear.
+  await fs.rm(directory, { recursive: true, force: true, maxRetries, retryDelay });
+}
+
 async function assertInstalledDataUntouched(directory) {
   // Windows may create these empty OS cache containers while opening WebView2.
   // No file, launcher directory, redirected path or other subtree is exempt.
@@ -66,7 +72,53 @@ test('portable isolation tolerates only empty Windows cache containers, never th
     const actual = await fs.realpath(owner);
     assert.equal(path.dirname(actual).toLowerCase(), parent.toLowerCase());
     assert.ok(path.basename(actual).startsWith('natux-portable-isolation-'));
-    await fs.rm(actual, { recursive: true, force: true });
+    await removeTemporaryDirectory(actual);
+  }
+});
+
+test('portable cleanup waits for a locked WebView cache and rejects a persistent lock', {
+  skip: process.platform !== 'win32', timeout: 20_000,
+}, async () => {
+  const parent = await fs.realpath(os.tmpdir());
+  const owner = await fs.mkdtemp(path.join(parent, 'natux-portable-cleanup-'));
+  const cacheFile = path.join(owner, 'profile/EBWebView/Default/Network/Device Bound Sessions');
+  await fs.mkdir(path.dirname(cacheFile), { recursive: true });
+  await fs.writeFile(cacheFile, 'isolated WebView cache fixture');
+  const locker = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    '$handle = [IO.File]::Open($env:NATUX_PORTABLE_LOCK_FILE, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None); ' +
+    'try { [Console]::Out.WriteLine("LOCKED"); [Console]::Out.Flush(); [Console]::In.ReadLine() | Out-Null } finally { $handle.Dispose() }'],
+  { env: { ...process.env, NATUX_PORTABLE_LOCK_FILE: cacheFile }, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  let output = '';
+  let errors = '';
+  let spawnError;
+  locker.stdout.on('data', bytes => { output += bytes; });
+  locker.stderr.on('data', bytes => { errors += bytes; });
+  locker.on('error', error => { spawnError = error; });
+  try {
+    await until(async () => {
+      if (spawnError) throw spawnError;
+      if (locker.exitCode !== null) throw new Error(`Cache lock fixture exited: ${errors}`);
+      return output.includes('LOCKED');
+    }, 'Cache lock fixture did not become ready');
+    await assert.rejects(() => removeTemporaryDirectory(owner, { maxRetries: 1, retryDelay: 20 }),
+      error => ['EBUSY', 'EPERM'].includes(error.code), 'A persistent cache lock must still fail cleanup.');
+    await fs.access(cacheFile);
+    const removal = removeTemporaryDirectory(owner);
+    setTimeout(() => locker.stdin.end('\n'), 350);
+    await removal;
+    await assert.rejects(() => fs.access(owner), { code: 'ENOENT' });
+  } finally {
+    if (locker.exitCode === null) locker.stdin.end('\n');
+    await until(async () => locker.exitCode !== null, 'Cache lock fixture did not stop');
+    assert.equal(locker.exitCode, 0, errors);
+    const actual = await fs.realpath(owner).catch(error => {
+      if (error.code !== 'ENOENT') throw error;
+    });
+    if (actual) {
+      assert.equal(path.dirname(actual).toLowerCase(), parent.toLowerCase());
+      assert.ok(path.basename(actual).startsWith('natux-portable-cleanup-'));
+      await removeTemporaryDirectory(actual);
+    }
   }
 });
 
@@ -171,6 +223,6 @@ test('native portable distribution opens, moves its profile and leaves installed
     const resolvedParent = await fs.realpath(path.dirname(resolved));
     assert.equal(resolvedParent.toLowerCase(), tempParent.toLowerCase());
     assert.ok(path.basename(resolved).startsWith('natux-portable-e2e-'));
-    await fs.rm(resolved, { recursive: true, force: true });
+    await removeTemporaryDirectory(resolved);
   }
 });
