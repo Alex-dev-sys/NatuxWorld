@@ -220,3 +220,41 @@ for (const [state, expectedStatus] of [['false', 1], ['true', 0], ['viewerror', 
     if (state === 'false') assert.match(result.log, /published release; publish a new version/);
   });
 }
+
+const appleCredentialVariables = ['APPLE_CERTIFICATE', 'APPLE_CERTIFICATE_PASSWORD',
+  'APPLE_ID', 'APPLE_PASSWORD', 'APPLE_TEAM_ID', 'APPLE_API_KEY', 'APPLE_API_ISSUER', 'APPLE_API_KEY_PATH'];
+const macosUpdater = workflow.jobs.macos.steps.find(step => step.name === 'Build Tauri macOS updater bundles');
+const signingPreparationEnd = macosUpdater.run.indexOf('mkdir -p release/tauri');
+assert.ok(signingPreparationEnd > 0, 'Signing environment preparation must precede artifact work.');
+const signingPreparation = macosUpdater.run.slice(0, signingPreparationEnd);
+assert.doesNotMatch(signingPreparation, /\b(?:npm|cargo|security|curl|gh)\b/,
+  'The fixture may execute environment preparation only, without tools or provider access.');
+
+for (const enabled of ['false', 'true']) {
+  for (const value of ['', 'inert-apple-fixture']) {
+    test(`actual macOS signing environment preserves policy ${enabled} with ${value ? 'populated' : 'empty'} Apple variables`,
+      { skip: !bashAvailable }, () => {
+        // Set the variables inside Bash so an empty value is definitely present,
+        // exactly as GitHub injects an unconfigured secret. No real keys are used.
+        const setup = appleCredentialVariables.map(name => `export ${name}="$NATUX_FIXTURE_APPLE_VALUE"`).join('\n');
+        const checks = appleCredentialVariables.map(name => enabled === 'true'
+          ? `[[ "\${${name}+present}" == present && "\${${name}}" == "$NATUX_FIXTURE_APPLE_VALUE" ]]`
+          : `[[ -z "\${${name}+present}" ]]`).join('\n');
+        const script = `${setup}
+export APPLE_SIGNING_IDENTITY='inert-identity'
+export TAURI_SIGNING_PRIVATE_KEY='inert-updater-key'
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD='inert-updater-password'
+${signingPreparation}
+${checks}
+[[ "$APPLE_SIGNING_IDENTITY" == '${enabled === 'true' ? 'inert-identity' : '-'}' ]]
+[[ "$TAURI_SIGNING_PRIVATE_KEY" == inert-updater-key ]]
+[[ "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" == inert-updater-password ]]
+`;
+        const result = spawnSync(bash, ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', script],
+          { cwd: repository, env: { ...shellEnvironment(), NATUX_CODE_SIGNING_ENABLED: enabled,
+            NATUX_FIXTURE_APPLE_VALUE: value }, encoding: 'utf8', windowsHide: true, timeout: 5000 });
+        assert.ifError(result.error);
+        assert.equal(result.status, 0, `Apple credential presence does not match the signing policy.\n${result.stdout}\n${result.stderr}`);
+      });
+  }
+}
