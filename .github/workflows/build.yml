@@ -131,12 +131,12 @@ jobs:
               $required = @(
                 'latest.yml',
                 'natux-update.json',
-                'natux-update.json.sig',
-                'SHA256SUMS-windows.txt',
-                'SHA256SUMS-macos.txt'
+                'natux-update.json.sig'
               )
             if ($tauriRequested) {
               $required += @(
+                "NATUX-WORLD-Setup-$version-x64.exe",
+                "NATUX-WORLD-Setup-$version-x64.exe.blockmap",
                 'latest.json',
                 'natux-tauri-control.json',
                 'natux-tauri-control.json.sig',
@@ -154,6 +154,8 @@ jobs:
                 'executable-sha512-darwin-aarch64.txt',
                 'SHA256SUMS-tauri.txt'
               )
+            } else {
+              $required += @('SHA256SUMS-windows.txt', 'SHA256SUMS-macos.txt')
             }
               $missing = @($required | Where-Object { $_ -notin $assetNames })
               $exeCount = @($assetNames | Where-Object { $_ -match '(?i)\.exe$' }).Count
@@ -1050,6 +1052,9 @@ jobs:
           shopt -s nullglob
           assets=(release/*.exe release/*.blockmap release/latest.yml release/natux-update.json release/natux-update.json.sig release/SHA256SUMS-windows.txt release/*.dmg release/SHA256SUMS-macos.txt)
           if [[ '${{ needs.plan.outputs.tauri }}' == 'true' ]]; then
+            # Keep the signed Electron Windows update bridge for existing clients.
+            # User-facing installers and checksums now come from Tauri only.
+            assets=("release/NATUX-WORLD-Setup-$VERSION-x64.exe" "release/NATUX-WORLD-Setup-$VERSION-x64.exe.blockmap" release/latest.yml release/natux-update.json release/natux-update.json.sig)
             assets+=(release/tauri/*)
           fi
           ((${#assets[@]} > 0)) || { echo 'No release assets were downloaded'; exit 1; }
@@ -1065,12 +1070,19 @@ jobs:
           TAG: ${{ needs.plan.outputs.tag }}
         run: |
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' > release-assets.txt
-          for required in latest.yml natux-update.json natux-update.json.sig SHA256SUMS-windows.txt SHA256SUMS-macos.txt; do
+          for required in latest.yml natux-update.json natux-update.json.sig; do
             grep -Fxq "$required" release-assets.txt || { echo "Missing required release asset: $required"; exit 1; }
           done
           if [[ '${{ needs.plan.outputs.tauri }}' == 'true' ]]; then
+            for required in NATUX-WORLD-Setup-${{ needs.plan.outputs.version }}-x64.exe NATUX-WORLD-Setup-${{ needs.plan.outputs.version }}-x64.exe.blockmap; do
+              grep -Fxq "$required" release-assets.txt || { echo "Missing Electron update bridge: $required"; exit 1; }
+            done
             for required in latest.json natux-tauri-control.json natux-tauri-control.json.sig NatuxWorld-${{ needs.plan.outputs.version }}-x64-setup.exe NatuxWorld-${{ needs.plan.outputs.version }}-x64-setup.exe.sig NatuxWorld-${{ needs.plan.outputs.version }}-x64-portable.zip NatuxWorld-${{ needs.plan.outputs.version }}-x86_64.app.tar.gz NatuxWorld-${{ needs.plan.outputs.version }}-x86_64.app.tar.gz.sig NatuxWorld-${{ needs.plan.outputs.version }}-x86_64.dmg NatuxWorld-${{ needs.plan.outputs.version }}-aarch64.app.tar.gz NatuxWorld-${{ needs.plan.outputs.version }}-aarch64.app.tar.gz.sig NatuxWorld-${{ needs.plan.outputs.version }}-aarch64.dmg executable-sha512-windows-x86_64.txt executable-sha512-darwin-x86_64.txt executable-sha512-darwin-aarch64.txt SHA256SUMS-tauri.txt; do
               grep -Fxq "$required" release-assets.txt || { echo "Missing Tauri release asset: $required"; exit 1; }
+            done
+          else
+            for required in SHA256SUMS-windows.txt SHA256SUMS-macos.txt; do
+              grep -Fxq "$required" release-assets.txt || { echo "Missing Electron checksums: $required"; exit 1; }
             done
           fi
           exe_count=$(awk 'tolower($0) ~ /\.exe$/ { n++ } END { print n+0 }' release-assets.txt)
