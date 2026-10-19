@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
 import { spawnSync } from 'node:child_process';
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -81,6 +82,63 @@ test('CI acceptance wrapper refuses local invocation, including a forged child f
   }
 });
 
+test('disposable upgrade account provisioning refuses ordinary local and forged child invocation', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const wrapper = path.join(repository, 'scripts/run-tauri-upgrade-account-ci.ps1');
+  for (const flags of [[], ['-ProbeOnly'], ['-Child', '-ConfigPath', 'unused.json']]) {
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', wrapper, ...flags], {
+      cwd: repository, env: { ...process.env, CI: 'false', GITHUB_ACTIONS: 'false' },
+      windowsHide: true, encoding: 'utf8', timeout: 10_000,
+    });
+    assert.ifError(result.error); assert.equal(result.status, 1);
+    assert.match(`${result.stdout}${result.stderr}`, /Official ephemeral upgrade CI requires/);
+  }
+});
+
+test('ACL restoration accepts only Windows adding auto-inheritance metadata with identical permission bytes', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const original = 'O:BAG:S-1-5-21-4239583824-265399229-1323058055-513D:(A;;FA;;;BA)(A;OICIID;FA;;;BA)(A;OICIID;FA;;;SY)(A;OICIIOID;GA;;;CO)(A;OICIID;0x1200a9;;;BU)(A;CIID;LC;;;BU)(A;CIID;DC;;;BU)';
+  const inherited = original.replace('D:', 'D:AI');
+  const cases = [
+    { original, restored: original, expected: true },
+    { original, restored: inherited, expected: true },
+    { original: inherited, restored: inherited, expected: true },
+    { original: inherited, restored: original, expected: false },
+    ...[
+      inherited.replace('D:AI', 'D:PAI'),
+      inherited.replace('O:BA', 'O:SY'),
+      inherited.replace('-513D:', '-514D:'),
+      inherited.replace('(A;;FA;;;BA)', '(A;;FR;;;BA)'),
+      inherited.replace('(A;;FA;;;BA)', '(D;;FA;;;BA)'),
+      inherited.replace('(A;OICIID;FA;;;SY)', '(A;OICI;FA;;;SY)'),
+      inherited.replace('D:AI', 'D:AI(A;;FA;;;S-1-5-21-1-2-3-9999)'),
+      `${inherited}S:(AU;SA;FA;;;WD)`,
+    ].map(restored => ({ original, restored, expected: false })),
+  ];
+  const modulePath = path.join(repository, 'scripts/windows-acl-equivalence.psm1').replaceAll("'", "''");
+  const encodedCases = Buffer.from(JSON.stringify(cases)).toString('base64');
+  const source = `$ErrorActionPreference = 'Stop'
+    Import-Module '${modulePath}' -Force
+    $cases = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedCases}')) | ConvertFrom-Json
+    foreach ($item in $cases) {
+      $actual = Test-NatuxAclRestoration -OriginalSddl $item.original -RestoredSddl $item.restored
+      if ($actual -ne $item.expected) { throw 'ACL regression case changed the required restoration boundary.' }
+    }
+    $rejected = $false
+    try { Test-NatuxAclRestoration -OriginalSddl 'invalid descriptor' -RestoredSddl $cases[0].restored | Out-Null }
+    catch { $rejected = $true }
+    if (-not $rejected) { throw 'Malformed descriptors must fail closed.' }
+    Write-Output 'ACL restoration regression cases passed.'`;
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand',
+    Buffer.from(source, 'utf16le').toString('base64')], {
+    windowsHide: true, encoding: 'utf8', timeout: 10_000,
+  });
+  assert.ifError(result.error); assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /ACL restoration regression cases passed/);
+});
+
 test('signed upgrade dispatch uses published artifacts and confines the signing secret to fresh candidate compilation', async () => {
   const workflow = yaml.load(await readFile(path.join(repository, '.github/workflows/tauri-upgrade.yml'), 'utf8'));
   assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch']);
@@ -99,12 +157,15 @@ test('signed upgrade dispatch uses published artifacts and confines the signing 
   assert.equal(build.env.NATUX_TAURI_UPDATES_ENABLED, '1');
   assert.match(build.run, /run-tauri\.mjs build --config src\/native\/tauri\.updater\.conf\.json --config/);
   assert.match(build.run, /Copy-Item -LiteralPath "\$candidate\.sig"/);
+  const context = job.steps.find(step => step.name === 'Verify a fresh standard Windows account before compilation');
+  assert.ok(job.steps.indexOf(context) < job.steps.indexOf(build));
+  assert.equal(context.run, './scripts/run-tauri-upgrade-account-ci.ps1 -ProbeOnly');
   assert.equal(job.steps.filter(step => JSON.stringify(step.env ?? {}).includes('secrets.TAURI_SIGNING_PRIVATE_KEY')).length, 1);
-  const accept = job.steps.find(step => step.name === 'Accept actual published signed update at Medium integrity');
+  const accept = job.steps.find(step => step.name === 'Accept actual published signed update in a standard Windows account');
   assert.deepEqual(accept.env, { NATUX_TAURI_UPGRADE_ACCEPTANCE: '1', NATUX_TAURI_UPGRADE_DEDICATED_ACCOUNT: 'YES',
     NATUX_TAURI_UPGRADE_EPHEMERAL_CI: 'YES' });
-  assert.match(accept.run, /NATUX_TAURI_UPGRADE_WINDOWS_ACCOUNT = \[Environment\]::UserName/);
-  assert.match(accept.run, /run-windows-acceptance\.ps1 -Suite signed-upgrade/);
+  assert.equal(accept.run, './scripts/run-tauri-upgrade-account-ci.ps1');
+  assert.doesNotMatch(JSON.stringify(job), /gsudo|integrity Medium/);
   const source = await readFile(script, 'utf8');
   assert.ok(source.includes("'signed-upgrade' = 'tests/e2e/tauri-upgrade.test.cjs'"));
   for (const command of ['npm run build:lock-runtime', 'cargo build --manifest-path src/native/Cargo.toml --locked --bin verify-updater-signature']) {
@@ -114,5 +175,11 @@ test('signed upgrade dispatch uses published artifacts and confines the signing 
   assert.doesNotMatch(JSON.stringify(workflow), /contents":"write|UPDATE_SIGNING_PRIVATE_KEY|gh release (?:create|edit|upload)|NATUX_EPHEMERAL_WEBVIEW_REMOVAL/);
   const receipt = job.steps.find(step => step.name === 'Upload signed upgrade acceptance evidence');
   assert.equal(receipt.if, 'always()');
-  assert.equal(receipt.with.path, 'tests/.runtime/tauri-upgrade-result.json');
+  assert.equal(receipt.with['include-hidden-files'], true);
+  assert.deepEqual(receipt.with.path.trim().split(/\r?\n/), [
+    'tests/.runtime/tauri-upgrade-result.json', 'tests/.runtime/tauri-upgrade-failure.json',
+    'tests/.runtime/tauri-upgrade-account-probe-result.json', 'tests/.runtime/tauri-upgrade-account-actual-result.json',
+    'tests/.runtime/natux-upgrade-account-*/stdout.log', 'tests/.runtime/natux-upgrade-account-*/stderr.log',
+    'tests/.runtime/natux-upgrade-account-*/child-context.json',
+  ]);
 });

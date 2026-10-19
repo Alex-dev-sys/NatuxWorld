@@ -9,37 +9,12 @@ const path = require('node:path');
 const { promisify } = require('node:util');
 const { chromium } = require('playwright-core');
 const { assertNoExistingInstallation, selectCurrentInstaller } = require('./tauri-installed-helpers.cjs');
+const { captureUpgradeFailure, safeError } = require('./tauri-upgrade-diagnostics.cjs');
+const { readUpgradeConfig, assertStandardUpgradeContext } = require('./tauri-upgrade-config.cjs');
 
 const runFile = promisify(execFile);
 const root = path.resolve(__dirname, '../..');
 const enabled = process.env.NATUX_TAURI_UPGRADE_ACCEPTANCE === '1';
-
-function readUpgradeConfig(env, username = os.userInfo().username) {
-  assert.equal(env.NATUX_TAURI_UPGRADE_ACCEPTANCE, '1', 'Set NATUX_TAURI_UPGRADE_ACCEPTANCE=1 for a real signed updater acceptance.');
-  assert.equal(env.NATUX_TAURI_UPGRADE_DEDICATED_ACCOUNT, 'YES', 'Use a dedicated Windows test account for installer registry and shortcuts.');
-  assert.equal(env.NATUX_TAURI_UPGRADE_WINDOWS_ACCOUNT?.toLowerCase(), username.toLowerCase(), 'Configured Windows account must match the current account.');
-  const ephemeral = env.NATUX_TAURI_UPGRADE_EPHEMERAL_CI;
-  if (ephemeral) assert.equal(ephemeral, 'YES', 'Ephemeral CI must be explicitly acknowledged with YES.');
-  if (ephemeral === 'YES') {
-    const required = { CI: 'true', GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', RUNNER_OS: 'Windows',
-      GITHUB_REPOSITORY: 'Alex-dev-sys/NatuxWorld', GITHUB_EVENT_NAME: 'workflow_dispatch' };
-    for (const [key, value] of Object.entries(required)) assert.equal(env[key], value, `Hosted upgrade requires ${key}=${value}.`);
-    assert.equal(username.toLowerCase(), 'runneradmin', 'Hosted upgrade requires the actual ephemeral runneradmin account.');
-  } else {
-    assert.ok(/test/i.test(username), 'Dedicated Windows account must contain test.');
-  }
-  const keys = ['PREVIOUS_INSTALLER', 'PREVIOUS_VERSION', 'TARGET_INSTALLER', 'TARGET_HASH_FILE'];
-  for (const key of keys) assert.ok(env[`NATUX_TAURI_UPGRADE_${key}`]?.trim(), `Set NATUX_TAURI_UPGRADE_${key}.`);
-  assert.match(env.NATUX_TAURI_UPGRADE_PREVIOUS_VERSION, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
-  const channel = env.NATUX_TAURI_UPGRADE_CHANNEL || 'beta';
-  assert.ok(channel === 'stable' || channel === 'beta', 'Upgrade channel must be stable or beta.');
-  const previousKind = env.NATUX_TAURI_UPGRADE_PREVIOUS_KIND || 'provided_artifact';
-  assert.ok(['provided_artifact', 'published_previous', 'fresh_candidate'].includes(previousKind), 'Previous kind must distinguish a published release from a fresh candidate.');
-  return { previousInstaller: env.NATUX_TAURI_UPGRADE_PREVIOUS_INSTALLER,
-    previousVersion: env.NATUX_TAURI_UPGRADE_PREVIOUS_VERSION,
-    targetInstaller: env.NATUX_TAURI_UPGRADE_TARGET_INSTALLER,
-    targetHashFile: env.NATUX_TAURI_UPGRADE_TARGET_HASH_FILE, channel, previousKind, ephemeral: ephemeral === 'YES' };
-}
 
 function isWithin(directory, filename) {
   const relative = path.relative(directory, filename);
@@ -90,16 +65,18 @@ async function unusedPort() {
   return port;
 }
 
-async function connect(endpoint, version) {
+async function connect(endpoint, version, observations) {
   return waitFor(async () => {
     let browser;
     try {
       browser = await chromium.connectOverCDP(endpoint, { timeout: 1500 });
       const page = browser.contexts().flatMap((context) => context.pages())[0];
-      if (page && await page.evaluate(() => window.__TAURI_INTERNALS__?.invoke('get_version')) === version) {
+      const actual = page && await page.evaluate(() => window.__TAURI_INTERNALS__?.invoke('get_version'));
+      if (observations && typeof actual === 'string') observations.version = actual.slice(0, 80);
+      if (actual === version) {
         return { browser, page };
       }
-    } catch { /* The old WebView may be closing while the new app starts. */ }
+    } catch (error) { if (observations) observations.error = error; }
     await browser?.close().catch(() => {});
     return false;
   }, 180_000, `Installed launcher did not start version ${version}.`);
@@ -177,24 +154,40 @@ test('upgrade acceptance requires an explicit dedicated Windows account and vers
 
 test('hosted upgrade requires every official ephemeral CI guard and never admits an ordinary local account', () => {
   const env = { NATUX_TAURI_UPGRADE_ACCEPTANCE: '1', NATUX_TAURI_UPGRADE_DEDICATED_ACCOUNT: 'YES',
-    NATUX_TAURI_UPGRADE_EPHEMERAL_CI: 'YES', NATUX_TAURI_UPGRADE_WINDOWS_ACCOUNT: 'runneradmin',
+    NATUX_TAURI_UPGRADE_EPHEMERAL_CI: 'YES', NATUX_TAURI_UPGRADE_WINDOWS_ACCOUNT: 'NatuxUpTest1234abcd',
+    NATUX_TAURI_UPGRADE_ACCOUNT_SID: 'S-1-5-21-111-222-333-1001',
     NATUX_TAURI_UPGRADE_PREVIOUS_INSTALLER: 'old-setup.exe', NATUX_TAURI_UPGRADE_PREVIOUS_VERSION: '1.10.0-rc.0',
     NATUX_TAURI_UPGRADE_TARGET_INSTALLER: 'new-setup.exe', NATUX_TAURI_UPGRADE_TARGET_HASH_FILE: 'hash.txt',
     CI: 'true', GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted', RUNNER_OS: 'Windows',
     GITHUB_REPOSITORY: 'Alex-dev-sys/NatuxWorld', GITHUB_EVENT_NAME: 'workflow_dispatch' };
-  assert.equal(readUpgradeConfig(env, 'runneradmin').ephemeral, true);
+  assert.equal(readUpgradeConfig(env, 'NatuxUpTest1234abcd').ephemeral, true);
   const paths = ['NATUX_TAURI_UPGRADE_PREVIOUS_INSTALLER', 'NATUX_TAURI_UPGRADE_TARGET_INSTALLER', 'NATUX_TAURI_UPGRADE_TARGET_HASH_FILE'];
   for (const key of Object.keys(env)) {
-    if (!paths.includes(key)) assert.throws(() => readUpgradeConfig({ ...env, [key]: 'wrong' }, 'runneradmin'), key);
+    if (!paths.includes(key)) assert.throws(() => readUpgradeConfig({ ...env, [key]: 'wrong' }, 'NatuxUpTest1234abcd'), key);
     const missing = { ...env }; delete missing[key];
-    assert.throws(() => readUpgradeConfig(missing, 'runneradmin'), `Missing ${key}`);
+    assert.throws(() => readUpgradeConfig(missing, 'NatuxUpTest1234abcd'), `Missing ${key}`);
   }
   assert.throws(() => readUpgradeConfig(env, 'ordinary-account'), /match the current/);
-  assert.throws(() => readUpgradeConfig({ ...env, NATUX_TAURI_UPGRADE_WINDOWS_ACCOUNT: 'ci-test' }, 'ci-test'), /actual ephemeral/);
+  assert.throws(() => readUpgradeConfig({ ...env, NATUX_TAURI_UPGRADE_WINDOWS_ACCOUNT: 'ci-test' }, 'ci-test'), /newly owned standard/);
   for (const kind of ['published_previous', 'fresh_candidate']) {
-    assert.equal(readUpgradeConfig({ ...env, NATUX_TAURI_UPGRADE_PREVIOUS_KIND: kind }, 'runneradmin').previousKind, kind);
+    assert.equal(readUpgradeConfig({ ...env, NATUX_TAURI_UPGRADE_PREVIOUS_KIND: kind }, 'NatuxUpTest1234abcd').previousKind, kind);
   }
-  assert.throws(() => readUpgradeConfig({ ...env, NATUX_TAURI_UPGRADE_PREVIOUS_KIND: 'historical_without_proof' }, 'runneradmin'), /Previous kind/);
+  assert.throws(() => readUpgradeConfig({ ...env, NATUX_TAURI_UPGRADE_PREVIOUS_KIND: 'historical_without_proof' }, 'NatuxUpTest1234abcd'), /Previous kind/);
+});
+
+test('upgrade refuses a Medium administrative token and a mismatched test account before installation', async () => {
+  const accountSid = 'S-1-5-21-111-222-333-1001';
+  const context = { testToken: { queryable: true, elevated: false, integritySid: 'S-1-16-8192' }, shell: { present: false } };
+  const execute = async command => ({ stdout: command === 'whoami.exe' ? `"test","${accountSid}"`
+    : JSON.stringify(context), stderr: '' });
+  assert.equal((await assertStandardUpgradeContext({ ephemeral: true, accountSid }, execute)).accountSid, accountSid);
+  context.testToken.elevated = true;
+  await assert.rejects(() => assertStandardUpgradeContext({ ephemeral: true, accountSid }, execute), /non-elevated token/);
+  context.testToken.elevated = false; context.testToken.queryable = false;
+  await assert.rejects(() => assertStandardUpgradeContext({ ephemeral: true, accountSid }, execute), /queryable/);
+  context.testToken.queryable = true; context.testToken.integritySid = 'S-1-16-12288';
+  await assert.rejects(() => assertStandardUpgradeContext({ ephemeral: true, accountSid }, execute), /Medium integrity/);
+  await assert.rejects(() => assertStandardUpgradeContext({ ephemeral: true, accountSid: `${accountSid}0` }, execute), /exact created account SID/);
 });
 
 test('versioned installer names and isolated first-launch settings cannot substitute a shared profile', () => {
@@ -240,12 +233,46 @@ test('artifact boundary rejects empty, oversized, redirected and traversing file
   assert.equal(await fs.readFile(path.join(directory, 'bounded.bin'), 'utf8'), 'four');
 });
 
+test('upgrade failure evidence observes only owned fixtures before cleanup and redacts errors', async (t) => {
+  await fs.mkdir(path.join(root, 'tests/.runtime'), { recursive: true });
+  const parent = await fs.realpath(path.join(root, 'tests/.runtime'));
+  const owner = await fs.mkdtemp(path.join(parent, 'upgrade-diagnostics-unit-'));
+  t.after(async () => {
+    assert.equal(path.dirname(await fs.realpath(owner)), parent);
+    assert.ok(path.basename(owner).startsWith('upgrade-diagnostics-unit-'));
+    await fs.rm(owner, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
+  const installDirectory = path.join(owner, 'app'); const runtimeDirectory = path.join(owner, 'evidence');
+  await fs.mkdir(installDirectory); await fs.mkdir(runtimeDirectory);
+  const executable = path.join(installDirectory, 'native.exe'); await fs.writeFile(executable, 'old fixture');
+  const expectedHash = sha512(Buffer.from('new fixture'));
+  const error = new Error('token=fixture-secret https://example.invalid/release?credential=fixture-url-secret');
+  const execute = async (command, args) => {
+    assert.equal(command, 'powershell.exe'); assert.ok(args.includes('-File'));
+    assert.ok(args.includes(installDirectory)); assert.ok(args.includes(String(process.pid)));
+    return { stdout: JSON.stringify({ testToken: { integritySid: 'S-1-16-8192', elevated: false },
+      shell: { present: false }, ownedProcesses: [{ pid: 123, executable }], unqueryableCandidateCount: 0 }), stderr: '' };
+  };
+  const filename = await captureUpgradeFailure({ runtimeDirectory, testRoot: owner, installDirectory, executable,
+    expectedHash, port: await unusedPort(), stage: 'await-target-restart', previousVersion: '1.10.0-rc.0',
+    targetVersion: '1.10.0', observedVersion: '1.10.0-rc.0', error }, execute);
+  const raw = await fs.readFile(filename, 'utf8'); const result = JSON.parse(raw);
+  assert.equal(result.capturedBeforeCleanup, true); assert.equal(result.observedVersion, '1.10.0-rc.0');
+  assert.equal(result.installedExecutable.sha512, sha512(Buffer.from('old fixture')));
+  assert.equal(result.installedExecutable.matchesPublished, false); assert.equal(result.processContext.ownedProcesses[0].executable, executable);
+  assert.doesNotMatch(raw, /fixture-secret|fixture-url-secret/); assert.ok(Buffer.byteLength(raw) < 64 * 1024);
+  await assert.rejects(() => captureUpgradeFailure({ runtimeDirectory, testRoot: owner,
+    installDirectory: path.dirname(owner), executable, expectedHash, port: 12345 }, execute), /owned/);
+  assert.equal(await fs.readFile(executable, 'utf8'), 'old fixture');
+});
+
 test('real signed Tauri updater installs, restarts, and preserves an isolated previous-version profile', {
   skip: enabled ? false : 'Requires two signed versioned installers, a published signed feed, and a dedicated Windows test account.',
   timeout: 20 * 60_000,
 }, async (t) => {
   assert.equal(process.platform, 'win32', 'Automated updater installation acceptance requires Windows.');
   const config = readUpgradeConfig(process.env);
+  const ordinaryUserContext = await assertStandardUpgradeContext(config, runFile);
   await assertNoExistingInstallation();
   const repository = await fs.realpath(root);
   const packageJson = JSON.parse(await fs.readFile(path.join(repository, 'package.json'), 'utf8'));
@@ -260,10 +287,10 @@ test('real signed Tauri updater installs, restarts, and preserves an isolated pr
     assert.match(path.basename(target), /-setup\.exe$/i);
   }
   assert.notEqual(previous, target);
+  const verifier = await artifact(path.join(repository, 'src/native/target/debug/verify-updater-signature.exe'), repository, 300 * 1024 * 1024);
   for (const installer of [previous, target]) {
     const signature = await artifact(`${installer}.sig`, repository, 4096);
-    await runFile('cargo', ['run', '--manifest-path', 'src/native/Cargo.toml', '--locked', '--bin',
-      'verify-updater-signature', '--', installer, signature], { cwd: repository, windowsHide: true, timeout: 120_000 });
+    await runFile(verifier, [installer, signature], { cwd: repository, windowsHide: true, timeout: 120_000 });
   }
   const hashFile = await artifact(config.targetHashFile, repository, 132);
   const expectedHash = (await fs.readFile(hashFile, 'utf8')).trim();
@@ -274,6 +301,7 @@ test('real signed Tauri updater installs, restarts, and preserves an isolated pr
   assert.equal((await fs.realpath(runtimeDirectory)).toLowerCase(), runtimeDirectory.toLowerCase());
   const receiptFile = path.join(runtimeDirectory, 'tauri-upgrade-result.json');
   await fs.rm(receiptFile, { force: true });
+  await fs.rm(path.join(runtimeDirectory, 'tauri-upgrade-failure.json'), { force: true });
   const tempParent = await fs.realpath(os.tmpdir());
   const testRoot = await fs.mkdtemp(path.join(tempParent, 'natux-tauri-upgrade-test-'));
   const installDirectory = path.join(testRoot, 'app');
@@ -299,6 +327,21 @@ test('real signed Tauri updater installs, restarts, and preserves an isolated pr
   let installed = false;
   let receipt;
   let failure;
+  let child;
+  let stage;
+  const observations = {};
+  const updaterEvents = [];
+  const setStage = value => { stage = value; t.diagnostic(`Upgrade stage: ${value}`); };
+  const recordFailure = async error => {
+    t.diagnostic(`Upgrade failure at ${stage}: ${JSON.stringify(safeError(error))}`);
+    try {
+      const filename = await captureUpgradeFailure({ runtimeDirectory, testRoot, installDirectory,
+        executable: executable ?? path.join(installDirectory, 'natux-world-launcher-native.exe'), expectedHash, port,
+        stage, previousVersion: config.previousVersion, targetVersion: packageJson.version,
+        observedVersion: observations.version, lastConnectError: observations.error, updaterEvents, child, error }, runFile);
+      t.diagnostic(`Upgrade failure evidence: ${filename}`);
+    } catch (diagnosticError) { t.diagnostic(`Could not capture upgrade failure: ${JSON.stringify(safeError(diagnosticError))}`); }
+  };
   const preserved = new Map();
   // First launch already has a random credential namespace and disabled update
   // background work. No normal account or Credential Manager entry is a fixture.
@@ -310,15 +353,27 @@ test('real signed Tauri updater installs, restarts, and preserves an isolated pr
     preserved.set(filename, contents);
   }
   try {
+    setStage('install-previous');
     installed = true;
     await runFile(previous, ['/S', `/D=${installDirectory}`], { env, windowsHide: true, timeout: 120_000 });
     executable = await artifact(path.join(installDirectory, 'natux-world-launcher-native.exe'), testRoot, 300 * 1024 * 1024);
-    const child = spawn(executable, [], { env, windowsHide: true, stdio: 'ignore' });
+    setStage('start-previous');
+    child = spawn(executable, [], { env, windowsHide: true, stdio: 'ignore' });
     child.on('error', (error) => { t.diagnostic(`Previous launcher failed: ${error.code}`); });
-    let connected = await connect(endpoint, config.previousVersion);
+    let connected = await connect(endpoint, config.previousVersion, observations);
     browser = connected.browser;
+    await connected.page.exposeFunction('__recordUpgradeEvent', payload => {
+      updaterEvents.push({ type: String(payload.type ?? '').slice(0, 40), version: String(payload.version ?? '').slice(0, 80),
+        message: safeError({ message: payload.message }).message });
+      if (updaterEvents.length > 32) updaterEvents.shift();
+    });
+    await connected.page.evaluate(async () => {
+      const handler = window.__TAURI_INTERNALS__.transformCallback(event => { void window.__recordUpgradeEvent(event.payload); });
+      await window.__TAURI_INTERNALS__.invoke('plugin:event|listen', { event: 'updater:event', target: { kind: 'Any' }, handler });
+    });
     const beforeSettings = await connected.page.evaluate(() => window.__TAURI_INTERNALS__.invoke('settings_get'));
     for (const [key, value] of Object.entries(seeded)) assert.deepEqual(beforeSettings[key], value, `First launch must preserve seeded ${key}.`);
+    setStage('check-and-download-public-update');
     const update = await connected.page.evaluate(() => window.__TAURI_INTERNALS__.invoke('updater_check'));
     assert.equal(update.error, undefined, 'Signed release feed, rollout and download must succeed for this dedicated pilot.');
     assert.equal(update.available, true);
@@ -327,26 +382,36 @@ test('real signed Tauri updater installs, restarts, and preserves an isolated pr
     assert.equal(update.url, expectedUrl, 'Only the actual published target installer is accepted.');
     // Published feed, embedded key and native updater are unchanged. There is
     // no injected endpoint or mock success in this acceptance path.
-    await connected.page.evaluate(() => window.__TAURI_INTERNALS__.invoke('updater_install')).catch((error) => {
+    setStage('invoke-updater-install');
+    const installReturned = await connected.page.evaluate(() => window.__TAURI_INTERNALS__.invoke('updater_install')).then(() => true).catch((error) => {
       if (!/closed|destroyed|disconnected|Target/i.test(error.message)) throw error;
+      return false;
     });
+    // The pinned Windows plugin exits after ShellExecute succeeds. A normal
+    // RPC return means the native command reported an early installation error.
+    assert.equal(installReturned, false, `Windows updater must exit after starting its installer; native events: ${JSON.stringify(updaterEvents)}`);
     await browser.close().catch(() => {});
     browser = undefined;
-    connected = await connect(endpoint, packageJson.version);
+    setStage('await-target-restart');
+    observations.version = null;
+    observations.error = null;
+    connected = await connect(endpoint, packageJson.version, observations);
     browser = connected.browser;
+    setStage('verify-target-profile-and-hash');
     const afterSettings = await connected.page.evaluate(() => window.__TAURI_INTERNALS__.invoke('settings_get'));
     assert.deepEqual(afterSettings, beforeSettings, 'Update/restart must preserve settings, consents and installId.');
     const installedHash = sha512(await fs.readFile(executable));
     assert.equal(installedHash, expectedHash, 'Restarted installed executable must match the published target release.');
     for (const [filename, bytes] of preserved) assert.deepEqual(await fs.readFile(filename), bytes);
     receipt = { success: true, previousVersion: config.previousVersion, targetVersion: packageJson.version,
-      previousKind: config.previousKind,
+      previousKind: config.previousKind, ordinaryUserContext,
       channel: config.channel, updaterUrl: update.url, installerSha512: installerHashes,
       expectedNativeSha512: expectedHash, installedNativeSha512: installedHash,
       settingsPreserved: true, installId: seeded.installId,
       fixtures: [...preserved].map(([filename, bytes]) => ({ path: path.relative(userData, filename), sha512: sha512(bytes) })) };
   } catch (error) {
     failure = error;
+    await recordFailure(error);
   } finally {
     try {
       await browser?.close().catch(() => {});
@@ -382,7 +447,7 @@ test('real signed Tauri updater installs, restarts, and preserves an isolated pr
       await fs.rm(resolved, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
     } catch (cleanupError) {
       if (failure) t.diagnostic(`Cleanup also failed; preserving recovery files at ${testRoot}: ${cleanupError.stack ?? cleanupError}`);
-      else failure = cleanupError;
+      else { failure = cleanupError; setStage('cleanup'); await recordFailure(cleanupError); }
     }
   }
   if (failure) throw failure;

@@ -48,6 +48,9 @@ jobs:
           NATUX_UPGRADE_PREVIOUS_CANDIDATE: ${{ inputs.previous_candidate_version }}
         run: node scripts/prepare-tauri-upgrade-ci.mjs
 
+      - name: Verify a fresh standard Windows account before compilation
+        run: ./scripts/run-tauri-upgrade-account-ci.ps1 -ProbeOnly
+
       - name: Setup Java 21 for native resources
         uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
@@ -80,38 +83,26 @@ jobs:
       - name: Compile embedded-key signature verifier
         run: cargo build --manifest-path src/native/Cargo.toml --locked --bin verify-updater-signature
 
-      - name: Prepare ordinary Windows user context
-        run: |
-          $ErrorActionPreference = 'Stop'
-          if (-not (Get-Command gsudo.exe -ErrorAction SilentlyContinue)) {
-            winget install --exact --id gerardog.gsudo --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity
-            if ($LASTEXITCODE -ne 0) { throw 'Could not install the Windows CI integrity helper.' }
-            $helperDirectory = Join-Path $env:ProgramFiles 'gsudo/Current'
-            if (-not (Test-Path -LiteralPath (Join-Path $helperDirectory 'gsudo.exe') -PathType Leaf)) { throw 'Installed gsudo executable is missing.' }
-            $helperDirectory | Out-File -FilePath $env:GITHUB_PATH -Append
-          }
-          $workspace = (Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
-          $repository = (git rev-parse --show-toplevel).Trim()
-          if ($LASTEXITCODE -ne 0 -or $workspace -ine $repository.Replace('/', '\')) { throw 'CI workspace does not match the repository.' }
-          $runnerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-          icacls $workspace /grant ('*{0}:(OI)(CI)F' -f $runnerSid) /T /Q
-          if ($LASTEXITCODE -ne 0) { throw 'Could not grant the runner account access to its workspace.' }
-
-      - name: Accept actual published signed update at Medium integrity
+      - name: Accept actual published signed update in a standard Windows account
         env:
           NATUX_TAURI_UPGRADE_ACCEPTANCE: '1'
           NATUX_TAURI_UPGRADE_DEDICATED_ACCOUNT: 'YES'
           NATUX_TAURI_UPGRADE_EPHEMERAL_CI: 'YES'
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $env:NATUX_TAURI_UPGRADE_WINDOWS_ACCOUNT = [Environment]::UserName
-          ./scripts/run-windows-acceptance.ps1 -Suite signed-upgrade
+        run: ./scripts/run-tauri-upgrade-account-ci.ps1
 
       - name: Upload signed upgrade acceptance evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: tauri-upgrade-evidence-${{ github.run_id }}
-          path: tests/.runtime/tauri-upgrade-result.json
+          path: |
+            tests/.runtime/tauri-upgrade-result.json
+            tests/.runtime/tauri-upgrade-failure.json
+            tests/.runtime/tauri-upgrade-account-probe-result.json
+            tests/.runtime/tauri-upgrade-account-actual-result.json
+            tests/.runtime/natux-upgrade-account-*/stdout.log
+            tests/.runtime/natux-upgrade-account-*/stderr.log
+            tests/.runtime/natux-upgrade-account-*/child-context.json
           if-no-files-found: warn
+          include-hidden-files: true
           retention-days: 14
