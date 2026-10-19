@@ -31,7 +31,7 @@ function completeAssets() {
   assert.ok(required.includes(`NatuxWorld-${version}-x64-setup.exe`));
   assert.ok(required.includes(`NatuxWorld-${version}-x64-portable.zip`));
   assert.ok(required.includes(`NatuxWorld-${version}-aarch64.dmg`));
-  return [...new Set([...required, `NATUX-WORLD-${version}-rollback.exe`, 'rollback.exe.blockmap',
+  return [...new Set([...required.filter(name => !/^SHA256SUMS-(windows|macos)\.txt$/.test(name)),
     'executable-sha512-windows-x86_64.txt', 'executable-sha512-darwin-x86_64.txt',
     'executable-sha512-darwin-aarch64.txt'])].map(name => ({ name }));
 }
@@ -130,6 +130,15 @@ test('published Tauri release requires the native executable hash artifact for e
   }
 });
 
+test('cleaned published release keeps the exact Electron update bridge mandatory', { skip: process.platform !== 'win32' }, async () => {
+  for (const name of [`NATUX-WORLD-Setup-${version}-x64.exe`, `NATUX-WORLD-Setup-${version}-x64.exe.blockmap`]) {
+    const result = await runPlan({ missingAsset: name });
+    assert.notEqual(result.status, 0, `Missing update bridge must fail: ${name}\n${result.log}`);
+    assert.match(result.log, /new version/i);
+    assert.notEqual(result.outputs.release, 'true');
+  }
+});
+
 for (const [name, fixture] of [['draft', { draft: true, incomplete: true }], ['absent', { absent: true }]]) {
   test(`actual release plan can prepare a ${name} release`, { skip: process.platform !== 'win32' }, async () => {
     const result = await runPlan(fixture);
@@ -161,7 +170,7 @@ test('versioned upload checks the current remote draft state before any replacem
   assert.doesNotMatch(plan.run, /Manual dispatch.*rebuild|\$tauriRequested -and \$env:EVENT_NAME -eq 'workflow_dispatch'/);
 });
 
-async function runUpload(state) {
+async function runUpload(state, tauri = true) {
   const runtime = path.join(repository, 'tests/.runtime');
   await mkdir(runtime, { recursive: true });
   await assertCanonicalDirectory(runtime);
@@ -169,9 +178,16 @@ async function runUpload(state) {
   await assertCanonicalDirectory(owner);
   try {
     await mkdir(path.join(owner, 'release'));
-    await writeFile(path.join(owner, 'release/latest.yml'), 'inert fixture\n', { flag: 'wx' });
+    await mkdir(path.join(owner, 'release/tauri'));
+    const legacy = ['latest.yml', 'natux-update.json', 'natux-update.json.sig',
+      'SHA256SUMS-windows.txt', 'SHA256SUMS-macos.txt', `NATUX-WORLD-Setup-${version}-x64.exe`,
+      `NATUX-WORLD-Setup-${version}-x64.exe.blockmap`, `NATUX-WORLD-Portable-${version}-x64.exe`,
+      `NATUX-WORLD-${version}-x64.dmg`, `NATUX-WORLD-${version}-arm64.dmg`];
+    const native = completeAssets().map(asset => asset.name).filter(name => !legacy.includes(name));
+    for (const name of legacy) await writeFile(path.join(owner, 'release', name), 'inert fixture\n', { flag: 'wx' });
+    for (const name of native) await writeFile(path.join(owner, 'release/tauri', name), 'inert fixture\n', { flag: 'wx' });
     const upload = workflow.jobs.publish.steps.find(step => step.name === 'Create or complete draft release').run
-      .replaceAll('${{ needs.plan.outputs.tauri }}', 'true');
+      .replaceAll('${{ needs.plan.outputs.tauri }}', String(tauri));
     assert.ok(!upload.includes('${{'), 'All workflow expressions must be bound explicitly by this fixture.');
     await writeFile(path.join(owner, 'upload.sh'), `
 function gh() {
@@ -187,6 +203,7 @@ function gh() {
   fi
   if [[ "$#" -ge 7 && "$1" == release && "$2" == upload && "$3" == "$TAG" && "$*" == *' --repo Alex-dev-sys/NatuxWorld --clobber' ]]; then
     printf 'upload\\n' >> gh-calls.txt
+    printf '%s\\n' "\${@:4:$#-6}" > uploaded-assets.txt
     return 0
   fi
   printf 'Fake gh refuses this operation.\\n' >&2
@@ -203,7 +220,11 @@ ${upload}
       { cwd: owner, env, encoding: 'utf8', windowsHide: true, timeout: 10_000 });
     assert.ifError(result.error);
     const calls = (await readFile(path.join(owner, 'gh-calls.txt'), 'utf8')).trim().split('\n');
-    return { status: result.status, calls, log: `${result.stdout}\n${result.stderr}` };
+    const assets = (await readFile(path.join(owner, 'uploaded-assets.txt'), 'utf8').catch(error => {
+      if (error.code === 'ENOENT') return ''; throw error;
+    })).trim().split('\n').filter(Boolean).map(name => name.replace(/^release\/(?:tauri\/)?/, '')).sort();
+    return { status: result.status, calls, assets, legacy: legacy.sort(), native: native.sort(),
+      log: `${result.stdout}\n${result.stderr}` };
   } finally {
     await assertCanonicalDirectory(owner);
     assert.equal(path.dirname(owner), runtime);
@@ -211,6 +232,20 @@ ${upload}
     await rm(owner, { recursive: true, force: true });
   }
 }
+
+test('actual Tauri publication omits duplicate Electron downloads but retains every update dependency', { skip: !bashAvailable }, async () => {
+  const result = await runUpload('true');
+  assert.equal(result.status, 0, result.log);
+  assert.deepEqual(result.assets, [...result.native, 'latest.yml', 'natux-update.json', 'natux-update.json.sig',
+    `NATUX-WORLD-Setup-${version}-x64.exe`, `NATUX-WORLD-Setup-${version}-x64.exe.blockmap`].sort());
+  assert.equal(result.assets.length, 21);
+});
+
+test('explicit Electron-only publication retains its original installers and checksums', { skip: !bashAvailable }, async () => {
+  const result = await runUpload('true', false);
+  assert.equal(result.status, 0, result.log);
+  assert.deepEqual(result.assets, result.legacy);
+});
 
 for (const [state, expectedStatus] of [['false', 1], ['true', 0], ['viewerror', 23]]) {
   test(`actual Bash upload step is fail-closed for remote draft state ${state}`, { skip: !bashAvailable }, async () => {
