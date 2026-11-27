@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::Mutex;
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use atomicwrites::{AllowOverwrite, AtomicFile};
 use serde::{Deserialize, Serialize};
@@ -120,14 +120,20 @@ impl Drop for PlaytimeService {
 
 fn run_actor(file: PathBuf, receiver: Receiver<Request>) {
     let mut active = false;
+    // A fixed deadline: frequent stats requests (the home page polls every 30 s)
+    // must not keep postponing the heartbeat that crash recovery relies on.
+    let mut next_heartbeat = Instant::now();
     loop {
+        if active && Instant::now() >= next_heartbeat {
+            active = heartbeat_file(&file, now_ms()).unwrap_or(true);
+            next_heartbeat = Instant::now() + HEARTBEAT_INTERVAL;
+            continue;
+        }
         let request = if active {
-            match receiver.recv_timeout(HEARTBEAT_INTERVAL) {
+            let wait = next_heartbeat.saturating_duration_since(Instant::now());
+            match receiver.recv_timeout(wait) {
                 Ok(request) => request,
-                Err(RecvTimeoutError::Timeout) => {
-                    active = heartbeat_file(&file, now_ms()).unwrap_or(true);
-                    continue;
-                }
+                Err(RecvTimeoutError::Timeout) => continue,
                 Err(RecvTimeoutError::Disconnected) => break,
             }
         } else {
@@ -142,18 +148,19 @@ fn run_actor(file: PathBuf, receiver: Receiver<Request>) {
                 let result = begin_file(&file, now_ms()).map_err(format_error);
                 if result.is_ok() {
                     active = true;
+                    next_heartbeat = Instant::now() + HEARTBEAT_INTERVAL;
                 }
                 let _ = reply.send(result.map(|_| ()));
             }
             Request::End(reply) => {
-                let result = end_file(&file, now_ms()).map_err(format_error);
+                let result = end_file(&file, now_ms(), active).map_err(format_error);
                 if let Ok(is_active) = result.as_ref() {
                     active = *is_active;
                 }
                 let _ = reply.send(result.map(|_| ()));
             }
             Request::GetStats(reply) => {
-                let result = stats_file(&file, now_ms()).map_err(format_error);
+                let result = stats_file(&file, now_ms(), active).map_err(format_error);
                 if let Ok((_, is_active)) = result.as_ref() {
                     active = *is_active;
                 }
@@ -179,9 +186,11 @@ fn begin_file(file: &Path, now: u64) -> io::Result<()> {
     save(file, &state)
 }
 
-fn end_file(file: &Path, now: u64) -> io::Result<bool> {
+/// `owned` is true while this process runs the session: a live session is never
+/// "stale" (for example after the PC slept mid-game) and must not be truncated.
+fn end_file(file: &Path, now: u64, owned: bool) -> io::Result<bool> {
     let mut state = load(file)?;
-    let recovered = reconcile(&mut state, now);
+    let recovered = !owned && reconcile(&mut state, now);
     let Some(start) = state.active_start else {
         if recovered {
             save(file, &state)?;
@@ -203,9 +212,9 @@ fn end_file(file: &Path, now: u64) -> io::Result<bool> {
     Ok(false)
 }
 
-fn stats_file(file: &Path, now: u64) -> io::Result<(PlaytimeStats, bool)> {
+fn stats_file(file: &Path, now: u64, owned: bool) -> io::Result<(PlaytimeStats, bool)> {
     let mut state = load(file)?;
-    let recovered = reconcile(&mut state, now);
+    let recovered = !owned && reconcile(&mut state, now);
     if recovered {
         save(file, &state)?;
     }

@@ -31,3 +31,6 @@ release/
 # The launcher metadata endpoint is source, not a release artifact.
 !/website/src/app/api/launcher/release/
 !/website/src/app/api/launcher/release/route.ts
+
+# Office lock files
+~$*

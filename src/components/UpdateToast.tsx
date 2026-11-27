@@ -4,6 +4,7 @@ import { AlertTriangle, Download, RefreshCw, X } from 'lucide-react';
 import { bridge } from '../services/native-bridge';
 import type { UpdateEvent } from '../types/native';
 import { useLang, pick } from '../i18n';
+import { useLauncherStore } from '../store/useLauncherStore';
 
 const ru = {
   update: 'Обновление',
@@ -12,6 +13,7 @@ const ru = {
   ready: (v: string) => `v${v} готова к установке`,
   error: (message: string) => `Не удалось проверить обновление: ${message}`,
   install: 'Перезапустить и установить',
+  installAfterGame: 'Установка после выхода из игры',
   download: 'Скачать с сайта',
   migrationTitle: 'Переход на Tauri 2',
   migrationAvailable: (v: string) => `Версия v${v} доступна`,
@@ -26,6 +28,7 @@ const en: typeof ru = {
   ready: (v: string) => `v${v} ready to install`,
   error: (message: string) => `Could not check for updates: ${message}`,
   install: 'Restart and install',
+  installAfterGame: 'Install after you quit the game',
   download: 'Download from site',
   migrationTitle: 'Move to Tauri 2',
   migrationAvailable: (v: string) => `Version v${v} is available`,
@@ -50,6 +53,8 @@ export function UpdateToast() {
   const [migration, setMigration] = useState<{ version: string; url: string } | null>(null);
   const [migrationDismissed, setMigrationDismissed] = useState(false);
   const t = pick(useLang(), TR);
+  // Installing restarts the launcher, which would kill a running Minecraft.
+  const gameBusy = useLauncherStore((s) => s.isLaunching || s.isRunning);
 
   useEffect(() => {
     return bridge.updater.onUpdate((raw) => {
@@ -176,9 +181,10 @@ export function UpdateToast() {
             {state.phase === 'ready' && (
               <button
                 onClick={() => bridge.updater.install()}
-                className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg bg-play-gradient px-3 text-xs font-semibold text-white shadow-glow hover:shadow-glow-strong transition"
+                disabled={gameBusy}
+                className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg bg-play-gradient px-3 text-xs font-semibold text-white shadow-glow hover:shadow-glow-strong transition disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {t.install}
+                {gameBusy ? t.installAfterGame : t.install}
               </button>
             )}
             {state.phase === 'manual' && (

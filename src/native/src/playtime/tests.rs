@@ -77,7 +77,8 @@ fn stale_session_recovers_only_through_its_last_heartbeat_and_persists_repair() 
     };
     save(&file, &state).unwrap();
 
-    let (stats, still_active) = stats_file(&file, start + 24 * 60 * 60 * 1000).unwrap();
+    let next_day = start + 24 * 60 * 60 * 1000;
+    let (stats, still_active) = stats_file(&file, next_day, false).unwrap();
     let repaired: PlaytimeFile = serde_json::from_slice(&fs::read(file).unwrap()).unwrap();
 
     assert!(!still_active && !stats.in_game);
@@ -91,6 +92,29 @@ fn stale_session_recovers_only_through_its_last_heartbeat_and_persists_repair() 
     );
     assert_eq!(repaired.active_start, None);
     assert_eq!(repaired.active_heartbeat, None);
+}
+
+#[test]
+fn a_session_owned_by_this_process_is_never_truncated_as_stale() {
+    let temp = tempdir().unwrap();
+    let file = temp.path().join("playtime.json");
+    let start = 1_700_000_000_000;
+    let hour = 60 * 60 * 1000;
+    let state = PlaytimeFile {
+        active_start: Some(start),
+        active_heartbeat: Some(start),
+        ..PlaytimeFile::default()
+    };
+    save(&file, &state).unwrap();
+
+    let (stats, still_active) = stats_file(&file, start + hour, true).unwrap();
+    assert!(still_active && stats.in_game);
+    assert_eq!(stats.total_ms, hour);
+
+    end_file(&file, start + 2 * hour, true).unwrap();
+    let saved: PlaytimeFile = serde_json::from_slice(&fs::read(file).unwrap()).unwrap();
+    assert_eq!(saved.total_ms, 2 * hour);
+    assert_eq!(saved.active_start, None);
 }
 
 #[test]
@@ -115,7 +139,7 @@ fn invalid_playtime_is_backed_up_before_empty_stats_are_reinitialized() {
     let corrupt = b"{broken playtime";
     fs::write(&file, corrupt).unwrap();
 
-    let (stats, active) = stats_file(&file, 1_700_000_000_000).unwrap();
+    let (stats, active) = stats_file(&file, 1_700_000_000_000, false).unwrap();
 
     assert!(!active && !stats.in_game);
     assert_eq!(stats.total_ms, 0);

@@ -68,6 +68,11 @@ impl LauncherService {
             .unwrap_or_else(|_| LaunchProgress::new("error", 0, "Состояние запуска недоступно"))
     }
 
+    /// True while a launch pipeline or the game it started is running.
+    pub(crate) fn is_busy(&self) -> bool {
+        self.state.lock().map(|state| state.busy).unwrap_or(true)
+    }
+
     pub(crate) fn defer_exit_until_pipeline_finishes(&self) -> bool {
         self.state
             .lock()
@@ -195,7 +200,7 @@ impl LauncherService {
         let root = context.settings.minecraft_dir()?;
         fs::create_dir_all(&root).map_err(io_message)?;
         let root = fs::canonicalize(&root).map_err(io_message)?;
-        disk::ensure_sufficient_space(&root)?;
+        disk::ensure_sufficient_space_bounded(&root, &cancellation).await?;
         let downloads = DownloadService::new(&root).map_err(|error| error.to_string())?;
         let progress_sink = self.progress_sink(app.clone());
 

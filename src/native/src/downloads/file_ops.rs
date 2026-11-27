@@ -170,28 +170,42 @@ pub(super) fn matching_cached_file(
         return Ok(None);
     }
     let mut file = File::open(path).map_err(|_| DownloadError::Io)?;
-    let mut digest = Sha1::new();
-    let mut sha256 = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
+    if pinned_digests_match(&mut file, job)? == (true, true) {
+        Ok(Some(metadata.len()))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Streams `file` once and reports `(sha1_matches, sha256_matches)`. Only the
+/// digests the job pins are computed: most Mojang jobs carry SHA-1 only, and
+/// hashing every file with both algorithms doubled the CPU cost of each launch.
+pub(super) fn pinned_digests_match(
+    file: &mut File,
+    job: &DownloadJob,
+) -> Result<(bool, bool), DownloadError> {
+    let mut sha1 = job.expected_sha1.as_ref().map(|_| Sha1::new());
+    let mut sha256 = job.expected_sha256.as_ref().map(|_| Sha256::new());
+    let mut buffer = vec![0_u8; 256 * 1024];
     loop {
         let count = file.read(&mut buffer).map_err(|_| DownloadError::Io)?;
         if count == 0 {
             break;
         }
-        digest.update(&buffer[..count]);
-        sha256.update(&buffer[..count]);
+        if let Some(digest) = sha1.as_mut() {
+            digest.update(&buffer[..count]);
+        }
+        if let Some(digest) = sha256.as_mut() {
+            digest.update(&buffer[..count]);
+        }
     }
-    let sha1_matches = job
-        .expected_sha1
-        .as_deref()
-        .is_none_or(|expected| format!("{:x}", digest.finalize()) == expected);
-    let sha256_matches = job
-        .expected_sha256
-        .as_deref()
-        .is_none_or(|expected| format!("{:x}", sha256.finalize()) == expected);
-    if sha1_matches && sha256_matches {
-        Ok(Some(metadata.len()))
-    } else {
-        Ok(None)
-    }
+    let sha1_matches = match (job.expected_sha1.as_deref(), sha1) {
+        (Some(expected), Some(digest)) => format!("{:x}", digest.finalize()) == expected,
+        _ => true,
+    };
+    let sha256_matches = match (job.expected_sha256.as_deref(), sha256) {
+        (Some(expected), Some(digest)) => format!("{:x}", digest.finalize()) == expected,
+        _ => true,
+    };
+    Ok((sha1_matches, sha256_matches))
 }

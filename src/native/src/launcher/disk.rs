@@ -2,8 +2,29 @@ use std::io;
 use std::path::Path;
 #[cfg(unix)]
 use std::process::{Command, Stdio};
+use std::time::Duration;
+
+use crate::cancellation::CancellationToken;
 
 const MIN_FREE_BYTES: u64 = 1536 * 1024 * 1024;
+const PROBE_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Runs the blocking probe off the async workers with a deadline: `df` against a
+/// hung network mount must not freeze the launch pipeline or its cancel button.
+pub(super) async fn ensure_sufficient_space_bounded(
+    minecraft_root: &Path,
+    cancellation: &CancellationToken,
+) -> Result<(), String> {
+    let root = minecraft_root.to_path_buf();
+    let probe = tokio::task::spawn_blocking(move || ensure_sufficient_space(&root));
+    tokio::select! {
+        _ = cancellation.cancelled() => Err("Отменено".to_owned()),
+        result = tokio::time::timeout(PROBE_TIMEOUT, probe) => match result {
+            Ok(Ok(result)) => result,
+            _ => Err(disk_probe_error(io::ErrorKind::TimedOut.into())),
+        },
+    }
+}
 
 pub(super) fn ensure_sufficient_space(minecraft_root: &Path) -> Result<(), String> {
     ensure_sufficient_space_with(minecraft_root, available_space)

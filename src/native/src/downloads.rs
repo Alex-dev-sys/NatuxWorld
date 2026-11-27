@@ -157,38 +157,67 @@ impl DownloadService {
             last_callback: Mutex::new(Instant::now()),
             callback: Arc::new(on_progress),
         });
+        // One failed job fails the whole batch, so stop the remaining jobs instead
+        // of retrying thousands of doomed requests before reporting the error.
+        let batch = CancellationToken::default();
         let tasks = jobs
             .into_iter()
             .map(|job| {
                 let lock = self.destination_lock(&job.destination)?;
                 let progress = Arc::clone(&progress);
                 let job_progress = Arc::new(std::sync::atomic::AtomicU64::new(0));
-                let cancellation = cancellation.clone();
+                let batch = batch.clone();
                 Ok(async move {
-                    let _destination_guard = tokio::select! {
-                        _ = cancellation.cancelled() => return Err(DownloadError::Cancelled),
-                        guard = lock.lock() => guard,
-                    };
-                    let _permit = tokio::select! {
-                        _ = cancellation.cancelled() => return Err(DownloadError::Cancelled),
-                        permit = self.concurrency.clone().acquire_owned() => {
-                            permit.map_err(|_| DownloadError::LockUnavailable)?
-                        },
-                    };
-                    self.download_one(&job, &progress, &job_progress, &cancellation)
-                        .await?;
-                    Ok::<(), DownloadError>(())
+                    let result = async {
+                        let _destination_guard = tokio::select! {
+                            _ = batch.cancelled() => return Err(DownloadError::Cancelled),
+                            guard = lock.lock() => guard,
+                        };
+                        let _permit = tokio::select! {
+                            _ = batch.cancelled() => return Err(DownloadError::Cancelled),
+                            permit = self.concurrency.clone().acquire_owned() => {
+                                permit.map_err(|_| DownloadError::LockUnavailable)?
+                            },
+                        };
+                        self.download_one(&job, &progress, &job_progress, &batch)
+                            .await?;
+                        Ok::<(), DownloadError>(())
+                    }
+                    .await;
+                    if result.is_err() {
+                        batch.cancel();
+                    }
+                    result
                 })
             })
             .collect::<Result<Vec<_>, DownloadError>>()?;
 
-        let mut first_error = None;
-        for result in join_all(tasks).await {
-            if first_error.is_none() {
-                first_error = result.err();
+        let all = join_all(tasks);
+        tokio::pin!(all);
+        let results = tokio::select! {
+            results = &mut all => results,
+            _ = cancellation.cancelled() => {
+                batch.cancel();
+                all.await
+            }
+        };
+        if cancellation.is_cancelled() {
+            return Err(DownloadError::Cancelled);
+        }
+        // Report the job that actually failed, not the siblings it cancelled.
+        let mut cancelled = false;
+        for result in results {
+            match result {
+                Ok(()) => {}
+                Err(DownloadError::Cancelled) => cancelled = true,
+                Err(error) => return Err(error),
             }
         }
-        first_error.map_or(Ok(()), Err)
+        if cancelled {
+            Err(DownloadError::Cancelled)
+        } else {
+            Ok(())
+        }
     }
 
     fn validate_and_dedupe(
@@ -292,7 +321,16 @@ impl DownloadService {
             return Err(DownloadError::Cancelled);
         }
         let target = prepare_destination(&self.root, &job.destination)?;
-        if let Some(size) = matching_cached_file(&target, job)? {
+        // Hashing a cached file is blocking disk + CPU work; keep it off the async
+        // workers so permitted jobs verify in parallel instead of one at a time.
+        let cached = {
+            let target = target.clone();
+            let job = job.clone();
+            tokio::task::spawn_blocking(move || matching_cached_file(&target, &job))
+                .await
+                .map_err(|_| DownloadError::Io)??
+        };
+        if let Some(size) = cached {
             self.report_progress(job, size, progress, job_progress, true)
                 .await;
             return Ok(size);

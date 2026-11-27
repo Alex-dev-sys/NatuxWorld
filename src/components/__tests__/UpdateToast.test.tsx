@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UpdateToast } from '../UpdateToast';
 import { bridge } from '../../services/native-bridge';
+import { useLauncherStore } from '../../store/useLauncherStore';
 import type { UpdateEvent } from '../../types/native';
 
 let emitUpdate: ((event: UpdateEvent) => void) | undefined;
@@ -79,5 +80,31 @@ describe('manual desktop updates', () => {
     expect(openExternal).toHaveBeenCalledWith(
       'https://github.com/Alex-dev-sys/NatuxWorld/releases/tag/v1.9.16',
     );
+  });
+});
+
+describe('installing a downloaded update', () => {
+  it('cannot restart the launcher while Minecraft is running', () => {
+    vi.spyOn(bridge.updater, 'onUpdate').mockImplementation((callback) => {
+      emitUpdate = callback;
+      return () => undefined;
+    });
+    const install = vi.spyOn(bridge.updater, 'install').mockResolvedValue(undefined);
+    useLauncherStore.setState({ isRunning: true });
+
+    render(<UpdateToast />);
+    act(() => {
+      emitUpdate?.({ type: 'downloaded', version: '1.10.1' });
+    });
+
+    const button = screen.getByRole('button', { name: 'Установка после выхода из игры' });
+    fireEvent.click(button);
+    expect(install).not.toHaveBeenCalled();
+
+    act(() => {
+      useLauncherStore.setState({ isRunning: false });
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Перезапустить и установить' }));
+    expect(install).toHaveBeenCalledTimes(1);
   });
 });

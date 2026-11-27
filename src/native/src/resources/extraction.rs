@@ -191,11 +191,19 @@ where
             .write(true)
             .open(&target)
             .map_err(io_message)?;
+        // The size budget above trusts the declared size, so the copy must not
+        // write past it: a lying entry could otherwise inflate far beyond the cap.
+        let declared_size = entry.size();
+        let mut written = 0_u64;
         loop {
             check_cancelled(cancellation)?;
             let read = entry.read(&mut buffer).map_err(io_message)?;
             if read == 0 {
                 break;
+            }
+            written = written.saturating_add(read as u64);
+            if written > declared_size {
+                return Err(format!("native archive entry exceeds its declared size: {name}"));
             }
             output.write_all(&buffer[..read]).map_err(io_message)?;
             after_chunk(read);
@@ -314,7 +322,10 @@ fn commit_staging(
         return Err("Отменено".to_owned());
     }
     if let Some(backup) = backup {
-        fs::remove_dir_all(backup).map_err(io_message)?;
+        // The new natives are already committed. An antivirus scanner holding a
+        // handle on an old DLL must not turn a finished extraction into a failed
+        // launch, so removing the previous copy is best-effort.
+        let _ = fs::remove_dir_all(backup);
     }
     Ok(())
 }

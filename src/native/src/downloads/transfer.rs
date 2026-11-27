@@ -1,14 +1,13 @@
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use reqwest::{Response, StatusCode};
-use sha1::{Digest, Sha1};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 
 use crate::cancellation::CancellationToken;
 
-use super::file_ops::{destination_key, reject_unsafe_existing_target};
+use super::file_ops::{destination_key, pinned_digests_match, reject_unsafe_existing_target};
 use super::policy::{MAX_REDIRECTS, MIN_RESUME_BYTES};
 use super::types::{DownloadError, DownloadJob, ProgressState};
 use super::{is_redirect, map_request_error, DownloadService};
@@ -23,27 +22,59 @@ impl DownloadService {
         cancellation: &CancellationToken,
     ) -> Result<u64, DownloadError> {
         let partial = partial_path(target, &job.destination);
+        let resuming = fs::symlink_metadata(&partial).is_ok();
+        let bytes_written = match self
+            .fetch_verified_partial(job, &partial, progress, job_progress, cancellation)
+            .await
+        {
+            // A resumed partial whose prefix was damaged (for example by a power
+            // loss) only fails the final hash. The mismatch discarded it, so one
+            // fresh download repairs the file instead of failing the launch.
+            Err(DownloadError::Sha1Mismatch | DownloadError::Sha256Mismatch) if resuming => {
+                self.fetch_verified_partial(job, &partial, progress, job_progress, cancellation)
+                    .await?
+            }
+            result => result?,
+        };
+        reject_unsafe_existing_target(&self.root, target)?;
+        fs::rename(&partial, target).map_err(|_| DownloadError::Io)?;
+        Ok(bytes_written)
+    }
+
+    async fn fetch_verified_partial(
+        &self,
+        job: &DownloadJob,
+        partial: &Path,
+        progress: &ProgressState,
+        job_progress: &std::sync::atomic::AtomicU64,
+        cancellation: &CancellationToken,
+    ) -> Result<u64, DownloadError> {
         let result = self
-            .write_partial(job, &partial, progress, job_progress, cancellation)
+            .write_partial(job, partial, progress, job_progress, cancellation)
             .await;
         let bytes_written = match result {
             Ok(bytes_written) => bytes_written,
             Err(error) => {
-                discard_unusable_partial(&partial, job, &error, self.max_file_size);
+                discard_unusable_partial(partial, job, &error, self.max_file_size);
                 return Err(error);
             }
         };
 
         if cancellation.is_cancelled() {
-            discard_unusable_partial(&partial, job, &DownloadError::Cancelled, self.max_file_size);
+            discard_unusable_partial(partial, job, &DownloadError::Cancelled, self.max_file_size);
             return Err(DownloadError::Cancelled);
         }
-        if let Err(error) = verify_complete_file(&partial, bytes_written, job) {
-            discard_unusable_partial(&partial, job, &error, self.max_file_size);
+        let verified = {
+            let path = partial.to_path_buf();
+            let job = job.clone();
+            tokio::task::spawn_blocking(move || verify_complete_file(&path, bytes_written, &job))
+                .await
+                .map_err(|_| DownloadError::Io)?
+        };
+        if let Err(error) = verified {
+            discard_unusable_partial(partial, job, &error, self.max_file_size);
             return Err(error);
         }
-        reject_unsafe_existing_target(&self.root, target)?;
-        fs::rename(&partial, target).map_err(|_| DownloadError::Io)?;
         Ok(bytes_written)
     }
 
@@ -319,29 +350,11 @@ fn verify_complete_file(
     }
 
     let mut file = File::open(path).map_err(|_| DownloadError::Io)?;
-    let mut sha1 = Sha1::new();
-    let mut sha256 = Sha256::new();
-    let mut buffer = [0_u8; 64 * 1024];
-    loop {
-        let count = file.read(&mut buffer).map_err(|_| DownloadError::Io)?;
-        if count == 0 {
-            break;
-        }
-        sha1.update(&buffer[..count]);
-        sha256.update(&buffer[..count]);
-    }
-    if job
-        .expected_sha1
-        .as_deref()
-        .is_some_and(|expected| format!("{:x}", sha1.finalize()) != expected)
-    {
+    let (sha1_matches, sha256_matches) = pinned_digests_match(&mut file, job)?;
+    if !sha1_matches {
         return Err(DownloadError::Sha1Mismatch);
     }
-    if job
-        .expected_sha256
-        .as_deref()
-        .is_some_and(|expected| format!("{:x}", sha256.finalize()) != expected)
-    {
+    if !sha256_matches {
         return Err(DownloadError::Sha256Mismatch);
     }
     Ok(())

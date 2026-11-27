@@ -69,3 +69,15 @@ fn updater_failures_use_the_shared_frontend_event_shape() {
         json!({ "type": "error", "message": "network unavailable" })
     );
 }
+
+#[test]
+fn runtime_updater_key_matches_the_key_ci_verifies_against() {
+    // CI's verify-updater-signature reads tauri.conf.json; the app uses the
+    // compiled constant. A drift would let CI approve bundles the app rejects.
+    let config: serde_json::Value =
+        serde_json::from_str(include_str!("../../tauri.conf.json")).unwrap();
+    assert_eq!(
+        config["plugins"]["updater"]["pubkey"].as_str(),
+        Some(super::TAURI_UPDATER_PUBLIC_KEY)
+    );
+}

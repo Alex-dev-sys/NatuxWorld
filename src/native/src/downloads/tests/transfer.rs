@@ -351,3 +351,29 @@ fn rate_limit_response_uses_the_three_attempt_retry_policy() {
     assert_eq!(result, Err(DownloadError::HttpStatus(429)));
     assert_eq!(attempts.load(Ordering::SeqCst), 3);
 }
+
+#[test]
+fn a_permanent_failure_stops_the_rest_of_the_batch() {
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let server_attempts = Arc::clone(&attempts);
+    let server = server(move |stream| {
+        server_attempts.fetch_add(1, Ordering::SeqCst);
+        super::respond(stream, "404 Not Found", "", b"");
+    });
+    let root = tempfile::tempdir().expect("create download root");
+    let service = test_service(&root, 1, 1024);
+    let jobs = (0..6)
+        .map(|index| DownloadJob {
+            url: format!("{}/missing-{index}", server.url),
+            destination: PathBuf::from(format!("missing-{index}.bin")),
+            expected_sha1: None,
+            expected_sha256: None,
+            expected_size: None,
+        })
+        .collect();
+
+    let result = run(service.download_many(jobs, |_, _, _| {}));
+
+    assert_eq!(result, Err(DownloadError::HttpStatus(404)));
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+}

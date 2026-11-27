@@ -8,7 +8,9 @@ use crate::cancellation::CancellationToken;
 
 use super::{archive, JavaInstallation, JavaOs, JavaTarget, TemurinRelease, JAVA_MAJOR_VERSION};
 
-const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+// A cold JVM start under an antivirus scan can exceed 10 s; timing out would make
+// a healthy managed runtime look missing and trigger a needless reinstall.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_PROBE_OUTPUT: usize = 4096;
 
 pub fn managed_java_path(runtime_dir: &Path, target: JavaTarget) -> PathBuf {

@@ -18,6 +18,8 @@ use super::{
     MAX_LOG_BATCH, MAX_LOG_LINE_BYTES,
 };
 
+const INSTALLER_LOG_DRAIN: Duration = Duration::from_secs(5);
+
 pub(crate) async fn run_installer(
     app: &tauri::AppHandle,
     java_path: &Path,
@@ -104,12 +106,17 @@ pub(crate) async fn run_installer(
         }
     };
     drop(process_tree);
-    while let Some((line, is_stderr)) = receiver.recv().await {
-        record_installer_line(line, is_stderr, &mut batch, &mut stderr_tail);
-        if batch.len() >= MAX_LOG_BATCH {
-            emit_logs(app, std::mem::take(&mut batch));
+    // A grandchild that inherited the installer's pipes keeps them open after the
+    // installer exits; it must not hold the launch (and its busy state) forever.
+    let drain = async {
+        while let Some((line, is_stderr)) = receiver.recv().await {
+            record_installer_line(line, is_stderr, &mut batch, &mut stderr_tail);
+            if batch.len() >= MAX_LOG_BATCH {
+                emit_logs(app, std::mem::take(&mut batch));
+            }
         }
-    }
+    };
+    let _ = tokio::time::timeout(INSTALLER_LOG_DRAIN, drain).await;
     if !batch.is_empty() {
         emit_logs(app, batch);
     }

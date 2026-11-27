@@ -14,9 +14,10 @@ pub struct OfflineAuthCredentials {
 }
 
 #[tauri::command]
-pub fn auth_login(
+pub async fn auth_login(
     settings: State<'_, SettingsStore>,
     profile_locks: State<'_, crate::ProfileLockState>,
+    launcher: State<'_, crate::launcher::LauncherService>,
     credentials: OfflineAuthCredentials,
 ) -> Result<crate::offline_auth::OfflineUser, String> {
     if credentials
@@ -26,17 +27,18 @@ pub fn auth_login(
     {
         return Err("Only offline launcher profiles are supported".to_owned());
     }
-    let _game_lock = profile_locks.acquire_game()?;
+    let _game_lock = acquire_idle_game_lock(&profile_locks, &launcher)?;
     crate::offline_auth::OfflineAuthService::from_settings(settings.inner())?
         .login(&credentials.username)
 }
 
 #[tauri::command]
-pub fn auth_logout(
+pub async fn auth_logout(
     settings: State<'_, SettingsStore>,
     profile_locks: State<'_, crate::ProfileLockState>,
+    launcher: State<'_, crate::launcher::LauncherService>,
 ) -> Result<(), String> {
-    let _game_lock = profile_locks.acquire_game()?;
+    let _game_lock = acquire_idle_game_lock(&profile_locks, &launcher)?;
     crate::offline_auth::OfflineAuthService::from_settings(settings.inner())?.logout()
 }
 
@@ -111,10 +113,12 @@ pub async fn account_two_factor_enable(
 }
 
 #[tauri::command]
-pub fn account_logout(
+pub async fn account_logout(
     account: State<'_, crate::account::AccountService>,
-) -> crate::account::LogoutResult {
-    account.logout()
+) -> Result<crate::account::LogoutResult, String> {
+    // Async so the OS keyring call (D-Bus or Keychain, which can block on an
+    // unlock prompt) runs off the UI thread instead of freezing the window.
+    Ok(account.logout())
 }
 
 #[tauri::command]
@@ -176,8 +180,9 @@ pub async fn java_detect(
 pub async fn java_install(
     settings: State<'_, SettingsStore>,
     profile_locks: State<'_, crate::ProfileLockState>,
+    launcher: State<'_, crate::launcher::LauncherService>,
 ) -> Result<crate::java::JavaInstallation, String> {
-    let _game_lock = profile_locks.acquire_game()?;
+    let _game_lock = acquire_idle_game_lock(&profile_locks, &launcher)?;
     let root = settings.minecraft_dir()?;
     let target = crate::java::JavaTarget::current()?;
     let release = crate::java::fetch_latest_release(target).await?;
@@ -306,7 +311,7 @@ pub fn settings_reset(
 }
 
 #[tauri::command]
-pub fn shell_playtime_get(
+pub async fn shell_playtime_get(
     playtime: State<'_, Arc<crate::playtime::PlaytimeService>>,
 ) -> Result<crate::playtime::PlaytimeStats, String> {
     playtime.get_stats()
@@ -339,6 +344,19 @@ pub async fn shell_diagnostics_run(
 ) -> Result<Vec<crate::diagnostics::DiagnosticCheck>, String> {
     let service = crate::diagnostics::DiagnosticsService::new(settings.minecraft_dir()?)?;
     Ok(service.run().await)
+}
+
+/// The launch pipeline releases `.game.lock` for a few seconds while Java starts
+/// and the lock agent re-acquires it; other mutating commands must not grab it
+/// in that window or the game fails to start.
+fn acquire_idle_game_lock(
+    profile_locks: &crate::ProfileLockState,
+    launcher: &crate::launcher::LauncherService,
+) -> Result<natux_profile_lock_core::GameLock, String> {
+    if launcher.is_busy() {
+        return Err(crate::game_busy_message());
+    }
+    profile_locks.acquire_game()
 }
 
 #[cfg(test)]

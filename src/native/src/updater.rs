@@ -113,6 +113,12 @@ pub async fn updater_install(
         );
         return Ok(());
     }
+    // The installer restarts the launcher; closing its Job Object would kill a
+    // running Minecraft (or a half-finished Forge/Java install) mid-write.
+    if app.state::<crate::launcher::LauncherService>().is_busy() {
+        emit_error(&app, "Закройте Minecraft, чтобы установить обновление");
+        return Ok(());
+    }
     let pending = updater
         .pending
         .lock()
